@@ -1,0 +1,6 @@
+{
+  "config.epicfight_posture_integration.title": "Epic Fight Posture Integration",
+  "config.epicfight_posture_integration.execution_sound_volume": "処刑サウンド音量: %s%%",
+  "config.epicfight_posture_integration.execution_sound_volume.description": "このクライアントでのみ Combat Evolution の処刑サウンド音量を調整します。",
+  "config.epicfight_posture_integration.reset": "初期値に戻す"
+}

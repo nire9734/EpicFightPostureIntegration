@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.1.0
+
+- Added a client-side Combat Evolution execution sound volume setting.
+- Added an in-game config screen accessible from `Mods -> Epic Fight Posture Integration -> Config`.
+- Execution sound volume can be adjusted from 0% to 100% independently for each player.
+- Default execution sound volume multiplier is 70% of Combat Evolution's original volume.
+- Updated Combat Evolution compatibility through the 2.3.x series and built against 2.3.1.
+- No posture balance changes.
+
 ## 1.0.0
 
 Initial public release.

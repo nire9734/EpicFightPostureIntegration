@@ -1,0 +1,6 @@
+{
+  "config.epicfight_posture_integration.title": "Epic Fight Posture Integration",
+  "config.epicfight_posture_integration.execution_sound_volume": "Execution Sound Volume: %s%%",
+  "config.epicfight_posture_integration.execution_sound_volume.description": "Adjusts Combat Evolution execution sounds on this client only.",
+  "config.epicfight_posture_integration.reset": "Reset"
+}

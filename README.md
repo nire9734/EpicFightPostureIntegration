@@ -26,7 +26,7 @@ Reduce an enemy's posture through attacks and parries, break their posture, and 
 - Minecraft 1.20.1
 - Forge 47.4.10 or newer within the 47.x series
 - Epic Fight 20.14.17 or newer compatible 20.14.x version
-- Combat Evolution 2.2.8 or newer compatible 2.2.x version
+- Combat Evolution 2.2.8 or newer compatible 2.2.x / 2.3.x version
 
 Epic Fight and Combat Evolution are required on both the client and server.
 
@@ -111,6 +111,22 @@ entity_blacklist = []
 `global_multiplier` multiplies the final calculated maximum posture. `minimum_posture` sets the lowest possible maximum posture after scaling. When `use_armor_scaling` is disabled, armor and armor toughness do not contribute to posture scaling.
 
 Both vanilla and modded entity IDs can be added to `entity_blacklist`. Unsupported entities do not need to be blacklisted; they are ignored automatically.
+
+## Client Configuration
+
+The client configuration is stored at:
+
+```text
+config/epicfight_posture_integration-client.toml
+```
+
+It can also be changed directly in-game from:
+
+```text
+Mods -> Epic Fight Posture Integration -> Config
+```
+
+The **Execution Sound Volume** slider changes only the local player's Combat Evolution execution sound effects. It ranges from 0% (muted) to 100% (Combat Evolution's original volume) and defaults to 70%. This setting is client-side and is not synchronized by multiplayer servers.
 
 ## Multiplayer
 
