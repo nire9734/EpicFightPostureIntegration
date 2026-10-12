@@ -14,7 +14,6 @@ import yesman.epicfight.api.asset.AssetAccessor;
 import yesman.epicfight.api.asset.SelfAccessor;
 import yesman.epicfight.api.client.forgeevent.PatchedRenderersEvent;
 import yesman.epicfight.api.client.model.SkinnedMesh;
-import yesman.epicfight.client.renderer.patched.entity.PCustomEntityRenderer;
 import yesman.epicfight.world.capabilities.provider.EntityPatchProvider;
 
 import java.util.HashMap;
@@ -107,7 +106,7 @@ public final class GeckoHumanoidClientCompat {
 
             event.addPatchedEntityRenderer(
                     entityType,
-                    type -> new PCustomEntityRenderer(mesh, event.getContext())
+                    type -> new SpecialStateGeckoRenderer(mesh, event.getContext())
             );
             registered++;
         }
