@@ -29,7 +29,8 @@ public final class VanillaHumanoidCompat {
     /** Known 1.20.1 test targets whose render models extend HumanoidModel. */
     public static final List<ResourceLocation> TEST_TARGETS = List.of(
             new ResourceLocation("majruszsdifficulty", "cursed_armor"),
-            new ResourceLocation("botania", "doppleganger")
+            new ResourceLocation("botania", "doppleganger"),
+            new ResourceLocation("guardvillagers", "guard")
     );
 
     public static void bootstrap() {
