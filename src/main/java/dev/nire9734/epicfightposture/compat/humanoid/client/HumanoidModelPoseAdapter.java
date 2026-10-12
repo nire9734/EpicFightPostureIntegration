@@ -5,24 +5,43 @@ import dev.nire9734.epicfightposture.compat.humanoid.LightweightHumanoidPatch;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.model.HumanoidModel;
 import net.minecraft.client.model.geom.ModelPart;
-import net.minecraft.util.Mth;
+import net.minecraft.client.model.geom.PartPose;
 import net.minecraft.world.entity.LivingEntity;
+import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
-import yesman.epicfight.api.animation.AnimationPlayer;
 import yesman.epicfight.api.animation.Joint;
 import yesman.epicfight.api.animation.Pose;
-import yesman.epicfight.api.animation.types.DynamicAnimation;
-import yesman.epicfight.api.animation.types.StaticAnimation;
-import yesman.epicfight.api.asset.AssetAccessor;
 import yesman.epicfight.api.model.Armature;
 import yesman.epicfight.api.utils.math.OpenMatrix4f;
-import yesman.epicfight.gameasset.Animations;
 import yesman.epicfight.world.capabilities.EpicFightCapabilities;
 import yesman.epicfight.world.capabilities.entitypatch.LivingEntityPatch;
 
-/** Applies EF BIPED action poses only while a lightweight humanoid mob is BROKEN/EXECUTING. */
+/**
+ * Applies an Epic Fight BIPED action pose to a vanilla-style HumanoidModel only
+ * while the lightweight compatibility patch is BROKEN/EXECUTING.
+ *
+ * <p>This adapter intentionally keeps the third-party renderer and normal model
+ * animation untouched outside those states.</p>
+ */
 public final class HumanoidModelPoseAdapter {
+    private static final float PIXELS_PER_BLOCK = 16.0F;
+
+    /*
+     * Epic Fight's VanillaModelTransformer uses exactly this model-space change
+     * before baking HumanoidModel cubes into its BIPED skinned mesh:
+     *
+     *   rotate Y 180 -> rotate X 180 -> translate Y -24 px
+     *
+     * Use the same transform in block units so an EF skinning matrix can be
+     * conjugated back into the coordinate system expected by ModelPart.
+     */
+    private static final Matrix4f VANILLA_TO_EF = new Matrix4f()
+            .rotateY((float)Math.PI)
+            .rotateX((float)Math.PI)
+            .translate(0.0F, -24.0F / PIXELS_PER_BLOCK, 0.0F);
+    private static final Matrix4f EF_TO_VANILLA = new Matrix4f(VANILLA_TO_EF).invert();
+
     public static void apply(HumanoidModel<?> model, LivingEntity entity) {
         ClientPostureStore.Entry posture = ClientPostureStore.get(entity.getId(), entity.getUUID());
         if (posture == null || !posture.broken) return;
@@ -35,79 +54,95 @@ public final class HumanoidModelPoseAdapter {
         }
         if (!(patch instanceof LightweightHumanoidPatch)) return;
 
-        AnimationPlayer player = patch.getAnimator().getPlayerFor(null);
-        if (player == null || player.getAnimation() == null) return;
-
-        AssetAccessor<? extends DynamicAnimation> currentAccessor = player.getAnimation();
-        DynamicAnimation currentAnimation = currentAccessor.get();
-        StaticAnimation idleAnimation = Animations.BIPED_IDLE.get();
-        if (currentAnimation == null || idleAnimation == null) return;
-
-        float partialTick = Minecraft.getInstance().getFrameTime();
-        float animationTime = Mth.lerp(partialTick, player.getPrevElapsedTime(), player.getElapsedTime());
-        Pose currentPose = currentAnimation.getRawPose(animationTime);
-        Pose idlePose = idleAnimation.getRawPose(0.0F);
-        if (currentPose == null || idlePose == null) return;
-
         Armature armature = patch.getArmature();
         if (armature == null) return;
 
-        OpenMatrix4f[] currentMatrices = armature.getPoseAsTransformMatrix(currentPose, false);
-        OpenMatrix4f[] idleMatrices = armature.getPoseAsTransformMatrix(idlePose, false);
+        float partialTick = Minecraft.getInstance().getFrameTime();
 
         /*
-         * HumanoidModel's main parts are siblings under the model root. A local EF
-         * JointTransform therefore cannot be copied directly to a ModelPart: Head,
-         * Arm_R, etc. must also inherit the animated Torso/Chest/Shoulder chain.
-         *
-         * Use the armature's root-space joint matrices and remove the idle/root-space
-         * basis. This also avoids serially multiplying Torso+Chest or Shoulder+Arm,
-         * which double-counted the BIPED hierarchy and caused the collapsed pose.
-         *
-         * These representative joints match Epic Fight's own VanillaModelTransformer:
-         * body geometry is based on Torso/Chest, arm geometry begins at Arm_R/L, and
-         * leg geometry begins at Thigh_R/L. A rigid HumanoidModel cannot reproduce
-         * EF's elbow/knee/chest skinning, so the primary joint is used here.
+         * Use the same composed pose that Epic Fight's patched renderer uses.
+         * Sampling DynamicAnimation#getRawPose here loses layer composition and
+         * bind modifiers, which was one source of the previous malformed poses.
          */
-        setRotationFromGlobal(model.body, armature, currentMatrices, idleMatrices, "Torso");
-        setRotationFromGlobal(model.head, armature, currentMatrices, idleMatrices, "Head");
+        Pose pose = patch.getAnimator().getPose(partialTick);
+        if (pose == null) return;
+
+        /*
+         * applyOriginTransform=true yields each joint's skinning/deformation
+         * matrix (current global joint transform * inverse bind transform).
+         * This directly removes the BIPED bind axes. The previous implementation
+         * compared current/idle global orientations by hand, which does not equal
+         * the matrix Epic Fight actually applies to its mesh.
+         */
+        OpenMatrix4f[] deformationMatrices = armature.getPoseAsTransformMatrix(pose, true);
+
+        // Rigid HumanoidModel parts cannot reproduce EF chest/elbow/knee skinning,
+        // so use the representative primary joint for each rigid part.
+        applyJoint(model.body, armature, deformationMatrices, "Chest");
+        applyJoint(model.head, armature, deformationMatrices, "Head");
         model.hat.copyFrom(model.head);
-        setRotationFromGlobal(model.rightArm, armature, currentMatrices, idleMatrices, "Arm_R");
-        setRotationFromGlobal(model.leftArm, armature, currentMatrices, idleMatrices, "Arm_L");
-        setRotationFromGlobal(model.rightLeg, armature, currentMatrices, idleMatrices, "Thigh_R");
-        setRotationFromGlobal(model.leftLeg, armature, currentMatrices, idleMatrices, "Thigh_L");
+        applyJoint(model.rightArm, armature, deformationMatrices, "Arm_R");
+        applyJoint(model.leftArm, armature, deformationMatrices, "Arm_L");
+        applyJoint(model.rightLeg, armature, deformationMatrices, "Thigh_R");
+        applyJoint(model.leftLeg, armature, deformationMatrices, "Thigh_L");
     }
 
-    private static void setRotationFromGlobal(
+    private static void applyJoint(
             ModelPart part,
             Armature armature,
-            OpenMatrix4f[] currentMatrices,
-            OpenMatrix4f[] idleMatrices,
+            OpenMatrix4f[] deformationMatrices,
             String jointName) {
         Joint joint = armature.searchJointByName(jointName);
         if (joint == null) return;
 
         int id = joint.getId();
-        if (id < 0 || id >= currentMatrices.length || id >= idleMatrices.length) return;
-        OpenMatrix4f current = currentMatrices[id];
-        OpenMatrix4f idle = idleMatrices[id];
-        if (current == null || idle == null) return;
+        if (id < 0 || id >= deformationMatrices.length) return;
+        OpenMatrix4f deformation = deformationMatrices[id];
+        if (deformation == null) return;
 
-        Quaternionf currentRotation = current.toQuaternion();
-        Quaternionf idleRotation = idle.toQuaternion();
+        /*
+         * If T0 is the ModelPart's bind transform and C is the exact conversion
+         * used by VanillaModelTransformer, a rigid approximation of Epic Fight's
+         * skinned result is:
+         *
+         *     T = C^-1 * D * C * T0
+         *
+         * where D is the EF joint skinning matrix. Unlike the old rotation-only
+         * adapter this also moves the ModelPart pivot, which is required because
+         * HumanoidModel's head/arms/legs are siblings instead of children of body.
+         */
+        Matrix4f d = OpenMatrix4f.exportToMojangMatrix(deformation);
+        Matrix4f bind = initialTransform(part.getInitialPose());
+        Matrix4f desired = new Matrix4f(EF_TO_VANILLA)
+                .mul(d)
+                .mul(VANILLA_TO_EF)
+                .mul(bind);
 
-        // Root-space delta that maps the EF idle orientation to the current pose.
-        Quaternionf delta = new Quaternionf(currentRotation)
-                .mul(new Quaternionf(idleRotation).invert())
-                .normalize();
-        setRotation(part, delta);
-    }
+        Vector3f translation = desired.getTranslation(new Vector3f());
+        part.x = translation.x * PIXELS_PER_BLOCK;
+        part.y = translation.y * PIXELS_PER_BLOCK;
+        part.z = translation.z * PIXELS_PER_BLOCK;
 
-    private static void setRotation(ModelPart part, Quaternionf rotation) {
-        Vector3f euler = rotation.getEulerAnglesXYZ(new Vector3f());
+        Quaternionf rotation = desired.getNormalizedRotation(new Quaternionf()).normalize();
+
+        /*
+         * ModelPart#translateAndRotate constructs rotationZYX(zRot, yRot, xRot),
+         * so extracting XYZ Euler angles was mathematically inconsistent for
+         * combined rotations. getEulerAnglesZYX is the matching decomposition.
+         */
+        Vector3f euler = rotation.getEulerAnglesZYX(new Vector3f());
         part.xRot = wrapRadians(euler.x);
         part.yRot = wrapRadians(euler.y);
         part.zRot = wrapRadians(euler.z);
+    }
+
+    private static Matrix4f initialTransform(PartPose pose) {
+        return new Matrix4f()
+                .translation(
+                        pose.x / PIXELS_PER_BLOCK,
+                        pose.y / PIXELS_PER_BLOCK,
+                        pose.z / PIXELS_PER_BLOCK)
+                .rotate(new Quaternionf().rotationZYX(pose.zRot, pose.yRot, pose.xRot));
     }
 
     private static float wrapRadians(float value) {
