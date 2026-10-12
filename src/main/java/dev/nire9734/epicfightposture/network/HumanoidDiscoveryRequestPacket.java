@@ -1,9 +1,7 @@
 package dev.nire9734.epicfightposture.network;
 
-import dev.nire9734.epicfightposture.compat.humanoid.client.HumanoidClientDiscovery;
+import dev.nire9734.epicfightposture.compat.humanoid.HumanoidDiscoveryClientBridge;
 import net.minecraft.network.FriendlyByteBuf;
-import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.fml.DistExecutor;
 import net.minecraftforge.network.NetworkEvent;
 
 import java.util.UUID;
@@ -29,10 +27,7 @@ public final class HumanoidDiscoveryRequestPacket {
             HumanoidDiscoveryRequestPacket packet,
             Supplier<NetworkEvent.Context> contextSupplier) {
         NetworkEvent.Context context = contextSupplier.get();
-        context.enqueueWork(() -> DistExecutor.unsafeRunWhenOn(
-                Dist.CLIENT,
-                () -> () -> HumanoidClientDiscovery.handleServerRequest(packet.nonce)
-        ));
+        context.enqueueWork(() -> HumanoidDiscoveryClientBridge.handle(packet.nonce));
         context.setPacketHandled(true);
     }
 }
