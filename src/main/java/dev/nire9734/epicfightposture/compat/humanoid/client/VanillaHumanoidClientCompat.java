@@ -12,6 +12,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.EntityType;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.fml.ModList;
 import net.minecraftforge.fml.common.Mod;
 import org.slf4j.Logger;
 import yesman.epicfight.api.asset.AssetAccessor;
@@ -25,7 +26,7 @@ import yesman.epicfight.world.capabilities.provider.EntityPatchProvider;
 import java.util.HashSet;
 import java.util.Set;
 
-/** Client-side HumanoidModel discovery and Epic Fight bridge registration. */
+/** Client-side humanoid discovery and Epic Fight bridge registration. */
 @Mod.EventBusSubscriber(
         modid = EpicFightPostureIntegration.MODID,
         bus = Mod.EventBusSubscriber.Bus.MOD,
@@ -42,13 +43,22 @@ public final class VanillaHumanoidClientCompat {
             return state != null && state.broken;
         });
 
+        boolean geckoLoaded = ModList.get().isLoaded("geckolib");
+        if (geckoLoaded) {
+            // The class itself contains direct GeckoLib references, so only resolve
+            // it after Forge has confirmed that GeckoLib is actually installed.
+            GeckoHumanoidClientCompat.installDiscovery();
+        } else {
+            HumanoidClientDiscovery.installAdditionalScanner(null);
+        }
+
         HumanoidClientDiscovery.ScanSnapshot scan = HumanoidClientDiscovery.scan(
                 event.getContext().getEntityRenderDispatcher().renderers
         );
         VanillaHumanoidCompat.replaceDetectedCache(scan.humanoid());
 
         Set<EntityType<?>> alreadyPatched = new HashSet<>(EntityPatchProvider.getPatchedEntities());
-        for (EntityType<?> entityType : scan.humanoidTypes()) {
+        for (EntityType<?> entityType : scan.vanillaHumanoidTypes()) {
             ResourceLocation entityId = EntityType.getKey(entityType);
             if (entityId == null) {
                 continue;
@@ -76,7 +86,16 @@ public final class VanillaHumanoidClientCompat {
             );
         }
 
-        LOGGER.info("EFPI auto-detected {} HumanoidModel entity type(s)", scan.humanoid().size());
+        if (geckoLoaded) {
+            GeckoHumanoidClientCompat.registerRenderers(event, scan.externalHumanoidTypes());
+        }
+
+        LOGGER.info(
+                "EFPI auto-detected {} compatible humanoid entity type(s): {} vanilla, {} external",
+                scan.humanoid().size(),
+                scan.vanillaHumanoidTypes().size(),
+                scan.externalHumanoidTypes().size()
+        );
     }
 
     private static AssetAccessor<SkinnedMesh> bakeRuntimeMesh(
