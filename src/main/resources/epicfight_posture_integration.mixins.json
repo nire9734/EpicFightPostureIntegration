@@ -3,6 +3,7 @@
   "minVersion": "0.8",
   "package": "dev.nire9734.epicfightposture.mixin",
   "compatibilityLevel": "JAVA_17",
+  "refmap": "epicfight_posture_integration.refmap.json",
   "injectors": {
     "defaultRequire": 1
   },
