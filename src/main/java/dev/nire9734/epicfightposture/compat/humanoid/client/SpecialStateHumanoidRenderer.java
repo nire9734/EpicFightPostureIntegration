@@ -1,6 +1,7 @@
 package dev.nire9734.epicfightposture.compat.humanoid.client;
 
 import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.logging.LogUtils;
 import dev.nire9734.epicfightposture.EpicFightPostureIntegration;
 import dev.nire9734.epicfightposture.compat.humanoid.LightweightHumanoidPatch;
 import net.minecraft.client.model.HumanoidModel;
@@ -14,6 +15,7 @@ import net.minecraft.client.renderer.entity.layers.ItemInHandLayer;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
+import org.slf4j.Logger;
 import yesman.epicfight.api.animation.JointTransform;
 import yesman.epicfight.api.animation.Pose;
 import yesman.epicfight.api.asset.AssetAccessor;
@@ -46,6 +48,8 @@ public final class SpecialStateHumanoidRenderer extends PatchedLivingEntityRende
         HumanoidModel<LivingEntity>,
         LivingEntityRenderer<LivingEntity, HumanoidModel<LivingEntity>>,
         SkinnedMesh> {
+
+    private static final Logger LOGGER = LogUtils.getLogger();
 
     private final ResourceLocation runtimeMeshId;
     private AssetAccessor<SkinnedMesh> mesh;
@@ -90,14 +94,13 @@ public final class SpecialStateHumanoidRenderer extends PatchedLivingEntityRende
         if (!this.bakeAttempted) {
             this.bakeAttempted = true;
             try {
-                if (renderer.getModel() instanceof HumanoidModel<?> humanoidModel) {
-                    SkinnedMesh baked = HumanoidModelBaker.VANILLA_TRANSFORMER.transformArmorModel(humanoidModel);
-                    if (baked != null) {
-                        this.mesh = SelfAccessor.create(this.runtimeMeshId, baked);
-                    }
+                HumanoidModel<?> humanoidModel = renderer.getModel();
+                SkinnedMesh baked = HumanoidModelBaker.VANILLA_TRANSFORMER.transformArmorModel(humanoidModel);
+                if (baked != null) {
+                    this.mesh = SelfAccessor.create(this.runtimeMeshId, baked);
                 }
             } catch (Throwable throwable) {
-                EpicFightPostureIntegration.LOGGER.warn(
+                LOGGER.warn(
                         "Failed to bake EF special-state HumanoidModel mesh for {}. Falling back to Epic Fight BIPED mesh.",
                         EntityType.getKey(entity.getType()),
                         throwable
