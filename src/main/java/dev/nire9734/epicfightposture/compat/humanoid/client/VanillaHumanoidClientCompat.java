@@ -25,10 +25,17 @@ public final class VanillaHumanoidClientCompat {
                 continue;
             }
 
+            // SpecialStateHumanoidRenderer explicitly patches the standard humanoid
+            // layers (armor, held items, head items and elytra). Do NOT call
+            // initLayerLast() here: Epic Fight's default fallback wraps every unknown
+            // mod layer in RenderOriginalModelLayer. Some mods (notably Guard
+            // Villagers' GuardVariantLayer) render the entire parent HumanoidModel
+            // again, which produces a second unskinned body/extra-looking arms while
+            // the EF skinned mesh is active. Unknown source-mod layers are therefore
+            // intentionally suppressed only during BROKEN/EXECUTING rendering.
             event.addPatchedEntityRenderer(
                     entityType,
                     type -> new SpecialStateHumanoidRenderer(event.getContext(), type)
-                            .initLayerLast(event.getContext(), type)
             );
         }
     }
