@@ -5,6 +5,7 @@ on:
     branches:
       - dev/vanilla-humanoid-model-compat
       - dev/vanilla-humanoid-model-compat-v2
+      - dev/vanilla-humanoid-model-compat-v3
   workflow_dispatch:
 
 jobs:
@@ -31,6 +32,6 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: humanoid-model-compat-v2-test
+          name: humanoid-model-compat-v3-guard-test
           path: build/libs/*.jar
           if-no-files-found: error
