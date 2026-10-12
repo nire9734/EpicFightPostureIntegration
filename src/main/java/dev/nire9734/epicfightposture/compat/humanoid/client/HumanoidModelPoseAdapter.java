@@ -1,158 +1,162 @@
 package dev.nire9734.epicfightposture.compat.humanoid.client;
 
+import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.math.Axis;
 import dev.nire9734.epicfightposture.client.ClientPostureStore;
 import dev.nire9734.epicfightposture.compat.humanoid.LightweightHumanoidPatch;
-import net.minecraft.client.Minecraft;
 import net.minecraft.client.model.HumanoidModel;
 import net.minecraft.client.model.geom.ModelPart;
 import net.minecraft.client.model.geom.PartPose;
+import net.minecraft.util.Mth;
 import net.minecraft.world.entity.LivingEntity;
-import org.joml.Matrix4f;
-import org.joml.Quaternionf;
-import org.joml.Vector3f;
-import yesman.epicfight.api.animation.Joint;
-import yesman.epicfight.api.animation.Pose;
-import yesman.epicfight.api.model.Armature;
-import yesman.epicfight.api.utils.math.OpenMatrix4f;
 import yesman.epicfight.world.capabilities.EpicFightCapabilities;
 import yesman.epicfight.world.capabilities.entitypatch.LivingEntityPatch;
 
+import java.util.Map;
+import java.util.WeakHashMap;
+
 /**
- * Applies an Epic Fight BIPED action pose to a vanilla-style HumanoidModel only
- * while the lightweight compatibility patch is BROKEN/EXECUTING.
+ * Native animation backend for vanilla-style HumanoidModel mobs.
  *
- * <p>This adapter intentionally keeps the third-party renderer and normal model
- * animation untouched outside those states.</p>
+ * <p>Unlike the previous experimental adapter, this class does not retarget an
+ * Epic Fight BIPED pose. The lightweight Epic Fight patch still exists so Combat
+ * Evolution can recognize/execute the mob, but the rendered guard-break pose is
+ * authored directly for HumanoidModel's seven useful channels: a whole-model
+ * root transform plus head/body/arms/legs.</p>
  */
 public final class HumanoidModelPoseAdapter {
-    private static final float PIXELS_PER_BLOCK = 16.0F;
+    /** Approximate HumanoidModel foot plane measured from the model root. */
+    private static final float ROOT_PIVOT_Y = 24.0F / 16.0F;
 
-    /*
-     * Epic Fight's VanillaModelTransformer uses exactly this model-space change
-     * before baking HumanoidModel cubes into its BIPED skinned mesh:
+    /** One client-side animation clock per live entity. Weak keys avoid stale entries. */
+    private static final Map<LivingEntity, BreakState> BREAK_STATES = new WeakHashMap<>();
+
+    /**
+     * Called after the concrete model's setupAnim() has finished.
      *
-     *   rotate Y 180 -> rotate X 180 -> translate Y -24 px
-     *
-     * Use the same transform in block units so an EF skinning matrix can be
-     * conjugated back into the coordinate system expected by ModelPart.
+     * @return true when EFPI replaced the model pose for this frame.
      */
-    private static final Matrix4f VANILLA_TO_EF = new Matrix4f()
-            .rotateY((float)Math.PI)
-            .rotateX((float)Math.PI)
-            .translate(0.0F, -24.0F / PIXELS_PER_BLOCK, 0.0F);
-    private static final Matrix4f EF_TO_VANILLA = new Matrix4f(VANILLA_TO_EF).invert();
-
-    public static void apply(HumanoidModel<?> model, LivingEntity entity) {
+    public static boolean apply(
+            HumanoidModel<?> model,
+            LivingEntity entity,
+            PoseStack poseStack,
+            float partialTick) {
         ClientPostureStore.Entry posture = ClientPostureStore.get(entity.getId(), entity.getUUID());
-        if (posture == null || !posture.broken) return;
+        boolean broken = posture != null && posture.broken;
 
+        // Only entities carrying our non-AI-replacing compatibility patch are eligible.
         LivingEntityPatch<?> patch;
         try {
             patch = EpicFightCapabilities.getEntityPatch(entity, LivingEntityPatch.class);
         } catch (Throwable ignored) {
-            return;
+            BREAK_STATES.remove(entity);
+            return false;
         }
-        if (!(patch instanceof LightweightHumanoidPatch)) return;
+        if (!(patch instanceof LightweightHumanoidPatch)) {
+            BREAK_STATES.remove(entity);
+            return false;
+        }
 
-        Armature armature = patch.getArmature();
-        if (armature == null) return;
+        if (!broken) {
+            BREAK_STATES.remove(entity);
+            return false;
+        }
 
-        float partialTick = Minecraft.getInstance().getFrameTime();
+        float now = entity.tickCount + Mth.clamp(partialTick, 0.0F, 1.0F);
+        BreakState state = BREAK_STATES.computeIfAbsent(entity, ignored -> new BreakState(now));
+        float age = Math.max(0.0F, now - state.startTick);
 
-        /*
-         * Use the same composed pose that Epic Fight's patched renderer uses.
-         * Sampling DynamicAnimation#getRawPose here loses layer composition and
-         * bind modifiers, which was one source of the previous malformed poses.
-         */
-        Pose pose = patch.getAnimator().getPose(partialTick);
-        if (pose == null) return;
+        applyGuardBreak(model, poseStack, age);
+        return true;
+    }
 
-        /*
-         * applyOriginTransform=true yields each joint's skinning/deformation
-         * matrix (current global joint transform * inverse bind transform).
-         * This directly removes the BIPED bind axes. The previous implementation
-         * compared current/idle global orientations by hand, which does not equal
-         * the matrix Epic Fight actually applies to its mesh.
-         */
-        OpenMatrix4f[] deformationMatrices = armature.getPoseAsTransformMatrix(pose, true);
+    /**
+     * Original HumanoidModel guard-break animation.
+     *
+     * <p>Motion design:
+     * <ol>
+     *   <li>small hit recoil;</li>
+     *   <li>the entire character loses balance and falls backward;</li>
+     *   <li>arms open asymmetrically while the knees/hips loosen;</li>
+     *   <li>the target settles into a held vulnerable pose.</li>
+     * </ol>
+     *
+     * <p>The crucial difference from the old implementation is the root rotation:
+     * every body part, including both legs, is transformed together around the
+     * approximate foot plane. Local ModelPart rotations are only secondary posing,
+     * so the torso cannot visually detach from the legs.</p>
+     */
+    private static void applyGuardBreak(HumanoidModel<?> model, PoseStack poseStack, float ageTicks) {
+        // 0..~11 ticks: main fall. ~11..14: a small settle/bounce.
+        float recoil = smootherStep(ageTicks / 2.0F);
+        float fall = smootherStep((ageTicks - 1.0F) / 10.0F);
+        float settle = smootherStep((ageTicks - 10.0F) / 4.0F);
 
-        // Rigid HumanoidModel parts cannot reproduce EF chest/elbow/knee skinning,
-        // so use the representative primary joint for each rigid part.
-        applyJoint(model.body, armature, deformationMatrices, "Chest");
-        applyJoint(model.head, armature, deformationMatrices, "Head");
+        // Backward whole-body fall. In vanilla pitch convention negative X is upward/backward.
+        float rootPitchDeg = 8.0F * recoil + 74.0F * fall - 7.0F * settle;
+
+        // Rotate around the feet rather than around the head/model origin.
+        poseStack.translate(0.0F, ROOT_PIVOT_Y, 0.0F);
+        poseStack.mulPose(Axis.XP.rotationDegrees(-rootPitchDeg));
+        poseStack.translate(0.0F, -ROOT_PIVOT_Y, 0.0F);
+
+        // Discard whatever walk/attack pose the source mod produced for this one special state,
+        // but preserve each model's authored pivot positions and bind rotations.
+        reset(model.head);
+        reset(model.body);
+        reset(model.rightArm);
+        reset(model.leftArm);
+        reset(model.rightLeg);
+        reset(model.leftLeg);
+
+        // Secondary pose layered inside the root fall. Angles are deliberately modest because
+        // HumanoidModel has no chest, elbow, knee, or hand bones.
+        model.body.xRot += radians(10.0F * fall - 4.0F * settle);
+        model.body.zRot += radians(4.0F * fall);
+
+        // Keep the face somewhat readable instead of letting the head follow the torso rigidly.
+        model.head.xRot += radians(17.0F * fall - 3.0F * settle);
+        model.head.yRot += radians(-8.0F * fall);
+        model.head.zRot += radians(-5.0F * fall);
+
+        // Guard breaks open the silhouette: one arm drops, the other is thrown outward.
+        model.rightArm.xRot += radians(-48.0F * fall + 8.0F * settle);
+        model.rightArm.yRot += radians(-10.0F * fall);
+        model.rightArm.zRot += radians(-28.0F * fall);
+
+        model.leftArm.xRot += radians(-62.0F * fall + 10.0F * settle);
+        model.leftArm.yRot += radians(12.0F * fall);
+        model.leftArm.zRot += radians(34.0F * fall);
+
+        // The legs stay attached to the falling root, with only a small stagger added locally.
+        model.rightLeg.xRot += radians(17.0F * fall);
+        model.rightLeg.zRot += radians(-4.0F * fall);
+        model.leftLeg.xRot += radians(-11.0F * fall);
+        model.leftLeg.zRot += radians(5.0F * fall);
+
         model.hat.copyFrom(model.head);
-        applyJoint(model.rightArm, armature, deformationMatrices, "Arm_R");
-        applyJoint(model.leftArm, armature, deformationMatrices, "Arm_L");
-        applyJoint(model.rightLeg, armature, deformationMatrices, "Thigh_R");
-        applyJoint(model.leftLeg, armature, deformationMatrices, "Thigh_L");
     }
 
-    private static void applyJoint(
-            ModelPart part,
-            Armature armature,
-            OpenMatrix4f[] deformationMatrices,
-            String jointName) {
-        Joint joint = armature.searchJointByName(jointName);
-        if (joint == null) return;
-
-        int id = joint.getId();
-        if (id < 0 || id >= deformationMatrices.length) return;
-        OpenMatrix4f deformation = deformationMatrices[id];
-        if (deformation == null) return;
-
-        /*
-         * If T0 is the ModelPart's bind transform and C is the exact conversion
-         * used by VanillaModelTransformer, a rigid approximation of Epic Fight's
-         * skinned result is:
-         *
-         *     T = C^-1 * D * C * T0
-         *
-         * where D is the EF joint skinning matrix. Unlike the old rotation-only
-         * adapter this also moves the ModelPart pivot, which is required because
-         * HumanoidModel's head/arms/legs are siblings instead of children of body.
-         */
-        Matrix4f d = OpenMatrix4f.exportToMojangMatrix(deformation);
-        Matrix4f bind = initialTransform(part.getInitialPose());
-        Matrix4f desired = new Matrix4f(EF_TO_VANILLA)
-                .mul(d)
-                .mul(VANILLA_TO_EF)
-                .mul(bind);
-
-        Vector3f translation = desired.getTranslation(new Vector3f());
-        part.x = translation.x * PIXELS_PER_BLOCK;
-        part.y = translation.y * PIXELS_PER_BLOCK;
-        part.z = translation.z * PIXELS_PER_BLOCK;
-
-        Quaternionf rotation = desired.getNormalizedRotation(new Quaternionf()).normalize();
-
-        /*
-         * ModelPart#translateAndRotate constructs rotationZYX(zRot, yRot, xRot),
-         * so extracting XYZ Euler angles was mathematically inconsistent for
-         * combined rotations. getEulerAnglesZYX is the matching decomposition.
-         */
-        Vector3f euler = rotation.getEulerAnglesZYX(new Vector3f());
-        part.xRot = wrapRadians(euler.x);
-        part.yRot = wrapRadians(euler.y);
-        part.zRot = wrapRadians(euler.z);
+    private static void reset(ModelPart part) {
+        PartPose initial = part.getInitialPose();
+        part.x = initial.x;
+        part.y = initial.y;
+        part.z = initial.z;
+        part.xRot = initial.xRot;
+        part.yRot = initial.yRot;
+        part.zRot = initial.zRot;
     }
 
-    private static Matrix4f initialTransform(PartPose pose) {
-        return new Matrix4f()
-                .translation(
-                        pose.x / PIXELS_PER_BLOCK,
-                        pose.y / PIXELS_PER_BLOCK,
-                        pose.z / PIXELS_PER_BLOCK)
-                .rotate(new Quaternionf().rotationZYX(pose.zRot, pose.yRot, pose.xRot));
+    private static float smootherStep(float value) {
+        float t = Mth.clamp(value, 0.0F, 1.0F);
+        return t * t * t * (t * (t * 6.0F - 15.0F) + 10.0F);
     }
 
-    private static float wrapRadians(float value) {
-        float twoPi = (float)(Math.PI * 2.0);
-        float pi = (float)Math.PI;
-        float wrapped = value % twoPi;
-        if (wrapped >= pi) wrapped -= twoPi;
-        if (wrapped < -pi) wrapped += twoPi;
-        return wrapped;
+    private static float radians(float degrees) {
+        return degrees * ((float)Math.PI / 180.0F);
     }
+
+    private record BreakState(float startTick) {}
 
     private HumanoidModelPoseAdapter() {}
 }
