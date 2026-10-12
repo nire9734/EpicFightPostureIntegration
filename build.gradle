@@ -3,6 +3,7 @@ plugins {
     id 'idea'
     id 'maven-publish'
     id 'net.minecraftforge.gradle' version '[6.0,6.2)'
+    id 'org.spongepowered.mixin' version '0.7.+'
 }
 
 version = mod_version
@@ -49,6 +50,11 @@ dependencies {
     implementation fg.deobf("curse.maven:combat-evolution-${combat_evolution_project}:${combat_evolution_file}")
 
     annotationProcessor 'org.spongepowered:mixin:0.8.5:processor'
+}
+
+mixin {
+    add sourceSets.main, 'epicfight_posture_integration.refmap.json'
+    config 'epicfight_posture_integration.mixins.json'
 }
 
 tasks.named('processResources', ProcessResources).configure {
