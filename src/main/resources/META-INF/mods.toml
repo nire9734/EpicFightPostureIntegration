@@ -38,3 +38,10 @@ mandatory=true
 versionRange="[2.2.8,2.4)"
 ordering="AFTER"
 side="BOTH"
+
+[[dependencies.${mod_id}]]
+modId="geckolib"
+mandatory=false
+versionRange="[4.4,5)"
+ordering="AFTER"
+side="BOTH"
