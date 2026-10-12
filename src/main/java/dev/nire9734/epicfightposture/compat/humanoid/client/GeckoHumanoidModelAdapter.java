@@ -1,6 +1,7 @@
 package dev.nire9734.epicfightposture.compat.humanoid.client;
 
 import com.mojang.blaze3d.vertex.PoseStack;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntList;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
@@ -15,7 +16,6 @@ import yesman.epicfight.api.client.model.Mesh;
 import yesman.epicfight.api.client.model.MeshPartDefinition;
 import yesman.epicfight.api.client.model.SingleGroupVertexBuilder;
 import yesman.epicfight.api.client.model.SkinnedMesh;
-import yesman.epicfight.api.client.model.transformer.HumanoidModelTransformer;
 import yesman.epicfight.api.utils.math.OpenMatrix4f;
 import yesman.epicfight.api.utils.math.Vec2f;
 import yesman.epicfight.api.utils.math.Vec3f;
@@ -148,12 +148,11 @@ public final class GeckoHumanoidModelAdapter {
     private static SkinnedMesh bake(BakedGeoModel model, Map<GeoBone, Integer> joints) {
         List<SingleGroupVertexBuilder> vertices = new ArrayList<>();
         Map<MeshPartDefinition, IntList> indices = new HashMap<>();
-        HumanoidModelTransformer.PartTransformer.IndexCounter counter =
-                new HumanoidModelTransformer.PartTransformer.IndexCounter();
+        int[] indexCounter = {0};
         PoseStack stack = new PoseStack();
 
         for (GeoBone top : model.topLevelBones()) {
-            bakeBone(top, ROOT, joints, stack, vertices, indices, counter);
+            bakeBone(top, ROOT, joints, stack, vertices, indices, indexCounter);
         }
 
         if (vertices.isEmpty()) {
@@ -169,7 +168,7 @@ public final class GeckoHumanoidModelAdapter {
             PoseStack stack,
             List<SingleGroupVertexBuilder> vertices,
             Map<MeshPartDefinition, IntList> indices,
-            HumanoidModelTransformer.PartTransformer.IndexCounter counter) {
+            int[] indexCounter) {
         if (bone == null || bone.isHidden()) {
             return;
         }
@@ -204,17 +203,43 @@ public final class GeckoHumanoidModelAdapter {
                             .setEffectiveJointNumber(1));
                 }
 
-                HumanoidModelTransformer.PartTransformer.triangluatePolygon(indices, PART, counter);
+                triangulateQuad(indices, PART, indexCounter);
             }
             stack.popPose();
         }
 
         if (!bone.isHidingChildren()) {
             for (GeoBone child : bone.getChildBones()) {
-                bakeBone(child, joint, joints, stack, vertices, indices, counter);
+                bakeBone(child, joint, joints, stack, vertices, indices, indexCounter);
             }
         }
         stack.popPose();
+    }
+
+    /** Mirrors Epic Fight's internal quad index layout without depending on package-private API. */
+    private static void triangulateQuad(
+            Map<MeshPartDefinition, IntList> indices,
+            MeshPartDefinition part,
+            int[] indexCounter) {
+        IntList list = indices.computeIfAbsent(part, key -> new IntArrayList());
+        int first = indexCounter[0];
+        int second = first + 1;
+        int third = first + 2;
+        int fourth = first + 3;
+
+        addIndexTriplet(list, first);
+        addIndexTriplet(list, second);
+        addIndexTriplet(list, fourth);
+        addIndexTriplet(list, fourth);
+        addIndexTriplet(list, second);
+        addIndexTriplet(list, third);
+        indexCounter[0] += 4;
+    }
+
+    private static void addIndexTriplet(IntList list, int index) {
+        list.add(index);
+        list.add(index);
+        list.add(index);
     }
 
     private static void resetToInitial(GeoBone bone) {
