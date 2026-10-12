@@ -19,14 +19,36 @@ import yesman.epicfight.gameasset.Animations;
 import yesman.epicfight.world.capabilities.EpicFightCapabilities;
 import yesman.epicfight.world.capabilities.entitypatch.LivingEntityPatch;
 
+import java.util.Collections;
+import java.util.Map;
+import java.util.WeakHashMap;
+
 /**
- * Applies an Epic Fight BIPED action pose to a vanilla HumanoidModel after the
- * owning renderer has finished its normal setupAnim pass.
+ * Applies an Epic Fight BIPED action pose to vanilla HumanoidModel renderers.
  *
- * <p>Only BROKEN/EXECUTING compatibility mobs are touched. During every other
- * state the original mod keeps complete ownership of its model animation.</p>
+ * <p>The entity/model association is remembered during HumanoidModel.setupAnim,
+ * while the actual override is deliberately deferred until renderToBuffer. This
+ * matters for third-party HumanoidModel subclasses which call super.setupAnim()
+ * and then apply their own extra animation afterwards: EFPI still gets the last
+ * word only while BROKEN/EXECUTING.</p>
  */
 public final class HumanoidModelPoseAdapter {
+    private static final Map<HumanoidModel<?>, LivingEntity> LAST_ENTITY =
+            Collections.synchronizedMap(new WeakHashMap<>());
+
+    public static void remember(HumanoidModel<?> model, LivingEntity entity) {
+        if (model != null && entity != null) {
+            LAST_ENTITY.put(model, entity);
+        }
+    }
+
+    public static void applyRemembered(HumanoidModel<?> model) {
+        LivingEntity entity = LAST_ENTITY.get(model);
+        if (entity != null) {
+            apply(model, entity);
+        }
+    }
+
     public static void apply(HumanoidModel<?> model, LivingEntity entity) {
         ClientPostureStore.Entry posture = ClientPostureStore.get(entity.getId(), entity.getUUID());
         if (posture == null || !posture.broken) {
@@ -62,16 +84,16 @@ public final class HumanoidModelPoseAdapter {
                 player.getElapsedTime()
         );
 
-        // Compare raw animation poses on both sides. This avoids mixing
-        // ClientAnimator bind modifiers/layer composition with a raw idle pose.
+        // Both poses are raw animation poses. Do not compare a ClientAnimator
+        // composed/bind-modified pose against a raw idle pose.
         Pose currentPose = currentAnimation.getRawPose(animationTime);
         Pose idlePose = idleAnimation.getRawPose(0.0F);
         if (currentPose == null || idlePose == null) {
             return;
         }
 
-        // HumanoidModel has one rigid ModelPart for each of these regions, so
-        // collapse the finer Epic Fight chains where necessary.
+        // Vanilla HumanoidModel has one rigid ModelPart for each coarse limb, so
+        // finer Epic Fight chains are collapsed to the nearest available part.
         setRotation(model.body, delta(currentPose, idlePose, "Torso", "Chest"));
         setRotation(model.head, delta(currentPose, idlePose, "Head"));
         model.hat.copyFrom(model.head);
@@ -79,6 +101,8 @@ public final class HumanoidModelPoseAdapter {
         setRotation(model.rightArm, delta(currentPose, idlePose, "Shoulder_R", "Arm_R"));
         setRotation(model.leftArm, delta(currentPose, idlePose, "Shoulder_L", "Arm_L"));
 
+        // HumanoidModel has no knee joint. Preserve the thigh/hip direction and
+        // intentionally drop Epic Fight lower-leg articulation.
         setRotation(model.rightLeg, delta(currentPose, idlePose, "Thigh_R"));
         setRotation(model.leftLeg, delta(currentPose, idlePose, "Thigh_L"));
     }
