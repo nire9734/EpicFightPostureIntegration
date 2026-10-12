@@ -38,7 +38,10 @@ public final class PostureServerConfig {
                 .comment("Whether armor and armor toughness affect maximum posture.")
                 .define("use_armor_scaling", true);
         ENTITY_BLACKLIST = BUILDER
-                .comment("Entities that will not use posture. Use namespace:entity IDs.")
+                .comment(
+                        "Entities excluded from EFPI posture and automatic Humanoid compatibility behavior.",
+                        "Use namespace:entity IDs."
+                )
                 .defineListAllowEmpty(
                         "entity_blacklist",
                         List.of(),
