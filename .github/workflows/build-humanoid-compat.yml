@@ -8,6 +8,7 @@ on:
       - dev/vanilla-humanoid-model-compat-v3
       - dev/vanilla-humanoid-model-compat-v4
       - dev/vanilla-humanoid-original-animation
+      - dev/vanilla-humanoid-ef-special-render
   workflow_dispatch:
 
 jobs:
@@ -34,6 +35,6 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: humanoid-original-animation-test
+          name: humanoid-ef-special-render-test
           path: build/libs/*.jar
           if-no-files-found: error
