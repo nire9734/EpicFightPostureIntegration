@@ -1,28 +1,20 @@
 package dev.nire9734.epicfightposture.compat.humanoid.client;
 
-import com.mojang.blaze3d.vertex.PoseStack;
-import com.mojang.logging.LogUtils;
-import dev.nire9734.epicfightposture.EpicFightPostureIntegration;
 import dev.nire9734.epicfightposture.compat.humanoid.LightweightHumanoidPatch;
 import net.minecraft.client.model.HumanoidModel;
-import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.entity.EntityRendererProvider;
 import net.minecraft.client.renderer.entity.LivingEntityRenderer;
 import net.minecraft.client.renderer.entity.layers.CustomHeadLayer;
 import net.minecraft.client.renderer.entity.layers.ElytraLayer;
 import net.minecraft.client.renderer.entity.layers.HumanoidArmorLayer;
 import net.minecraft.client.renderer.entity.layers.ItemInHandLayer;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
-import org.slf4j.Logger;
 import yesman.epicfight.api.animation.JointTransform;
 import yesman.epicfight.api.animation.Pose;
 import yesman.epicfight.api.asset.AssetAccessor;
-import yesman.epicfight.api.asset.SelfAccessor;
 import yesman.epicfight.api.client.model.Meshes;
 import yesman.epicfight.api.client.model.SkinnedMesh;
-import yesman.epicfight.api.client.model.transformer.HumanoidModelBaker;
 import yesman.epicfight.api.model.Armature;
 import yesman.epicfight.api.utils.math.OpenMatrix4f;
 import yesman.epicfight.api.utils.math.Vec3f;
@@ -33,13 +25,12 @@ import yesman.epicfight.client.renderer.patched.layer.PatchedItemInHandLayer;
 import yesman.epicfight.client.renderer.patched.layer.WearableItemLayer;
 
 /**
- * Epic Fight renderer used only while {@link LightweightHumanoidPatch#overrideRender()}
- * is true.
+ * Thin adapter that supplies an EF-owned runtime mesh for compatibility mobs.
  *
- * <p>The base mesh is baked lazily from the third-party renderer's actual
- * HumanoidModel using Epic Fight's own VanillaModelTransformer. This keeps the
- * source model's cubes, pivots and UVs, but converts them to an EF skinned mesh
- * so BIPED Root/Chest/Arm/Elbow/Knee animations can drive it directly.</p>
+ * <p>All actual body rendering, armature posing, animation application and layer
+ * dispatch are inherited from Epic Fight's {@link PatchedLivingEntityRenderer}.
+ * EFPI only provides the runtime mesh and the standard humanoid layer mapping
+ * that Epic Fight cannot infer for an arbitrary third-party entity type.</p>
  */
 @SuppressWarnings({"rawtypes", "unchecked"})
 public final class SpecialStateHumanoidRenderer extends PatchedLivingEntityRenderer<
@@ -49,26 +40,17 @@ public final class SpecialStateHumanoidRenderer extends PatchedLivingEntityRende
         LivingEntityRenderer<LivingEntity, HumanoidModel<LivingEntity>>,
         SkinnedMesh> {
 
-    private static final Logger LOGGER = LogUtils.getLogger();
+    private final AssetAccessor<SkinnedMesh> mesh;
 
-    private final ResourceLocation runtimeMeshId;
-    private AssetAccessor<SkinnedMesh> mesh;
-    private boolean bakeAttempted;
-
-    public SpecialStateHumanoidRenderer(EntityRendererProvider.Context context, EntityType<?> entityType) {
+    public SpecialStateHumanoidRenderer(
+            EntityRendererProvider.Context context,
+            EntityType<?> entityType,
+            AssetAccessor<SkinnedMesh> mesh) {
         super(context, entityType);
-        ResourceLocation entityId = EntityType.getKey(entityType);
-        this.runtimeMeshId = new ResourceLocation(
-                EpicFightPostureIntegration.MODID,
-                "runtime_humanoid/" + entityId.getNamespace() + "/" + entityId.getPath()
-        );
+        this.mesh = mesh;
 
-        // Safe fallback if a listed entity unexpectedly stops using HumanoidModel.
-        this.mesh = (AssetAccessor<SkinnedMesh>) (AssetAccessor<?>) Meshes.BIPED;
-
-        // Keep the common humanoid equipment layers attached to EF joints while the
-        // special renderer is active. Unrecognized source-mod layers are handled by
-        // initLayerLast() as original-model layers.
+        // These are Epic Fight's own patched layers. Unknown source-mod layers are
+        // intentionally not mirrored because some of them redraw the whole body.
         this.addPatchedLayer(ElytraLayer.class, new PatchedElytraLayer<>());
         this.addPatchedLayer(ItemInHandLayer.class, new PatchedItemInHandLayer<>());
         this.addPatchedLayer(
@@ -80,35 +62,6 @@ public final class SpecialStateHumanoidRenderer extends PatchedLivingEntityRende
                 )
         );
         this.addPatchedLayer(CustomHeadLayer.class, new PatchedHeadLayer<>());
-    }
-
-    @Override
-    public void render(
-            LivingEntity entity,
-            LightweightHumanoidPatch entitypatch,
-            LivingEntityRenderer<LivingEntity, HumanoidModel<LivingEntity>> renderer,
-            MultiBufferSource buffer,
-            PoseStack poseStack,
-            int packedLight,
-            float partialTicks) {
-        if (!this.bakeAttempted) {
-            this.bakeAttempted = true;
-            try {
-                HumanoidModel<?> humanoidModel = renderer.getModel();
-                SkinnedMesh baked = HumanoidModelBaker.VANILLA_TRANSFORMER.transformArmorModel(humanoidModel);
-                if (baked != null) {
-                    this.mesh = SelfAccessor.create(this.runtimeMeshId, baked);
-                }
-            } catch (Throwable throwable) {
-                LOGGER.warn(
-                        "Failed to bake EF special-state HumanoidModel mesh for {}. Falling back to Epic Fight BIPED mesh.",
-                        EntityType.getKey(entity.getType()),
-                        throwable
-                );
-            }
-        }
-
-        super.render(entity, entitypatch, renderer, buffer, poseStack, packedLight, partialTicks);
     }
 
     @Override
