@@ -1,6 +1,5 @@
 package dev.nire9734.epicfightposture.compat.humanoid;
 
-import dev.nire9734.epicfightposture.client.ClientPostureStore;
 import net.minecraft.world.entity.LivingEntity;
 import yesman.epicfight.api.animation.Animator;
 import yesman.epicfight.api.animation.LivingMotions;
@@ -59,21 +58,11 @@ public final class LightweightHumanoidPatch extends LivingEntityPatch<LivingEnti
     /**
      * Keep the source mod's renderer for normal gameplay. Epic Fight's patched
      * renderer is allowed to replace it only while EFPI says the target is in a
-     * special posture state. ClientPostureStore's broken flag is true for both
-     * BROKEN and EXECUTING, so the renderer stays switched for the whole CE
-     * execution and returns to the source renderer afterwards.
+     * special posture state. The side-safe bridge is false on dedicated servers.
      */
     @Override
     public boolean overrideRender() {
-        if (this.original == null || !this.original.level().isClientSide()) {
-            return false;
-        }
-
-        ClientPostureStore.Entry state = ClientPostureStore.get(
-                this.original.getId(),
-                this.original.getUUID()
-        );
-        return state != null && state.broken;
+        return HumanoidRenderState.shouldOverride(this.original);
     }
 
     @Override
