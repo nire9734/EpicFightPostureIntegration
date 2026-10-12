@@ -18,10 +18,9 @@ import yesman.epicfight.world.capabilities.entitypatch.LivingEntityPatch;
 /**
  * Special-state renderer for GeckoLib-backed humanoids.
  *
- * Epic Fight 20.14.17's PCustomEntityRenderer passes 0.15 alpha for entities
- * that are visible to the local player, which makes EFPI-converted Gecko models
- * look transparent. This renderer mirrors the same core EF drawing path but uses
- * the expected visibility alpha: visible = 1.0, invisible-to-player = 0.15.
+ * The normal textured pass is always rendered. If Minecraft marks the entity as
+ * glowing (for example while it is targeted), an outline pass is rendered in
+ * addition to the textured pass instead of replacing it.
  */
 public final class SpecialStateGeckoRenderer extends PatchedEntityRenderer<
         LivingEntity,
@@ -49,29 +48,45 @@ public final class SpecialStateGeckoRenderer extends PatchedEntityRenderer<
         super.render(entity, entitypatch, renderer, buffer, poseStack, packedLight, partialTicks);
 
         Minecraft mc = Minecraft.getInstance();
-        boolean isGlowing = mc.shouldEntityAppearGlowing(entity);
         ResourceLocation textureLocation = renderer.getTextureLocation(entity);
-        RenderType renderType = isGlowing
-                ? RenderType.outline(textureLocation)
-                : RenderType.entityCutoutNoCull(textureLocation);
-
         Armature armature = entitypatch.getArmature();
+        int overlay = OverlayTexture.pack(0, OverlayTexture.v(entity.hurtTime > 5));
+
         poseStack.pushPose();
         this.mulPoseStack(poseStack, armature, entity, entitypatch, partialTicks);
         this.setArmaturePose(entitypatch, armature, partialTicks);
 
-        if (renderType != null) {
-            float alpha = entity.isInvisibleTo(mc.player) ? 0.15F : 1.0F;
-            this.mesh.get().draw(
+        SkinnedMesh runtimeMesh = this.mesh.get();
+
+        // Main colour/texture pass. This must not be replaced by the outline
+        // render type when the entity is glowing.
+        float baseAlpha = entity.isInvisibleTo(mc.player) ? 0.15F : 1.0F;
+        runtimeMesh.draw(
+                poseStack,
+                buffer,
+                RenderType.entityCutoutNoCull(textureLocation),
+                packedLight,
+                1.0F,
+                1.0F,
+                1.0F,
+                baseAlpha,
+                overlay,
+                armature,
+                armature.getPoseMatrices()
+        );
+
+        // Glowing is a second pass, just like vanilla's visible model + outline.
+        if (mc.shouldEntityAppearGlowing(entity)) {
+            runtimeMesh.draw(
                     poseStack,
                     buffer,
-                    renderType,
+                    RenderType.outline(textureLocation),
                     packedLight,
                     1.0F,
                     1.0F,
                     1.0F,
-                    alpha,
-                    OverlayTexture.pack(0, OverlayTexture.v(entity.hurtTime > 5)),
+                    1.0F,
+                    overlay,
                     armature,
                     armature.getPoseMatrices()
             );
