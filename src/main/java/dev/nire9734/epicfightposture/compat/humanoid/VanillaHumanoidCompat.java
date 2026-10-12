@@ -32,6 +32,7 @@ public final class VanillaHumanoidCompat {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static volatile Set<ResourceLocation> cachedDetected = Set.of();
     private static final Set<ResourceLocation> runtimeDetected = new HashSet<>();
+    private static final Set<ResourceLocation> registeredByEfpi = new HashSet<>();
 
     public static void bootstrap() {
         HumanoidCompatConfig.refresh();
@@ -39,7 +40,9 @@ public final class VanillaHumanoidCompat {
     }
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
-    public static void onEntityPatchRegistry(EntityPatchRegistryEvent event) {
+    public static synchronized void onEntityPatchRegistry(EntityPatchRegistryEvent event) {
+        registeredByEfpi.clear();
+
         Set<ResourceLocation> targets = new HashSet<>();
         targets.addAll(HumanoidCompatConfig.forceInclude());
         if (HumanoidCompatConfig.autoDetect()) {
@@ -57,17 +60,13 @@ public final class VanillaHumanoidCompat {
             }
 
             registerIntoEvent(event, entityType);
+            registeredByEfpi.add(entityId);
         }
     }
 
-    /** True when the current startup already considers this ID an EFPI Humanoid target. */
-    public static boolean isKnownCompatibilityTarget(ResourceLocation id) {
-        if (id == null || HumanoidCompatConfig.isBlacklisted(id)) {
-            return false;
-        }
-        return runtimeDetected.contains(id)
-                || HumanoidCompatConfig.forceInclude().contains(id)
-                || (HumanoidCompatConfig.autoDetect() && cachedDetected.contains(id));
+    /** True only when EFPI actually owns the active lightweight registration in this JVM. */
+    public static synchronized boolean isRegisteredByEfpi(ResourceLocation id) {
+        return id != null && registeredByEfpi.contains(id);
     }
 
     /**
@@ -96,6 +95,7 @@ public final class VanillaHumanoidCompat {
         try {
             Armatures.registerEntityTypeArmature(entityType, Armatures.BIPED);
             EntityPatchProvider.putCustomEntityPatch(entityType, ignored -> LightweightHumanoidPatch::new);
+            registeredByEfpi.add(id);
             return true;
         } catch (Throwable throwable) {
             LOGGER.warn("Failed to install runtime Humanoid compatibility patch for {}", id, throwable);
