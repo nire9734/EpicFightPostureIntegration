@@ -13,9 +13,9 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
- * Applies EFPI's special-state pose immediately after the renderer has completed
- * the concrete model's setupAnim call. This catches HumanoidModel subclasses even
- * when they add animation after super.setupAnim or replace setupAnim entirely.
+ * Applies EFPI's special-state HumanoidModel animation after the concrete model
+ * has completed setupAnim(). The adapter may also transform the shared PoseStack,
+ * which acts as EFPI's synthetic root bone and moves the whole model together.
  */
 @Mixin(LivingEntityRenderer.class)
 public abstract class LivingEntityRendererHumanoidMixin<T extends LivingEntity> {
@@ -38,7 +38,7 @@ public abstract class LivingEntityRendererHumanoidMixin<T extends LivingEntity> 
         LivingEntityRenderer<?, ?> renderer = (LivingEntityRenderer<?, ?>)(Object)this;
         EntityModel<?> activeModel = renderer.getModel();
         if (activeModel instanceof HumanoidModel<?> humanoidModel) {
-            HumanoidModelPoseAdapter.apply(humanoidModel, entity);
+            HumanoidModelPoseAdapter.apply(humanoidModel, entity, poseStack, partialTick);
         }
     }
 }
