@@ -6,6 +6,7 @@ import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.entity.EntityRenderer;
 import net.minecraft.client.renderer.entity.EntityRendererProvider;
+import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.LivingEntity;
 import yesman.epicfight.api.asset.AssetAccessor;
@@ -13,22 +14,29 @@ import yesman.epicfight.api.client.event.EpicFightClientEventHooks;
 import yesman.epicfight.api.client.event.types.render.PrepareModelEvent;
 import yesman.epicfight.api.client.model.SkinnedMesh;
 import yesman.epicfight.api.model.Armature;
-import yesman.epicfight.client.renderer.patched.entity.PCustomEntityRenderer;
+import yesman.epicfight.client.renderer.patched.entity.PatchedEntityRenderer;
 import yesman.epicfight.world.capabilities.entitypatch.LivingEntityPatch;
 
 /**
- * Epic Fight's PCustomEntityRenderer is a good fit for GeckoLib-backed entities,
- * but 20.14.17 passes 0.15 alpha for entities that are visible to the local
- * player. That makes every EFPI-converted Gecko model look transparent.
+ * Special-state renderer for GeckoLib-backed humanoids.
  *
- * This renderer keeps the same Epic Fight rendering path and only corrects the
- * visibility alpha so normal visible entities are rendered fully opaque.
+ * Epic Fight 20.14.17's PCustomEntityRenderer passes 0.15 alpha for entities
+ * that are visible to the local player, which makes EFPI-converted Gecko models
+ * look transparent. This renderer mirrors the same EF drawing path but uses the
+ * expected visibility alpha: visible = 1.0, invisible-to-player = 0.15.
  */
-public final class SpecialStateGeckoRenderer extends PCustomEntityRenderer {
+public final class SpecialStateGeckoRenderer extends PatchedEntityRenderer<
+        LivingEntity,
+        LivingEntityPatch<LivingEntity>,
+        EntityRenderer<LivingEntity>,
+        SkinnedMesh> {
+
+    private final AssetAccessor<SkinnedMesh> mesh;
+
     public SpecialStateGeckoRenderer(
             AssetAccessor<SkinnedMesh> mesh,
             EntityRendererProvider.Context context) {
-        super(mesh, context);
+        this.mesh = mesh;
     }
 
     @Override
@@ -40,8 +48,8 @@ public final class SpecialStateGeckoRenderer extends PCustomEntityRenderer {
             PoseStack poseStack,
             int packedLight,
             float partialTicks) {
-        // Preserve Epic Fight's name-tag handling.
-        superBaseRender(entity, entitypatch, renderer, buffer, poseStack, packedLight, partialTicks);
+        // Preserve PatchedEntityRenderer's name-tag handling.
+        super.render(entity, entitypatch, renderer, buffer, poseStack, packedLight, partialTicks);
 
         Minecraft mc = Minecraft.getInstance();
         boolean isGlowing = mc.shouldEntityAppearGlowing(entity);
@@ -56,10 +64,10 @@ public final class SpecialStateGeckoRenderer extends PCustomEntityRenderer {
         this.setArmaturePose(entitypatch, armature, partialTicks);
 
         if (renderType != null) {
-            SkinnedMesh mesh = this.getDefaultMesh().get();
+            SkinnedMesh runtimeMesh = this.mesh.get();
             PrepareModelEvent prepareModelEvent = new PrepareModelEvent(
                     this,
-                    mesh,
+                    runtimeMesh,
                     entitypatch,
                     buffer,
                     poseStack,
@@ -68,10 +76,8 @@ public final class SpecialStateGeckoRenderer extends PCustomEntityRenderer {
             );
 
             if (!EpicFightClientEventHooks.Render.PREPARE_MODEL_TO_RENDER.post(prepareModelEvent).isCanceled()) {
-                // Corrected from PCustomEntityRenderer 20.14.17:
-                // visible -> 1.0 alpha, invisible-to-player -> faint 0.15 alpha.
                 float alpha = entity.isInvisibleTo(mc.player) ? 0.15F : 1.0F;
-                mesh.draw(
+                runtimeMesh.draw(
                         poseStack,
                         buffer,
                         renderType,
@@ -80,7 +86,7 @@ public final class SpecialStateGeckoRenderer extends PCustomEntityRenderer {
                         1.0F,
                         1.0F,
                         alpha,
-                        this.getOverlayCoord(entity, entitypatch, partialTicks),
+                        getOverlayCoord(entity),
                         armature,
                         armature.getPoseMatrices()
                 );
@@ -94,21 +100,12 @@ public final class SpecialStateGeckoRenderer extends PCustomEntityRenderer {
         poseStack.popPose();
     }
 
-    /**
-     * Calls PatchedEntityRenderer#render without invoking PCustomEntityRenderer#render,
-     * which would draw the mesh a second time with the bad alpha value.
-     */
-    private void superBaseRender(
-            LivingEntity entity,
-            LivingEntityPatch<LivingEntity> entitypatch,
-            EntityRenderer<LivingEntity> renderer,
-            MultiBufferSource buffer,
-            PoseStack poseStack,
-            int packedLight,
-            float partialTicks) {
-        // Java cannot directly select the grandparent implementation. Reproduce
-        // the only base behavior we need here: the original renderer will handle
-        // its own name tag outside EFPI's special mesh pass, so no extra draw is
-        // necessary. Intentionally left empty to avoid double-rendering.
+    private static int getOverlayCoord(LivingEntity entity) {
+        return OverlayTexture.pack(0, OverlayTexture.v(entity.hurtTime > 5));
+    }
+
+    @Override
+    public AssetAccessor<SkinnedMesh> getDefaultMesh() {
+        return this.mesh;
     }
 }
