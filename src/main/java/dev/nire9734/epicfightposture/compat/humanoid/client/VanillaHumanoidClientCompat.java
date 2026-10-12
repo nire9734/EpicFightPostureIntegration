@@ -2,11 +2,7 @@ package dev.nire9734.epicfightposture.compat.humanoid.client;
 
 import com.mojang.logging.LogUtils;
 import dev.nire9734.epicfightposture.EpicFightPostureIntegration;
-import dev.nire9734.epicfightposture.compat.humanoid.HumanoidCompatConfig;
 import dev.nire9734.epicfightposture.compat.humanoid.VanillaHumanoidCompat;
-import net.minecraft.client.model.HumanoidModel;
-import net.minecraft.client.renderer.entity.EntityRenderer;
-import net.minecraft.client.renderer.entity.LivingEntityRenderer;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.EntityType;
 import net.minecraftforge.api.distmarker.Dist;
@@ -17,7 +13,6 @@ import yesman.epicfight.api.client.forgeevent.PatchedRenderersEvent;
 import yesman.epicfight.world.capabilities.provider.EntityPatchProvider;
 
 import java.util.HashSet;
-import java.util.Map;
 import java.util.Set;
 
 /** Client-side HumanoidModel discovery and special-state EF renderer registration. */
@@ -31,23 +26,15 @@ public final class VanillaHumanoidClientCompat {
 
     @SubscribeEvent
     public static void onAddPatchedRenderers(PatchedRenderersEvent.Add event) {
+        HumanoidClientDiscovery.ScanSnapshot scan = HumanoidClientDiscovery.scan(
+                event.getContext().getEntityRenderDispatcher().renderers
+        );
+        VanillaHumanoidCompat.replaceDetectedCache(scan.humanoid());
+
         Set<EntityType<?>> alreadyPatched = new HashSet<>(EntityPatchProvider.getPatchedEntities());
-        Set<ResourceLocation> detected = new HashSet<>();
-
-        for (Map.Entry<EntityType<?>, EntityRenderer<?>> entry
-                : event.getContext().getEntityRenderDispatcher().renderers.entrySet()) {
-            EntityType<?> entityType = entry.getKey();
-            EntityRenderer<?> renderer = entry.getValue();
-
-            if (entityType == null || entityType == EntityType.PLAYER || !(renderer instanceof LivingEntityRenderer<?, ?> livingRenderer)) {
-                continue;
-            }
-            if (!(livingRenderer.getModel() instanceof HumanoidModel<?>)) {
-                continue;
-            }
-
+        for (EntityType<?> entityType : scan.humanoidTypes()) {
             ResourceLocation entityId = EntityType.getKey(entityType);
-            if (entityId == null || HumanoidCompatConfig.isBlacklisted(entityId)) {
+            if (entityId == null) {
                 continue;
             }
 
@@ -58,14 +45,8 @@ public final class VanillaHumanoidClientCompat {
                 continue;
             }
 
-            if (HumanoidCompatConfig.autoDetect()) {
-                detected.add(entityId);
-            } else if (!HumanoidCompatConfig.forceInclude().contains(entityId)) {
+            if (!oursAlready && !VanillaHumanoidCompat.registerDiscoveredAtRuntime(entityType)) {
                 continue;
-            }
-
-            if (!oursAlready) {
-                VanillaHumanoidCompat.registerDiscoveredAtRuntime(entityType);
             }
 
             // SpecialStateHumanoidRenderer explicitly patches the standard humanoid
@@ -78,10 +59,7 @@ public final class VanillaHumanoidClientCompat {
             );
         }
 
-        if (HumanoidCompatConfig.autoDetect()) {
-            VanillaHumanoidCompat.replaceDetectedCache(detected);
-            LOGGER.info("EFPI auto-detected {} third-party/extra HumanoidModel entity type(s)", detected.size());
-        }
+        LOGGER.info("EFPI auto-detected {} HumanoidModel entity type(s)", scan.humanoid().size());
     }
 
     private VanillaHumanoidClientCompat() {
