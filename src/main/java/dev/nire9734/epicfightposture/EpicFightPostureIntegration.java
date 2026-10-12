@@ -1,6 +1,7 @@
 package dev.nire9734.epicfightposture;
 
 import dev.nire9734.epicfightposture.client.ClientConfigRegistration;
+import dev.nire9734.epicfightposture.compat.humanoid.VanillaHumanoidCompat;
 import dev.nire9734.epicfightposture.network.BridgeNetwork;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.fml.ModLoadingContext;
@@ -31,6 +32,7 @@ public final class EpicFightPostureIntegration {
         }
 
         PostureServerConfig.refreshBlacklist();
+        VanillaHumanoidCompat.bootstrap();
         BridgeNetwork.init();
     }
 }
