@@ -49,6 +49,10 @@ dependencies {
     implementation fg.deobf("curse.maven:epic-fight-mod-${epic_fight_project}:${epic_fight_file}")
     implementation fg.deobf("curse.maven:combat-evolution-${combat_evolution_project}:${combat_evolution_file}")
 
+    // Optional client compatibility. GeckoLib is not required at runtime; its
+    // classes are only loaded when the geckolib mod is actually present.
+    compileOnly fg.deobf("curse.maven:geckolib-388172:5675221")
+
     annotationProcessor 'org.spongepowered:mixin:0.8.5:processor'
 }
 
