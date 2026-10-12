@@ -9,10 +9,9 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
- * Applies EFPI's special-state pose after vanilla HumanoidModel has generated
- * its normal pose. HumanoidModel subclasses that call super.setupAnim are
- * covered automatically; models with a fully independent animation pipeline
- * can use a dedicated adapter later.
+ * Records which living entity the shared HumanoidModel instance is currently
+ * animating. The actual EFPI pose override is deferred until renderToBuffer so
+ * subclasses remain free to add their own setupAnim changes first.
  */
 @Mixin(HumanoidModel.class)
 public abstract class HumanoidModelMixin<T extends LivingEntity> {
@@ -20,7 +19,7 @@ public abstract class HumanoidModelMixin<T extends LivingEntity> {
             method = "setupAnim(Lnet/minecraft/world/entity/LivingEntity;FFFFF)V",
             at = @At("TAIL")
     )
-    private void efpi$applyActionPose(
+    private void efpi$rememberEntity(
             T entity,
             float limbSwing,
             float limbSwingAmount,
@@ -29,6 +28,6 @@ public abstract class HumanoidModelMixin<T extends LivingEntity> {
             float headPitch,
             CallbackInfo ci) {
         HumanoidModel<?> model = (HumanoidModel<?>)(Object)this;
-        HumanoidModelPoseAdapter.apply(model, entity);
+        HumanoidModelPoseAdapter.remember(model, entity);
     }
 }
