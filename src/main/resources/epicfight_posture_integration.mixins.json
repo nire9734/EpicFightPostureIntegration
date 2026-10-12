@@ -9,6 +9,7 @@
   "mixins": [],
   "client": [
     "client.BridgeHealthBarMixin",
-    "client.HumanoidModelMixin"
+    "client.HumanoidModelMixin",
+    "client.AgeableListModelMixin"
   ]
 }
