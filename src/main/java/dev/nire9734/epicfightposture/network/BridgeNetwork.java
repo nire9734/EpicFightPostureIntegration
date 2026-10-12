@@ -9,7 +9,7 @@ import net.minecraftforge.network.PacketDistributor;
 import net.minecraftforge.network.simple.SimpleChannel;
 
 public final class BridgeNetwork {
-    private static final String VERSION = "1";
+    private static final String VERSION = "2";
     private static SimpleChannel channel;
     private static boolean initialized;
 
@@ -29,6 +29,18 @@ public final class BridgeNetwork {
                 .decoder(PostureSyncPacket::decode)
                 .consumerMainThread(PostureSyncPacket::handle)
                 .add();
+
+        channel.messageBuilder(HumanoidDiscoveryRequestPacket.class, 1)
+                .encoder(HumanoidDiscoveryRequestPacket::encode)
+                .decoder(HumanoidDiscoveryRequestPacket::decode)
+                .consumerMainThread(HumanoidDiscoveryRequestPacket::handle)
+                .add();
+
+        channel.messageBuilder(HumanoidDiscoveryUploadPacket.class, 2)
+                .encoder(HumanoidDiscoveryUploadPacket::encode)
+                .decoder(HumanoidDiscoveryUploadPacket::decode)
+                .consumerMainThread(HumanoidDiscoveryUploadPacket::handle)
+                .add();
     }
 
     public static void sendTracking(Entity entity, PostureSyncPacket packet) {
@@ -37,9 +49,15 @@ public final class BridgeNetwork {
         }
     }
 
-    public static void sendPlayer(ServerPlayer player, PostureSyncPacket packet) {
-        if (channel != null && player != null) {
+    public static void sendPlayer(ServerPlayer player, Object packet) {
+        if (channel != null && player != null && packet != null) {
             channel.send(PacketDistributor.PLAYER.with(() -> player), packet);
+        }
+    }
+
+    public static void sendToServer(Object packet) {
+        if (channel != null && packet != null) {
+            channel.sendToServer(packet);
         }
     }
 
