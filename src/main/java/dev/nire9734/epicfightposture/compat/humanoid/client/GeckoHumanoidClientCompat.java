@@ -52,9 +52,10 @@ public final class GeckoHumanoidClientCompat {
 
             try {
                 GeoModel geoModel = geoRenderer.getGeoModel();
-                // Most entity GeoModels use a fixed model resource and accept null here.
-                // Dynamic models that require a live entity fail closed for now.
-                ResourceLocation modelLocation = geoModel.getModelResource(null, geoRenderer);
+                // GeckoLib 4.4.x exposes the one-argument resource lookup. Most
+                // entity models use a fixed resource and therefore accept null.
+                // Dynamic per-entity models fail closed here instead of guessing.
+                ResourceLocation modelLocation = geoModel.getModelResource(null);
                 BakedGeoModel bakedModel = geoModel.getBakedModel(modelLocation);
                 GeckoHumanoidModelAdapter.Result result = GeckoHumanoidModelAdapter.analyseAndBake(bakedModel);
                 if (!result.supported()) {
