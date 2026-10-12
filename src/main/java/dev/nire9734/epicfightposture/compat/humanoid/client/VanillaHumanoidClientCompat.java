@@ -2,6 +2,9 @@ package dev.nire9734.epicfightposture.compat.humanoid.client;
 
 import com.mojang.logging.LogUtils;
 import dev.nire9734.epicfightposture.EpicFightPostureIntegration;
+import dev.nire9734.epicfightposture.client.ClientPostureStore;
+import dev.nire9734.epicfightposture.compat.humanoid.HumanoidDiscoveryClientBridge;
+import dev.nire9734.epicfightposture.compat.humanoid.HumanoidRenderState;
 import dev.nire9734.epicfightposture.compat.humanoid.VanillaHumanoidCompat;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.EntityType;
@@ -26,6 +29,12 @@ public final class VanillaHumanoidClientCompat {
 
     @SubscribeEvent
     public static void onAddPatchedRenderers(PatchedRenderersEvent.Add event) {
+        HumanoidDiscoveryClientBridge.install(HumanoidClientDiscovery::handleServerRequest);
+        HumanoidRenderState.installClientResolver((entityId, uuid) -> {
+            ClientPostureStore.Entry state = ClientPostureStore.get(entityId, uuid);
+            return state != null && state.broken;
+        });
+
         HumanoidClientDiscovery.ScanSnapshot scan = HumanoidClientDiscovery.scan(
                 event.getContext().getEntityRenderDispatcher().renderers
         );
