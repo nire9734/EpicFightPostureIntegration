@@ -51,7 +51,7 @@ public final class VanillaHumanoidClientCompat {
                 continue;
             }
 
-            boolean oursAlready = VanillaHumanoidCompat.isKnownCompatibilityTarget(entityId);
+            boolean oursAlready = VanillaHumanoidCompat.isRegisteredByEfpi(entityId);
             if (alreadyPatched.contains(entityType) && !oursAlready) {
                 // Never replace an Epic Fight patch supplied by Epic Fight itself,
                 // another compatibility mod, or an earlier registry subscriber.
