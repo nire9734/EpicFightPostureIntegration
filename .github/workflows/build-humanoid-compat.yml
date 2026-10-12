@@ -31,6 +31,31 @@ jobs:
       - name: Build
         run: ./gradlew build --stacktrace
 
+      - name: Dedicated server smoke test
+        run: |
+          mkdir -p run
+          echo 'eula=true' > run/eula.txt
+          ./gradlew runServer --stacktrace > /tmp/efpi-server.log 2>&1 &
+          SERVER_PID=$!
+          READY=0
+          for i in $(seq 1 120); do
+            if [ -f run/logs/latest.log ] && grep -q 'Done (' run/logs/latest.log; then
+              READY=1
+              break
+            fi
+            if ! kill -0 "$SERVER_PID" 2>/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          kill "$SERVER_PID" 2>/dev/null || true
+          wait "$SERVER_PID" 2>/dev/null || true
+          if [ "$READY" -ne 1 ]; then
+            cat /tmp/efpi-server.log
+            if [ -f run/logs/latest.log ]; then cat run/logs/latest.log; fi
+            exit 1
+          fi
+
       - name: Upload JAR
         if: success()
         uses: actions/upload-artifact@v4
