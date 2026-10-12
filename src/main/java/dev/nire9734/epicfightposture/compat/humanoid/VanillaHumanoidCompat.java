@@ -60,6 +60,16 @@ public final class VanillaHumanoidCompat {
         }
     }
 
+    /** True when the current startup already considers this ID an EFPI Humanoid target. */
+    public static boolean isKnownCompatibilityTarget(ResourceLocation id) {
+        if (id == null || HumanoidCompatConfig.isBlacklisted(id)) {
+            return false;
+        }
+        return runtimeDetected.contains(id)
+                || HumanoidCompatConfig.forceInclude().contains(id)
+                || (HumanoidCompatConfig.autoDetect() && cachedDetected.contains(id));
+    }
+
     /**
      * Registers a freshly client-discovered type for this JVM as well as the
      * persistent discovery cache. On an integrated server this runs before a
