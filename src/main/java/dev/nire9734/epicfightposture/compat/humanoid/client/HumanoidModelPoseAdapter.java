@@ -10,11 +10,13 @@ import net.minecraft.world.entity.LivingEntity;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
 import yesman.epicfight.api.animation.AnimationPlayer;
-import yesman.epicfight.api.animation.JointTransform;
+import yesman.epicfight.api.animation.Joint;
 import yesman.epicfight.api.animation.Pose;
 import yesman.epicfight.api.animation.types.DynamicAnimation;
 import yesman.epicfight.api.animation.types.StaticAnimation;
 import yesman.epicfight.api.asset.AssetAccessor;
+import yesman.epicfight.api.model.Armature;
+import yesman.epicfight.api.utils.math.OpenMatrix4f;
 import yesman.epicfight.gameasset.Animations;
 import yesman.epicfight.world.capabilities.EpicFightCapabilities;
 import yesman.epicfight.world.capabilities.entitypatch.LivingEntityPatch;
@@ -47,27 +49,58 @@ public final class HumanoidModelPoseAdapter {
         Pose idlePose = idleAnimation.getRawPose(0.0F);
         if (currentPose == null || idlePose == null) return;
 
-        setRotation(model.body, delta(currentPose, idlePose, "Torso", "Chest"));
-        setRotation(model.head, delta(currentPose, idlePose, "Head"));
+        Armature armature = patch.getArmature();
+        if (armature == null) return;
+
+        OpenMatrix4f[] currentMatrices = armature.getPoseAsTransformMatrix(currentPose, false);
+        OpenMatrix4f[] idleMatrices = armature.getPoseAsTransformMatrix(idlePose, false);
+
+        /*
+         * HumanoidModel's main parts are siblings under the model root. A local EF
+         * JointTransform therefore cannot be copied directly to a ModelPart: Head,
+         * Arm_R, etc. must also inherit the animated Torso/Chest/Shoulder chain.
+         *
+         * Use the armature's root-space joint matrices and remove the idle/root-space
+         * basis. This also avoids serially multiplying Torso+Chest or Shoulder+Arm,
+         * which double-counted the BIPED hierarchy and caused the collapsed pose.
+         *
+         * These representative joints match Epic Fight's own VanillaModelTransformer:
+         * body geometry is based on Torso/Chest, arm geometry begins at Arm_R/L, and
+         * leg geometry begins at Thigh_R/L. A rigid HumanoidModel cannot reproduce
+         * EF's elbow/knee/chest skinning, so the primary joint is used here.
+         */
+        setRotationFromGlobal(model.body, armature, currentMatrices, idleMatrices, "Torso");
+        setRotationFromGlobal(model.head, armature, currentMatrices, idleMatrices, "Head");
         model.hat.copyFrom(model.head);
-        setRotation(model.rightArm, delta(currentPose, idlePose, "Shoulder_R", "Arm_R"));
-        setRotation(model.leftArm, delta(currentPose, idlePose, "Shoulder_L", "Arm_L"));
-        setRotation(model.rightLeg, delta(currentPose, idlePose, "Thigh_R"));
-        setRotation(model.leftLeg, delta(currentPose, idlePose, "Thigh_L"));
+        setRotationFromGlobal(model.rightArm, armature, currentMatrices, idleMatrices, "Arm_R");
+        setRotationFromGlobal(model.leftArm, armature, currentMatrices, idleMatrices, "Arm_L");
+        setRotationFromGlobal(model.rightLeg, armature, currentMatrices, idleMatrices, "Thigh_R");
+        setRotationFromGlobal(model.leftLeg, armature, currentMatrices, idleMatrices, "Thigh_L");
     }
 
-    private static Quaternionf delta(Pose current, Pose idle, String... joints) {
-        return new Quaternionf(chainRotation(idle, joints)).invert()
-                .mul(chainRotation(current, joints)).normalize();
-    }
+    private static void setRotationFromGlobal(
+            ModelPart part,
+            Armature armature,
+            OpenMatrix4f[] currentMatrices,
+            OpenMatrix4f[] idleMatrices,
+            String jointName) {
+        Joint joint = armature.searchJointByName(jointName);
+        if (joint == null) return;
 
-    private static Quaternionf chainRotation(Pose pose, String... joints) {
-        Quaternionf result = new Quaternionf();
-        for (String joint : joints) {
-            JointTransform transform = pose.get(joint);
-            if (transform != null) result.mul(transform.rotation());
-        }
-        return result.normalize();
+        int id = joint.getId();
+        if (id < 0 || id >= currentMatrices.length || id >= idleMatrices.length) return;
+        OpenMatrix4f current = currentMatrices[id];
+        OpenMatrix4f idle = idleMatrices[id];
+        if (current == null || idle == null) return;
+
+        Quaternionf currentRotation = current.toQuaternion();
+        Quaternionf idleRotation = idle.toQuaternion();
+
+        // Root-space delta that maps the EF idle orientation to the current pose.
+        Quaternionf delta = new Quaternionf(currentRotation)
+                .mul(new Quaternionf(idleRotation).invert())
+                .normalize();
+        setRotation(part, delta);
     }
 
     private static void setRotation(ModelPart part, Quaternionf rotation) {
