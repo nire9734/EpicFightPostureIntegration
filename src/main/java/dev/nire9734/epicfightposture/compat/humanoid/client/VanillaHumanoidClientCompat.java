@@ -6,19 +6,26 @@ import dev.nire9734.epicfightposture.client.ClientPostureStore;
 import dev.nire9734.epicfightposture.compat.humanoid.HumanoidDiscoveryClientBridge;
 import dev.nire9734.epicfightposture.compat.humanoid.HumanoidRenderState;
 import dev.nire9734.epicfightposture.compat.humanoid.VanillaHumanoidCompat;
+import net.minecraft.client.model.HumanoidModel;
+import net.minecraft.client.renderer.entity.LivingEntityRenderer;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.EntityType;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 import org.slf4j.Logger;
+import yesman.epicfight.api.asset.AssetAccessor;
+import yesman.epicfight.api.asset.SelfAccessor;
 import yesman.epicfight.api.client.forgeevent.PatchedRenderersEvent;
+import yesman.epicfight.api.client.model.Meshes;
+import yesman.epicfight.api.client.model.SkinnedMesh;
+import yesman.epicfight.api.client.model.transformer.HumanoidModelBaker;
 import yesman.epicfight.world.capabilities.provider.EntityPatchProvider;
 
 import java.util.HashSet;
 import java.util.Set;
 
-/** Client-side HumanoidModel discovery and special-state EF renderer registration. */
+/** Client-side HumanoidModel discovery and Epic Fight bridge registration. */
 @Mod.EventBusSubscriber(
         modid = EpicFightPostureIntegration.MODID,
         bus = Mod.EventBusSubscriber.Bus.MOD,
@@ -58,17 +65,52 @@ public final class VanillaHumanoidClientCompat {
                 continue;
             }
 
-            // SpecialStateHumanoidRenderer explicitly patches the standard humanoid
-            // layers (armor, held items, head items and elytra). Do NOT call
-            // initLayerLast(): unknown mod layers may redraw the entire source model
-            // (Guard Villagers does this for its variant layer), causing double bodies.
+            // Convert the source HumanoidModel once during renderer registration.
+            // The conversion itself is Epic Fight's VanillaModelTransformer; EFPI
+            // only keeps the resulting runtime asset and wires it to this entity type.
+            AssetAccessor<SkinnedMesh> runtimeMesh = bakeRuntimeMesh(event, entityType, entityId);
+
             event.addPatchedEntityRenderer(
                     entityType,
-                    type -> new SpecialStateHumanoidRenderer(event.getContext(), type)
+                    type -> new SpecialStateHumanoidRenderer(event.getContext(), type, runtimeMesh)
             );
         }
 
         LOGGER.info("EFPI auto-detected {} HumanoidModel entity type(s)", scan.humanoid().size());
+    }
+
+    private static AssetAccessor<SkinnedMesh> bakeRuntimeMesh(
+            PatchedRenderersEvent.Add event,
+            EntityType<?> entityType,
+            ResourceLocation entityId) {
+        try {
+            Object sourceRenderer = event.getContext().getEntityRenderDispatcher().renderers.get(entityType);
+            if (!(sourceRenderer instanceof LivingEntityRenderer<?, ?> livingRenderer)
+                    || !(livingRenderer.getModel() instanceof HumanoidModel<?> humanoidModel)) {
+                LOGGER.warn("Humanoid compatibility target {} no longer exposes HumanoidModel; using EF BIPED", entityId);
+                return fallbackMesh();
+            }
+
+            SkinnedMesh baked = HumanoidModelBaker.VANILLA_TRANSFORMER.transformArmorModel(humanoidModel);
+            if (baked == null) {
+                LOGGER.warn("Epic Fight could not transform HumanoidModel for {}; using EF BIPED", entityId);
+                return fallbackMesh();
+            }
+
+            ResourceLocation runtimeMeshId = new ResourceLocation(
+                    EpicFightPostureIntegration.MODID,
+                    "runtime_humanoid/" + entityId.getNamespace() + "/" + entityId.getPath()
+            );
+            return SelfAccessor.create(runtimeMeshId, baked);
+        } catch (Throwable throwable) {
+            LOGGER.warn("Failed to prepare Epic Fight runtime mesh for {}; using EF BIPED", entityId, throwable);
+            return fallbackMesh();
+        }
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private static AssetAccessor<SkinnedMesh> fallbackMesh() {
+        return (AssetAccessor<SkinnedMesh>) (AssetAccessor) Meshes.BIPED;
     }
 
     private VanillaHumanoidClientCompat() {
