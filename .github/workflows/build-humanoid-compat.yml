@@ -56,6 +56,21 @@ jobs:
             exit 1
           fi
 
+      - name: Collect dedicated server logs
+        if: always()
+        run: |
+          mkdir -p smoke-logs
+          cp /tmp/efpi-server.log smoke-logs/gradle-runServer.log 2>/dev/null || true
+          cp run/logs/latest.log smoke-logs/latest.log 2>/dev/null || true
+
+      - name: Upload dedicated server logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dedicated-server-smoke-logs
+          path: smoke-logs/
+          if-no-files-found: ignore
+
       - name: Upload JAR
         if: success()
         uses: actions/upload-artifact@v4
