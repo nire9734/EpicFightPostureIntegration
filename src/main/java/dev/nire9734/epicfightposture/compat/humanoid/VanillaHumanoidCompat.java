@@ -30,6 +30,7 @@ import java.util.Set;
 public final class VanillaHumanoidCompat {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static volatile Map<ResourceLocation, CompatibilityKind> cachedDetected = Map.of();
+    private static volatile Set<ResourceLocation> externallyPatched = Set.of();
     private static final Map<ResourceLocation, CompatibilityKind> registeredByEfpi = new HashMap<>();
 
     public enum CompatibilityKind {
@@ -63,10 +64,24 @@ public final class VanillaHumanoidCompat {
     public static synchronized void onEntityPatchRegistry(EntityPatchRegistryEvent event) {
         registeredByEfpi.clear();
 
+        // Snapshot everything that already owns an Epic Fight patch before EFPI
+        // adds its lightweight compatibility patches. At LOWEST priority this also
+        // includes patches registered by other mods during the same registry event.
+        Set<ResourceLocation> existingPatchIds = new HashSet<>();
+        for (EntityType<?> entityType : event.getTypeEntry().keySet()) {
+            ResourceLocation id = EntityType.getKey(entityType);
+            if (id != null) {
+                existingPatchIds.add(id);
+            }
+        }
+        externallyPatched = Set.copyOf(existingPatchIds);
+
         for (Map.Entry<ResourceLocation, CompatibilityKind> target : cachedDetected.entrySet()) {
             ResourceLocation entityId = target.getKey();
             CompatibilityKind kind = target.getValue();
-            if (PostureServerConfig.isBlacklisted(entityId) || !compatibilityKindEnabled(kind)) {
+            if (PostureServerConfig.isBlacklisted(entityId)
+                    || externallyPatched.contains(entityId)
+                    || !compatibilityKindEnabled(kind)) {
                 continue;
             }
 
@@ -83,6 +98,16 @@ public final class VanillaHumanoidCompat {
     /** True only when EFPI actually owns the active lightweight registration in this JVM. */
     public static synchronized boolean isRegisteredByEfpi(ResourceLocation id) {
         return id != null && registeredByEfpi.containsKey(id);
+    }
+
+    /** True when Epic Fight or another mod already owned a patch before EFPI registration. */
+    public static boolean isExternallyPatched(ResourceLocation id) {
+        return id != null && externallyPatched.contains(id);
+    }
+
+    /** Immutable snapshot used by client renderer discovery to exclude existing patches entirely. */
+    public static Set<ResourceLocation> externallyPatchedIds() {
+        return externallyPatched;
     }
 
     /** Returns whether the server-authoritative switch permits this EFPI-owned lightweight patch. */
@@ -106,7 +131,7 @@ public final class VanillaHumanoidCompat {
         }
 
         ResourceLocation id = EntityType.getKey(entityType);
-        if (id == null || PostureServerConfig.isBlacklisted(id)) {
+        if (id == null || PostureServerConfig.isBlacklisted(id) || externallyPatched.contains(id)) {
             return false;
         }
 

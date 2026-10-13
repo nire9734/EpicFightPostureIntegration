@@ -2,6 +2,7 @@ package dev.nire9734.epicfightposture.compat.humanoid.client;
 
 import dev.nire9734.epicfightposture.compat.humanoid.HumanoidCompatDiscoveryStore;
 import dev.nire9734.epicfightposture.compat.humanoid.HumanoidEnvironmentFingerprint;
+import dev.nire9734.epicfightposture.compat.humanoid.VanillaHumanoidCompat;
 import dev.nire9734.epicfightposture.network.BridgeNetwork;
 import dev.nire9734.epicfightposture.network.HumanoidDiscoveryUploadPacket;
 import net.minecraft.client.Minecraft;
@@ -76,6 +77,22 @@ public final class HumanoidClientDiscovery {
         vanillaHumanoid.addAll(extra.vanillaHumanoid());
         vanillaSpider.addAll(extra.vanillaSpider());
         Set<ResourceLocation> geckoHumanoid = new HashSet<>(extra.geckoLibHumanoid());
+        Set<EntityType<?>> externalHumanoidTypes = new HashSet<>(extra.externalHumanoidTypes());
+
+        // Native Epic Fight patches and patches supplied by other mods already own
+        // their armature/renderer contract. They are not automatic-compat targets
+        // and must not be reported as unsupported either, otherwise mixed reports
+        // can create false dedicated-server conflicts.
+        Set<ResourceLocation> externallyPatched = VanillaHumanoidCompat.externallyPatchedIds();
+        if (!externallyPatched.isEmpty()) {
+            inspected.removeAll(externallyPatched);
+            vanillaHumanoid.removeAll(externallyPatched);
+            geckoHumanoid.removeAll(externallyPatched);
+            vanillaSpider.removeAll(externallyPatched);
+            vanillaHumanoidTypes.removeIf(type -> externallyPatched.contains(EntityType.getKey(type)));
+            externalHumanoidTypes.removeIf(type -> externallyPatched.contains(EntityType.getKey(type)));
+            vanillaSpiderTypes.removeIf(type -> externallyPatched.contains(EntityType.getKey(type)));
+        }
 
         Set<ResourceLocation> ambiguous = new HashSet<>();
         collectOverlap(ambiguous, vanillaHumanoid, geckoHumanoid);
@@ -86,12 +103,8 @@ public final class HumanoidClientDiscovery {
             geckoHumanoid.removeAll(ambiguous);
             vanillaSpider.removeAll(ambiguous);
             vanillaHumanoidTypes.removeIf(type -> ambiguous.contains(EntityType.getKey(type)));
-            vanillaSpiderTypes.removeIf(type -> ambiguous.contains(EntityType.getKey(type)));
-        }
-
-        Set<EntityType<?>> externalHumanoidTypes = new HashSet<>(extra.externalHumanoidTypes());
-        if (!ambiguous.isEmpty()) {
             externalHumanoidTypes.removeIf(type -> ambiguous.contains(EntityType.getKey(type)));
+            vanillaSpiderTypes.removeIf(type -> ambiguous.contains(EntityType.getKey(type)));
         }
 
         return new ScanSnapshot(
