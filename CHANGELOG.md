@@ -2,64 +2,38 @@
 
 ## 2.0.0
 
-Major automatic-humanoid compatibility update.
+Major automatic renderer compatibility update based on the public 1.1.0 release.
 
 ### Added
 
 - Added automatic compatibility for living entities rendered with Minecraft `HumanoidModel`.
 - Added optional automatic compatibility for supported GeckoLib 4.x humanoid entity models.
+- Added automatic compatibility for unpatched entities rendered with Minecraft `SpiderModel`.
+- Added lightweight Epic Fight BIPED and SPIDER patches that preserve the source mob's normal AI, attacks, movement, targeting, and ordinary renderer.
 - Added semantic GeckoLib humanoid bone detection instead of per-entity hardcoding.
 - Added runtime Gecko model conversion to Epic Fight `SkinnedMesh` for posture-break and execution-related special rendering.
-- Added guarded Epic Fight limb splitting for suitable single-bone Gecko arms and legs so BIPED elbow and knee animations can work.
-- Added Gecko attachment bridging for supported per-bone item, armor, equipment, and decoration layers during special states.
-- Added support for selected Gecko post-render attachment paths that read model bones directly, including the Iron's Spells 'n Spellbooks humanoid cape path.
+- Added guarded limb splitting for suitable single-bone Gecko arms and legs so Epic Fight elbow and knee joints can animate them.
+- Added Gecko attachment bridging for supported per-bone item, armor, equipment, decoration, and selected post-render attachment paths during special states.
+- Added spider-specific neutralized and execution-victim animation support for standard Epic Fight spider armatures.
 - Added dedicated-server renderer discovery using trusted operator-client reports.
-- Added persistent dedicated-server discovery state with active, pending, report, and conflict tracking.
-- Added environment fingerprints to automatic Humanoid discovery caches so stale results are discarded after relevant mod/version changes.
-- Added separate discovery classification for Minecraft `HumanoidModel` and GeckoLib humanoid targets.
-- Added server configuration switches for the two automatic compatibility systems:
+- Added persistent client and dedicated-server discovery caches with environment fingerprints so stale renderer classifications are discarded after relevant mod/version changes.
+- Added separate renderer classifications for vanilla humanoids, GeckoLib humanoids, and vanilla `SpiderModel` targets, including conflict handling when client environments disagree.
+- Added server configuration switches for all three automatic compatibility systems:
   - `compatibility.enable_vanilla_humanoid_compatibility`
   - `compatibility.enable_geckolib_humanoid_compatibility`
-- Both automatic compatibility switches default to `true`.
+  - `compatibility.enable_vanilla_spider_compatibility`
+- Added explicit discovery request/upload packets for dedicated-server compatibility discovery.
 
 ### Changed
 
-- Automatic compatibility now uses a lightweight `LivingEntityPatch` that preserves the source mob's AI, attacks, movement, and ordinary renderer.
-- Epic Fight special rendering is used only while EFPI requires a posture-related special state.
-- Existing Epic Fight or third-party compatibility patches take priority over EFPI's automatic lightweight patch.
-- Vanilla and Gecko automatic-compatibility targets are now tracked separately throughout client cache, dedicated-server discovery, and runtime registration.
-- Client discovery cache `humanoid-detected.json` now uses schema version 2 and stores an environment fingerprint.
-- Dedicated-server discovery cache `humanoid-server-discovery.json` now uses schema version 2 and stores vanilla and Gecko targets separately.
-- Legacy automatic-Humanoid discovery caches are intentionally ignored and rebuilt instead of being trusted after the schema change.
-- Dedicated-server discovery reports now treat disagreement between vanilla-humanoid, Gecko-humanoid, and non-humanoid classifications as a conflict.
-- Network protocol version increased from 2 to 3 because the discovery packet format changed.
-- Packet directions are now explicitly restricted:
-  - posture synchronization: server to client;
-  - discovery request: server to client;
-  - discovery upload: client to server.
-- Client and server should run the same EFPI 2.0.0 version.
-- Updated mod metadata and documentation for the new automatic compatibility architecture.
-- Simplified GitHub Actions CI to build the project and upload the generated JAR. Removed the Forge development-runtime dedicated-server smoke test that produced unrelated false failures.
-
-### Fixed
-
-- Fixed Gecko special-state base rendering that previously produced missing or transparency-only output.
-- Fixed Gecko one-bone limb conversion so supported models can bend correctly at Epic Fight elbow and knee joints.
-- Fixed missing Gecko equipment and clothing layers during special rendering.
-- Fixed attachment transforms that were offset or spread away from the body by using Epic Fight pose matrices with the correct inverse-bind transform.
-- Fixed post-render Gecko attachments that could remain in world/model bind space instead of following the animated body.
-- Fixed the Iron's Spells 'n Spellbooks humanoid cape path so it follows the Epic Fight chest pose without manual positional offsets.
-- Fixed stale client renderer-discovery data being reused after the loaded mod environment changes.
-
-### Tested Compatibility
-
-Development testing for the new compatibility layer includes:
-
-- vanilla-style and modded Minecraft `HumanoidModel` entities;
-- Iron's Spells 'n Spellbooks humanoid GeckoLib mobs, including body animation, equipment/attachments, and its humanoid cape rendering path; and
-- additional GeckoLib humanoid models used during development.
-
-Automatic compatibility is intentionally conservative. Unusual renderer hierarchies, dynamic model resources, custom full-model render layers, or non-humanoid Geo models may be rejected or may require specific compatibility work.
+- Existing Epic Fight or third-party entity patches now take priority over EFPI automatic compatibility patches.
+- Epic Fight special rendering is used only while EFPI requires a posture-related special state; normal rendering remains owned by the source mod.
+- Automatic compatibility is intentionally conservative: unsupported, ambiguous, highly custom, or conflicting renderer/model layouts are skipped rather than guessed.
+- Network packet directions are explicitly restricted to their intended side.
+- Network protocol version increased from `1` in 1.1.0 to `2` because 2.0.0 adds renderer-discovery packets and changes the client/server packet contract. Client and server should use the same EFPI version.
+- The new 2.0.0 renderer-discovery cache format starts at schema version `1`.
+- Updated build metadata and documentation for the new compatibility architecture.
+- No posture balance changes from 1.1.0.
 
 ## 1.1.0
 

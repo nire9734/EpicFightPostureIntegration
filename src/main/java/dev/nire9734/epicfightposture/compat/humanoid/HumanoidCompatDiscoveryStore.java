@@ -26,7 +26,7 @@ import java.util.Set;
 public final class HumanoidCompatDiscoveryStore {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
-    private static final int SCHEMA_VERSION = 3;
+    private static final int SCHEMA_VERSION = 1;
     private static final String FILE_NAME = "humanoid-detected.json";
     private static final String LEGACY_FILE_NAME = "epicfight_posture_integration-humanoid-detected.json";
 

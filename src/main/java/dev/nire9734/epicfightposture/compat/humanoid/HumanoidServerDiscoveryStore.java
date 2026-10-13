@@ -27,7 +27,7 @@ import java.util.Set;
 public final class HumanoidServerDiscoveryStore {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
-    private static final int SCHEMA_VERSION = 3;
+    private static final int SCHEMA_VERSION = 1;
     private static final String FILE_NAME = "humanoid-server-discovery.json";
     private static final int MAX_REPORT_ENVIRONMENTS = 64;
 

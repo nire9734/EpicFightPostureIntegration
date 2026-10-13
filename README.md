@@ -2,7 +2,7 @@
 
 Epic Fight Posture Integration adds a server-authoritative posture system to Epic Fight entities and connects posture breaks to Combat Evolution executions.
 
-The mod is designed to preserve the original mob implementation. It does **not** replace normal AI, targeting, pathfinding, attacks, or ordinary rendering for automatically supported mobs. Automatic compatibility uses a lightweight Epic Fight patch only where necessary for posture-break and execution-related behavior.
+The mod is designed to preserve the original mob implementation. It does **not** replace normal AI, targeting, pathfinding, attacks, or ordinary rendering for automatically supported mobs. Automatic compatibility uses lightweight Epic Fight patches only where necessary for posture-break and execution-related behavior.
 
 ## Features
 
@@ -13,7 +13,8 @@ The mod is designed to preserve the original mob implementation. It does **not**
 - Preserves existing mob AI and normal rendering
 - Automatically supports compatible Minecraft `HumanoidModel` mobs
 - Automatically detects supported GeckoLib humanoid models
-- Uses Epic Fight BIPED animation for special posture states
+- Automatically supports compatible unpatched Minecraft `SpiderModel` mobs
+- Uses Epic Fight BIPED or SPIDER animation for special posture states
 - Converts supported GeckoLib humanoid geometry to an Epic Fight skinned mesh
 - Preserves supported GeckoLib per-bone equipment and attachment rendering during special states
 - Respects Epic Fight patches supplied by Epic Fight or other compatibility mods instead of replacing them
@@ -51,9 +52,11 @@ When posture reaches zero, EFPI attempts to apply the entity's neutralize/guard-
 
 Entities already managed by Combat Evolution's own native posture implementation are left to Combat Evolution to avoid duplicate posture systems.
 
-## Automatic Humanoid Compatibility
+## Automatic Renderer Compatibility
 
-Version 2.0.0 adds two independent automatic compatibility systems.
+Version 2.0.0 expands automatic compatibility beyond the behavior available in 1.1.0. EFPI can discover supported renderer/model layouts and register lightweight Epic Fight patches without replacing the source mob's normal implementation.
+
+Three automatic compatibility paths are handled independently.
 
 ### Minecraft HumanoidModel
 
@@ -74,12 +77,22 @@ For accepted models EFPI can:
 - register the same lightweight BIPED patch used for automatic humanoid compatibility;
 - convert supported Geo model geometry into an Epic Fight `SkinnedMesh`;
 - split suitable one-bone arms and legs so Epic Fight elbow and knee joints can animate them;
-- replay supported Gecko per-bone item, armor, and attachment layers using the Epic Fight joint pose; and
+- replay supported Gecko per-bone item, armor, equipment, and attachment layers using the Epic Fight joint pose; and
 - bridge certain post-render attachment paths that read Gecko bone transforms directly.
 
 Normal GeckoLib animation and rendering remain untouched outside EFPI's special posture states.
 
 Not every GeckoLib model is guaranteed to be compatible. Non-humanoid, ambiguous, highly custom, or dynamically selected models can be rejected safely.
+
+### Minecraft SpiderModel
+
+EFPI can also detect unpatched living entities rendered with Minecraft `SpiderModel`.
+
+For compatible targets, EFPI registers a lightweight SPIDER Epic Fight patch while leaving the source mob's normal AI, movement, attacks, targeting, and ordinary renderer unchanged. Epic Fight rendering is used only for posture-related special states.
+
+Supported spider targets use Epic Fight's spider neutralized animation and EFPI's spider execution-victim animation when the entity uses a compatible Epic Fight `SpiderArmature`.
+
+This path is intended for standard Minecraft-style spider renderer/model layouts. Highly custom spider renderers or unrelated arthropod models are not assumed to be compatible.
 
 ### Existing Epic Fight Patches Take Priority
 
@@ -92,10 +105,11 @@ The automatic compatibility switches described below apply only to lightweight p
 The automatic compatibility system has been tested with:
 
 - vanilla-style and modded entities using Minecraft `HumanoidModel`;
-- Iron's Spells 'n Spellbooks humanoid GeckoLib mobs, including special-state body animation, equipment/attachment rendering, and its humanoid cape path; and
-- additional GeckoLib humanoid models during development.
+- Iron's Spells 'n Spellbooks humanoid GeckoLib mobs, including special-state body animation, equipment/attachment rendering, and its humanoid cape path;
+- additional GeckoLib humanoid models used during development; and
+- Minecraft-style `SpiderModel` entities using the standard Epic Fight spider armature path.
 
-Compatibility with every third-party renderer or custom Geo layer cannot be guaranteed.
+Compatibility with every third-party renderer, custom Geo layer, or custom spider model cannot be guaranteed.
 
 ## Server Configuration
 
@@ -120,7 +134,7 @@ minimum_posture = 1.0
 # Whether armor and armor toughness affect maximum posture.
 use_armor_scaling = true
 
-# Entities excluded from EFPI posture and automatic Humanoid compatibility.
+# Entities excluded from EFPI posture and automatic compatibility behavior.
 # Use namespace:entity IDs.
 entity_blacklist = []
 
@@ -131,13 +145,16 @@ enable_vanilla_humanoid_compatibility = true
 
 # Automatic compatibility for supported GeckoLib humanoid entities.
 enable_geckolib_humanoid_compatibility = true
+
+# Automatic compatibility for unpatched Minecraft SpiderModel entities.
+enable_vanilla_spider_compatibility = true
 ```
 
-Both automatic compatibility options default to `true`.
+All three automatic compatibility options default to `true`.
 
 After changing a compatibility option, reload the world/server so patch ownership and server configuration are consistent. In single-player, return to the title screen and reopen the world. On a dedicated server, restart the server process.
 
-`entity_blacklist` remains the per-entity override. Blacklisted IDs do not use EFPI posture or EFPI automatic Humanoid compatibility.
+`entity_blacklist` remains the per-entity override. Blacklisted IDs do not use EFPI posture or EFPI automatic compatibility.
 
 ## Client Configuration
 
@@ -161,17 +178,17 @@ Posture state is controlled by the server. Clients receive synchronized posture 
 
 Important state changes such as posture damage, posture breaks, execution start, recovery start, and return to normal are synchronized immediately. Continuous recovery uses reduced-frequency synchronization to avoid unnecessary traffic.
 
-EFPI 2.0.0 uses a revised network protocol. Client and server should use the same EFPI version.
+EFPI 2.0.0 uses network protocol version `2`. The public 1.1.0 release used protocol version `1`; 2.0.0 adds renderer-discovery packets and is not network-compatible with 1.1.0. Client and server should therefore use the same EFPI version.
 
-## Dedicated Server Humanoid Discovery
+## Dedicated Server Renderer Discovery
 
-A dedicated server cannot inspect Minecraft client renderer classes directly. EFPI therefore uses a guarded client-report system for automatic Humanoid compatibility.
+A dedicated server cannot inspect Minecraft client renderer classes directly. EFPI therefore uses a guarded client-report system for automatic renderer compatibility.
 
 The flow is:
 
 1. An operator-level client joins the dedicated server.
 2. The server sends a one-time discovery request with a nonce.
-3. The client scans its registered renderers and classifies compatible vanilla `HumanoidModel` and GeckoLib humanoid entities separately.
+3. The client scans its registered renderers and classifies compatible vanilla `HumanoidModel`, GeckoLib humanoid, and vanilla `SpiderModel` entities separately.
 4. The result is sent back to the server.
 5. The server validates entity IDs and stores the result as pending discovery data.
 6. Restart the dedicated server to promote the pending compatibility targets to active targets before Epic Fight's patch registry runs.
@@ -192,13 +209,13 @@ config/epicfight_posture_integration/humanoid-detected.json
 
 Both caches use environment fingerprints derived from loaded mod IDs and versions. When the relevant mod environment changes, stale discovery data is ignored rather than reused blindly.
 
-Version 2.0.0 introduces a new discovery-cache schema. Older automatic-Humanoid discovery caches are intentionally ignored and rebuilt.
+The 2.0.0 renderer-discovery cache format starts at schema version `1`.
 
 ## Cache and Conflict Handling
 
-Vanilla `HumanoidModel` and GeckoLib humanoid targets are stored separately.
+Vanilla `HumanoidModel`, GeckoLib humanoid, and vanilla `SpiderModel` targets are stored separately.
 
-On dedicated servers, reports are keyed by client environment fingerprint. If client environments disagree about whether an entity is vanilla-humanoid, Gecko-humanoid, or non-humanoid, that entity is placed in the conflict set instead of being automatically enabled.
+On dedicated servers, reports are keyed by client environment fingerprint. If client environments disagree about whether an entity belongs to one of those supported renderer kinds or is unsupported, that entity is placed in the conflict set instead of being automatically enabled.
 
 If troubleshooting automatic compatibility, the discovery JSON files can be removed while the game/server is stopped. EFPI will recreate them through normal detection.
 
@@ -228,8 +245,9 @@ Renderer discovery and runtime mesh preparation happen during renderer-registrat
 - A visually humanoid mob is not automatically compatible if its renderer or bone hierarchy is unconventional.
 - GeckoLib models with dynamic per-entity model resources may fail closed instead of being guessed.
 - Highly custom full-model Geo render layers, physics systems, or mod-specific post-render code may require additional compatibility work.
-- Execution compatibility ultimately depends on Combat Evolution's execution behavior.
-- Existing third-party Epic Fight patches take priority over EFPI's automatic lightweight patch.
+- Automatic spider compatibility targets Minecraft-style `SpiderModel` layouts; highly custom spider/arthropod renderers may require explicit compatibility.
+- Execution compatibility ultimately depends on Combat Evolution's execution behavior and a compatible Epic Fight armature.
+- Existing third-party Epic Fight patches take priority over EFPI's automatic lightweight patches.
 - Dedicated servers require a trusted operator client to discover renderer-based compatibility targets, followed by a restart when the pending set changes.
 
 ## Building From Source
