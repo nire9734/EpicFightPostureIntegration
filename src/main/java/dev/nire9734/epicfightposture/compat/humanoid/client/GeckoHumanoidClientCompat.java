@@ -60,9 +60,20 @@ public final class GeckoHumanoidClientCompat {
                     continue;
                 }
 
-                // Fail closed: semantic classification alone is not enough. A
-                // Gecko target is considered automatically compatible only when
-                // its special-state mesh can actually be prepared successfully.
+                GeckoHumanoidTopologyValidator.ValidationResult topology =
+                        GeckoHumanoidTopologyValidator.validate(bakedModel);
+                if (!topology.supported()) {
+                    LOGGER.debug(
+                            "EFPI Gecko humanoid topology rejected {}: {}",
+                            entityId,
+                            topology.reason()
+                    );
+                    continue;
+                }
+
+                // Fail closed: semantic + topology classification is still not
+                // enough. A Gecko target is automatic-compatible only when its
+                // special-state mesh can actually be prepared successfully.
                 GeckoHumanoidModelAdapter.Result result = GeckoHumanoidModelAdapter.analyseAndBake(bakedModel);
                 if (!result.supported() || result.mesh() == null) {
                     LOGGER.warn(
