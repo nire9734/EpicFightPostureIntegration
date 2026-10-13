@@ -49,14 +49,12 @@ public final class VanillaHumanoidCompat {
                     active.vanillaSpider()
             );
         } else {
-            HumanoidCompatDiscoveryStore.Cache cache = HumanoidCompatDiscoveryStore.load(
-                    HumanoidEnvironmentFingerprint.current()
-            );
-            cachedDetected = buildKindMap(
-                    cache.vanillaHumanoid(),
-                    cache.geckoLibHumanoid(),
-                    cache.vanillaSpider()
-            );
+            // Keep the file migration/validation path for diagnostics, but never
+            // install a client patch solely from a previous renderer cache. Live
+            // renderer discovery revalidates and prepares the special-state mesh
+            // before registerDiscoveredAtRuntime() is allowed to install a patch.
+            HumanoidCompatDiscoveryStore.load(HumanoidEnvironmentFingerprint.current());
+            cachedDetected = Map.of();
         }
     }
 
@@ -158,7 +156,7 @@ public final class VanillaHumanoidCompat {
         return entityType == null || PostureServerConfig.isBlacklisted(EntityType.getKey(entityType));
     }
 
-    /** Stores every detected target, including IDs the server may disable or blacklist later. */
+    /** Stores renderer targets that passed the current client compatibility preparation. */
     public static synchronized void replaceDetectedCache(
             Set<ResourceLocation> vanillaHumanoid,
             Set<ResourceLocation> geckoLibHumanoid,

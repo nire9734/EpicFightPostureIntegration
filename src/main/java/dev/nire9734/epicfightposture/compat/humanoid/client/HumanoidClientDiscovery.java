@@ -1,6 +1,5 @@
 package dev.nire9734.epicfightposture.compat.humanoid.client;
 
-import dev.nire9734.epicfightposture.compat.humanoid.HumanoidCompatDiscoveryStore;
 import dev.nire9734.epicfightposture.compat.humanoid.HumanoidEnvironmentFingerprint;
 import dev.nire9734.epicfightposture.compat.humanoid.VanillaHumanoidCompat;
 import dev.nire9734.epicfightposture.network.BridgeNetwork;
@@ -26,6 +25,7 @@ public final class HumanoidClientDiscovery {
     }
 
     private static volatile AdditionalScanner additionalScanner = renderers -> ScanSnapshot.empty();
+    private static volatile ScanSnapshot serverReportSnapshot = ScanSnapshot.empty();
 
     public static void installAdditionalScanner(AdditionalScanner scanner) {
         additionalScanner = scanner == null ? renderers -> ScanSnapshot.empty() : scanner;
@@ -118,15 +118,18 @@ public final class HumanoidClientDiscovery {
         );
     }
 
+    /**
+     * Stores the renderer targets that actually passed client-side preparation.
+     * Dedicated-server login reports reuse this immutable snapshot rather than
+     * rerunning model conversion and mutating live renderer/model state.
+     */
+    public static void updateServerReportSnapshot(ScanSnapshot snapshot) {
+        serverReportSnapshot = snapshot == null ? ScanSnapshot.empty() : snapshot;
+    }
+
     public static void handleServerRequest(UUID nonce) {
-        ScanSnapshot scan = scanCurrent();
+        ScanSnapshot scan = serverReportSnapshot;
         String fingerprint = HumanoidEnvironmentFingerprint.current();
-        HumanoidCompatDiscoveryStore.save(
-                fingerprint,
-                scan.vanillaHumanoid(),
-                scan.geckoLibHumanoid(),
-                scan.vanillaSpider()
-        );
         BridgeNetwork.sendToServer(new HumanoidDiscoveryUploadPacket(
                 nonce,
                 fingerprint,

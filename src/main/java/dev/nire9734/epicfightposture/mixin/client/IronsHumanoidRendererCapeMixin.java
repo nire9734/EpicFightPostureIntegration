@@ -5,7 +5,9 @@ import dev.nire9734.epicfightposture.compat.humanoid.client.GeckoPostRenderMatri
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Pseudo;
 import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.Redirect;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import software.bernie.geckolib.core.animatable.model.CoreGeoBone;
 import software.bernie.geckolib.util.RenderUtils;
 
@@ -37,5 +39,15 @@ public abstract class IronsHumanoidRendererCapeMixin {
         if (!GeckoPostRenderMatrixOverride.applyIfPresent(poseStack, bone)) {
             RenderUtils.prepMatrixForBone(poseStack, bone);
         }
+    }
+
+    /**
+     * The cape callback is conditional. If it does not consume the queued one-shot
+     * matrix (for example an early/invisible render path), never let that matrix
+     * leak into a later frame for the same shared Gecko bone instance.
+     */
+    @Inject(method = "render", at = @At("RETURN"), remap = false, require = 0)
+    private void efpi$clearPostRenderMatrix(CallbackInfo ci) {
+        GeckoPostRenderMatrixOverride.clear();
     }
 }

@@ -19,7 +19,6 @@ import org.slf4j.Logger;
 import yesman.epicfight.api.asset.AssetAccessor;
 import yesman.epicfight.api.asset.SelfAccessor;
 import yesman.epicfight.api.client.forgeevent.PatchedRenderersEvent;
-import yesman.epicfight.api.client.model.Meshes;
 import yesman.epicfight.api.client.model.SkinnedMesh;
 import yesman.epicfight.api.client.model.transformer.HumanoidModelBaker;
 import yesman.epicfight.world.capabilities.provider.EntityPatchProvider;
@@ -54,33 +53,55 @@ public final class VanillaHumanoidClientCompat {
         HumanoidClientDiscovery.ScanSnapshot scan = HumanoidClientDiscovery.scan(
                 event.getContext().getEntityRenderDispatcher().renderers
         );
-        VanillaHumanoidCompat.replaceDetectedCache(
-                scan.vanillaHumanoid(),
-                scan.geckoLibHumanoid(),
-                scan.vanillaSpider()
-        );
 
         Set<EntityType<?>> alreadyPatched = new HashSet<>(EntityPatchProvider.getPatchedEntities());
-        registerVanillaHumanoids(event, scan, alreadyPatched);
-        registerVanillaSpiders(event, scan, alreadyPatched);
+        Set<EntityType<?>> verifiedVanilla = registerVanillaHumanoids(event, scan, alreadyPatched);
+        Set<EntityType<?>> verifiedSpider = registerVanillaSpiders(event, scan, alreadyPatched);
+        Set<EntityType<?>> verifiedGecko = geckoLoaded
+                ? Set.copyOf(scan.externalHumanoidTypes())
+                : Set.of();
 
         if (geckoLoaded) {
-            GeckoHumanoidClientCompat.registerRenderers(event, scan.externalHumanoidTypes());
+            GeckoHumanoidClientCompat.registerRenderers(event, verifiedGecko);
         }
+
+        Set<ResourceLocation> verifiedVanillaIds = idsOf(verifiedVanilla);
+        Set<ResourceLocation> verifiedGeckoIds = idsOf(verifiedGecko);
+        Set<ResourceLocation> verifiedSpiderIds = idsOf(verifiedSpider);
+
+        // Only persist/report renderer targets whose special-state rendering was
+        // actually prepared successfully. This keeps the automatic compatibility
+        // path fail-closed instead of registering a patch with no usable renderer.
+        VanillaHumanoidCompat.replaceDetectedCache(
+                verifiedVanillaIds,
+                verifiedGeckoIds,
+                verifiedSpiderIds
+        );
+        HumanoidClientDiscovery.updateServerReportSnapshot(new HumanoidClientDiscovery.ScanSnapshot(
+                scan.inspected(),
+                verifiedVanillaIds,
+                verifiedGeckoIds,
+                verifiedSpiderIds,
+                verifiedVanilla,
+                verifiedGecko,
+                verifiedSpider
+        ));
 
         LOGGER.info(
                 "EFPI auto-detected {} renderer compatibility target(s): {} vanilla humanoid, {} GeckoLib humanoid, {} vanilla SpiderModel",
-                scan.automaticTargets().size(),
-                scan.vanillaHumanoidTypes().size(),
-                scan.externalHumanoidTypes().size(),
-                scan.vanillaSpiderTypes().size()
+                verifiedVanillaIds.size() + verifiedGeckoIds.size() + verifiedSpiderIds.size(),
+                verifiedVanilla.size(),
+                verifiedGecko.size(),
+                verifiedSpider.size()
         );
     }
 
-    private static void registerVanillaHumanoids(
+    private static Set<EntityType<?>> registerVanillaHumanoids(
             PatchedRenderersEvent.Add event,
             HumanoidClientDiscovery.ScanSnapshot scan,
             Set<EntityType<?>> alreadyPatched) {
+        Set<EntityType<?>> verified = new HashSet<>();
+
         for (EntityType<?> entityType : scan.vanillaHumanoidTypes()) {
             ResourceLocation entityId = EntityType.getKey(entityType);
             if (entityId == null) {
@@ -92,24 +113,33 @@ public final class VanillaHumanoidClientCompat {
                 continue;
             }
 
+            AssetAccessor<SkinnedMesh> runtimeMesh = bakeRuntimeMesh(event, entityType, entityId);
+            if (runtimeMesh == null) {
+                continue;
+            }
+            verified.add(entityType);
+
             if (!oursAlready && !VanillaHumanoidCompat.registerDiscoveredAtRuntime(
                     entityType,
                     VanillaHumanoidCompat.CompatibilityKind.VANILLA_HUMANOID)) {
                 continue;
             }
 
-            AssetAccessor<SkinnedMesh> runtimeMesh = bakeRuntimeMesh(event, entityType, entityId);
             event.addPatchedEntityRenderer(
                     entityType,
                     type -> new SpecialStateHumanoidRenderer(event.getContext(), type, runtimeMesh)
             );
         }
+
+        return Set.copyOf(verified);
     }
 
-    private static void registerVanillaSpiders(
+    private static Set<EntityType<?>> registerVanillaSpiders(
             PatchedRenderersEvent.Add event,
             HumanoidClientDiscovery.ScanSnapshot scan,
             Set<EntityType<?>> alreadyPatched) {
+        Set<EntityType<?>> verified = new HashSet<>();
+
         for (EntityType<?> entityType : scan.vanillaSpiderTypes()) {
             ResourceLocation entityId = EntityType.getKey(entityType);
             if (entityId == null) {
@@ -121,6 +151,7 @@ public final class VanillaHumanoidClientCompat {
                 continue;
             }
 
+            verified.add(entityType);
             if (!oursAlready && !VanillaHumanoidCompat.registerDiscoveredAtRuntime(
                     entityType,
                     VanillaHumanoidCompat.CompatibilityKind.VANILLA_SPIDER)) {
@@ -132,6 +163,8 @@ public final class VanillaHumanoidClientCompat {
                     type -> new SpecialStateSpiderRenderer(event.getContext(), type)
             );
         }
+
+        return Set.copyOf(verified);
     }
 
     private static AssetAccessor<SkinnedMesh> bakeRuntimeMesh(
@@ -142,14 +175,20 @@ public final class VanillaHumanoidClientCompat {
             Object sourceRenderer = event.getContext().getEntityRenderDispatcher().renderers.get(entityType);
             if (!(sourceRenderer instanceof LivingEntityRenderer<?, ?> livingRenderer)
                     || !(livingRenderer.getModel() instanceof HumanoidModel<?> humanoidModel)) {
-                LOGGER.warn("Humanoid compatibility target {} no longer exposes HumanoidModel; using EF BIPED", entityId);
-                return fallbackMesh();
+                LOGGER.warn(
+                        "Humanoid compatibility target {} no longer exposes HumanoidModel; skipping automatic compatibility",
+                        entityId
+                );
+                return null;
             }
 
             SkinnedMesh baked = HumanoidModelBaker.VANILLA_TRANSFORMER.transformArmorModel(humanoidModel);
             if (baked == null) {
-                LOGGER.warn("Epic Fight could not transform HumanoidModel for {}; using EF BIPED", entityId);
-                return fallbackMesh();
+                LOGGER.warn(
+                        "Epic Fight could not transform HumanoidModel for {}; skipping automatic compatibility",
+                        entityId
+                );
+                return null;
             }
 
             ResourceLocation runtimeMeshId = new ResourceLocation(
@@ -158,14 +197,24 @@ public final class VanillaHumanoidClientCompat {
             );
             return SelfAccessor.create(runtimeMeshId, baked);
         } catch (Throwable throwable) {
-            LOGGER.warn("Failed to prepare Epic Fight runtime mesh for {}; using EF BIPED", entityId, throwable);
-            return fallbackMesh();
+            LOGGER.warn(
+                    "Failed to prepare Epic Fight runtime mesh for {}; skipping automatic compatibility",
+                    entityId,
+                    throwable
+            );
+            return null;
         }
     }
 
-    @SuppressWarnings({"rawtypes", "unchecked"})
-    private static AssetAccessor<SkinnedMesh> fallbackMesh() {
-        return (AssetAccessor<SkinnedMesh>) (AssetAccessor) Meshes.BIPED;
+    private static Set<ResourceLocation> idsOf(Set<EntityType<?>> types) {
+        Set<ResourceLocation> ids = new HashSet<>();
+        for (EntityType<?> type : types) {
+            ResourceLocation id = EntityType.getKey(type);
+            if (id != null) {
+                ids.add(id);
+            }
+        }
+        return Set.copyOf(ids);
     }
 
     private VanillaHumanoidClientCompat() {

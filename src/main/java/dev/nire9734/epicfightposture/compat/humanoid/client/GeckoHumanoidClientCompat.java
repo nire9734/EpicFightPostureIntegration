@@ -60,14 +60,14 @@ public final class GeckoHumanoidClientCompat {
                     continue;
                 }
 
-                compatible.add(entityId);
-                compatibleTypes.add(entityType);
-
+                // Fail closed: semantic classification alone is not enough. A
+                // Gecko target is considered automatically compatible only when
+                // its special-state mesh can actually be prepared successfully.
                 GeckoHumanoidModelAdapter.Result result = GeckoHumanoidModelAdapter.analyseAndBake(bakedModel);
                 if (!result.supported() || result.mesh() == null) {
                     LOGGER.warn(
                             "EFPI detected Gecko humanoid {} but could not prepare its special-state mesh: {}. "
-                                    + "Posture compatibility remains enabled.",
+                                    + "Skipping automatic compatibility for this entity.",
                             entityId,
                             result.reason()
                     );
@@ -79,8 +79,10 @@ public final class GeckoHumanoidClientCompat {
                         "runtime_gecko/" + entityId.getNamespace() + "/" + entityId.getPath()
                 );
                 RUNTIME_MESHES.put(entityType, SelfAccessor.create(runtimeMeshId, result.mesh()));
+                compatible.add(entityId);
+                compatibleTypes.add(entityType);
             } catch (Throwable throwable) {
-                LOGGER.warn("EFPI could not inspect GeckoLib model for {}", entityId, throwable);
+                LOGGER.warn("EFPI could not inspect GeckoLib model for {}; skipping automatic compatibility", entityId, throwable);
             }
         }
 
@@ -106,6 +108,18 @@ public final class GeckoHumanoidClientCompat {
             ResourceLocation entityId = EntityType.getKey(entityType);
             if (entityId == null) continue;
 
+            // Do not install a lightweight patch unless its special renderer is
+            // already known to be usable. This avoids a patch-without-renderer
+            // state if a Gecko model is semantically humanoid but cannot be baked.
+            AssetAccessor<SkinnedMesh> mesh = RUNTIME_MESHES.get(entityType);
+            if (mesh == null) {
+                LOGGER.warn(
+                        "EFPI has no prepared Gecko special-state mesh for {}; skipping automatic compatibility",
+                        entityId
+                );
+                continue;
+            }
+
             boolean oursAlready = VanillaHumanoidCompat.isRegisteredByEfpi(entityId);
             if (alreadyPatched.contains(entityType) && !oursAlready) {
                 continue;
@@ -117,15 +131,6 @@ public final class GeckoHumanoidClientCompat {
                 continue;
             }
             patched++;
-
-            AssetAccessor<SkinnedMesh> mesh = RUNTIME_MESHES.get(entityType);
-            if (mesh == null) {
-                LOGGER.warn(
-                        "EFPI registered Gecko humanoid posture patch for {}, but no special-state mesh is available",
-                        entityId
-                );
-                continue;
-            }
 
             event.addPatchedEntityRenderer(
                     entityType,
