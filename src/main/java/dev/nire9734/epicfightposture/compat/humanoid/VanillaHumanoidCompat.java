@@ -75,19 +75,12 @@ public final class VanillaHumanoidCompat {
         return id != null && registeredByEfpi.containsKey(id);
     }
 
-    /**
-     * Returns whether EFPI's automatic compatibility is enabled for this target.
-     * The cached kind fallback is intentional: on an integrated client the runtime
-     * renderer registration can happen before the per-world SERVER config is loaded.
-     */
+    /** Returns whether the server-authoritative switch permits this EFPI-owned lightweight patch. */
     public static synchronized boolean isCompatibilityEnabled(ResourceLocation id) {
         if (id == null) {
             return false;
         }
         CompatibilityKind kind = registeredByEfpi.get(id);
-        if (kind == null) {
-            kind = cachedDetected.get(id);
-        }
         return kind != null && compatibilityKindEnabled(kind);
     }
 
