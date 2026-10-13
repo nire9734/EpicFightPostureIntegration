@@ -41,7 +41,6 @@ import java.util.function.Supplier;
 public final class GeckoHumanoidModelAdapter {
     private static final MeshPartDefinition PART = new RuntimeGeoPart("gecko_humanoid");
 
-    // Epic Fight BIPED joint indices.
     private static final int ROOT = 0;
     private static final int THIGH_R = 1;
     private static final int LEG_R = 2;
@@ -90,7 +89,7 @@ public final class GeckoHumanoidModelAdapter {
         Resolution resolution = resolve(model);
         return resolution == null
                 ? ProbeResult.unsupported("essential humanoid bones were missing or ambiguous")
-                : ProbeResult.supported();
+                : new ProbeResult(true, "ok");
     }
 
     /**
@@ -151,7 +150,6 @@ public final class GeckoHumanoidModelAdapter {
             collect(root, 0, bones);
         }
 
-        // Prefer a geometry-bearing torso over a zero-cube wrapper named body.
         GeoBone chest = findBestBody(bones);
         GeoBone bodyAnchor = findBest(bones, BODY);
         GeoBone head = findBest(bones, HEAD_NAMES);
@@ -402,10 +400,6 @@ public final class GeckoHumanoidModelAdapter {
     }
 
     public record ProbeResult(boolean supported, String reason) {
-        public static ProbeResult supported() {
-            return new ProbeResult(true, "ok");
-        }
-
         public static ProbeResult unsupported(String reason) {
             return new ProbeResult(false, reason);
         }
