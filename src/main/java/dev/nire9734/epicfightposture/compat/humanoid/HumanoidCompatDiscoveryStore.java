@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.mojang.logging.LogUtils;
 import dev.nire9734.epicfightposture.EpicFightPostureIntegration;
@@ -25,52 +26,129 @@ import java.util.Set;
 public final class HumanoidCompatDiscoveryStore {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
+    private static final int SCHEMA_VERSION = 2;
     private static final String FILE_NAME = "humanoid-detected.json";
     private static final String LEGACY_FILE_NAME = "epicfight_posture_integration-humanoid-detected.json";
 
-    public static Set<ResourceLocation> load() {
+    public static Cache load(String expectedEnvironmentFingerprint) {
         migrateLegacyFile();
         Path path = path();
         if (!Files.isRegularFile(path)) {
-            return Set.of();
+            return Cache.empty();
         }
 
-        Set<ResourceLocation> result = new HashSet<>();
         try (Reader reader = Files.newBufferedReader(path)) {
-            JsonElement root = JsonParser.parseReader(reader);
-            if (!root.isJsonArray()) {
-                LOGGER.warn("Ignoring malformed Humanoid compatibility cache {}; expected JSON array", path);
-                return Set.of();
+            JsonElement parsed = JsonParser.parseReader(reader);
+            if (!parsed.isJsonObject()) {
+                LOGGER.info("Ignoring legacy EFPI Humanoid compatibility cache {}; renderer discovery will run again", path);
+                return Cache.empty();
             }
-            for (JsonElement element : root.getAsJsonArray()) {
-                if (!element.isJsonPrimitive() || !element.getAsJsonPrimitive().isString()) {
-                    continue;
-                }
-                ResourceLocation id = ResourceLocation.tryParse(element.getAsString());
-                if (id != null) {
-                    result.add(id);
-                }
+
+            JsonObject root = parsed.getAsJsonObject();
+            int schema = readInt(root, "schema", -1);
+            if (schema != SCHEMA_VERSION) {
+                LOGGER.info(
+                        "Ignoring EFPI Humanoid compatibility cache {} with schema {}; expected {}",
+                        path,
+                        schema,
+                        SCHEMA_VERSION
+                );
+                return Cache.empty();
             }
+
+            String storedFingerprint = readString(root, "environment_fingerprint");
+            String expectedFingerprint = expectedEnvironmentFingerprint == null ? "" : expectedEnvironmentFingerprint;
+            if (!expectedFingerprint.equals(storedFingerprint)) {
+                LOGGER.info("EFPI Humanoid compatibility cache is stale after a client mod-set change; rediscovering renderers");
+                return Cache.empty();
+            }
+
+            Set<ResourceLocation> vanilla = readIds(root.get("vanilla_humanoid"));
+            Set<ResourceLocation> gecko = readIds(root.get("geckolib_humanoid"));
+            Set<ResourceLocation> overlap = new HashSet<>(vanilla);
+            overlap.retainAll(gecko);
+            if (!overlap.isEmpty()) {
+                LOGGER.warn("Ignoring inconsistent EFPI Humanoid compatibility cache {}; {} ID(s) have multiple renderer kinds",
+                        path, overlap.size());
+                return Cache.empty();
+            }
+
+            return new Cache(Set.copyOf(vanilla), Set.copyOf(gecko));
         } catch (Exception e) {
             LOGGER.warn("Failed to read Humanoid compatibility cache {}", path, e);
+            return Cache.empty();
         }
-        return Set.copyOf(result);
     }
 
-    public static void save(Set<ResourceLocation> ids) {
+    public static void save(
+            String environmentFingerprint,
+            Set<ResourceLocation> vanillaHumanoid,
+            Set<ResourceLocation> geckoLibHumanoid) {
         Path path = path();
         try {
             Files.createDirectories(path.getParent());
-            JsonArray array = new JsonArray();
-            ids.stream()
-                    .sorted(Comparator.comparing(ResourceLocation::toString))
-                    .forEach(id -> array.add(id.toString()));
+            JsonObject root = new JsonObject();
+            root.addProperty("schema", SCHEMA_VERSION);
+            root.addProperty(
+                    "environment_fingerprint",
+                    environmentFingerprint == null ? "" : environmentFingerprint
+            );
+            root.add("vanilla_humanoid", toJsonArray(vanillaHumanoid));
+            root.add("geckolib_humanoid", toJsonArray(geckoLibHumanoid));
+
             try (Writer writer = Files.newBufferedWriter(path)) {
-                GSON.toJson(array, writer);
+                GSON.toJson(root, writer);
             }
         } catch (IOException e) {
             LOGGER.warn("Failed to write Humanoid compatibility cache {}", path, e);
         }
+    }
+
+    private static JsonArray toJsonArray(Set<ResourceLocation> ids) {
+        JsonArray array = new JsonArray();
+        if (ids == null) {
+            return array;
+        }
+        ids.stream()
+                .sorted(Comparator.comparing(ResourceLocation::toString))
+                .forEach(id -> array.add(id.toString()));
+        return array;
+    }
+
+    private static Set<ResourceLocation> readIds(JsonElement element) {
+        Set<ResourceLocation> result = new HashSet<>();
+        if (element == null || !element.isJsonArray()) {
+            return result;
+        }
+        for (JsonElement item : element.getAsJsonArray()) {
+            if (!item.isJsonPrimitive() || !item.getAsJsonPrimitive().isString()) {
+                continue;
+            }
+            ResourceLocation id = ResourceLocation.tryParse(item.getAsString());
+            if (id != null) {
+                result.add(id);
+            }
+        }
+        return result;
+    }
+
+    private static int readInt(JsonObject root, String key, int fallback) {
+        JsonElement element = root.get(key);
+        if (element == null || !element.isJsonPrimitive() || !element.getAsJsonPrimitive().isNumber()) {
+            return fallback;
+        }
+        try {
+            return element.getAsInt();
+        } catch (Exception ignored) {
+            return fallback;
+        }
+    }
+
+    private static String readString(JsonObject root, String key) {
+        JsonElement element = root.get(key);
+        return element != null && element.isJsonPrimitive() && element.getAsJsonPrimitive().isString()
+                ? element.getAsString()
+                : "";
     }
 
     private static void migrateLegacyFile() {
@@ -93,6 +171,17 @@ public final class HumanoidCompatDiscoveryStore {
         return FMLPaths.CONFIGDIR.get()
                 .resolve(EpicFightPostureIntegration.MODID)
                 .resolve(FILE_NAME);
+    }
+
+    public record Cache(Set<ResourceLocation> vanillaHumanoid, Set<ResourceLocation> geckoLibHumanoid) {
+        public Cache {
+            vanillaHumanoid = vanillaHumanoid == null ? Set.of() : Set.copyOf(vanillaHumanoid);
+            geckoLibHumanoid = geckoLibHumanoid == null ? Set.of() : Set.copyOf(geckoLibHumanoid);
+        }
+
+        public static Cache empty() {
+            return new Cache(Set.of(), Set.of());
+        }
     }
 
     private HumanoidCompatDiscoveryStore() {
