@@ -5,6 +5,7 @@ import dev.nire9734.epicfightposture.compat.humanoid.VanillaHumanoidCompat;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.common.ForgeConfigSpec;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.LogicalSide;
 import net.minecraftforge.fml.event.config.ModConfigEvent;
 import net.minecraftforge.fml.common.Mod;
