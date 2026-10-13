@@ -112,6 +112,11 @@ public final class SpecialStateGeckoRenderer extends PatchedEntityRenderer<
                 partialTicks
         );
 
+        // Some Gecko renderers draw attachments after their super.render()
+        // returns instead of using GeoRenderLayer. Queue the exact Chest skin
+        // matrix + authored torso local bind for that immediate post-render call.
+        GeckoPostRenderMatrixOverride.armTorsoFromEpicFight(entity, entitypatch, renderer);
+
         poseStack.popPose();
     }
 
