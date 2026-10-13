@@ -25,6 +25,7 @@ public final class PostureServerConfig {
     public static final ForgeConfigSpec.ConfigValue<List<? extends String>> ENTITY_BLACKLIST;
     public static final ForgeConfigSpec.BooleanValue ENABLE_VANILLA_HUMANOID_COMPATIBILITY;
     public static final ForgeConfigSpec.BooleanValue ENABLE_GECKOLIB_HUMANOID_COMPATIBILITY;
+    public static final ForgeConfigSpec.BooleanValue ENABLE_VANILLA_SPIDER_COMPATIBILITY;
     public static final ForgeConfigSpec SPEC;
 
     private static volatile Set<ResourceLocation> blacklist = Set.of();
@@ -42,30 +43,33 @@ public final class PostureServerConfig {
                 .define("use_armor_scaling", true);
         ENTITY_BLACKLIST = BUILDER
                 .comment(
-                        "Entities excluded from EFPI posture and automatic Humanoid compatibility behavior.",
+                        "Entities excluded from EFPI posture and automatic compatibility behavior.",
                         "Use namespace:entity IDs."
                 )
-                .defineListAllowEmpty(
-                        "entity_blacklist",
-                        List.of(),
-                        value -> value instanceof String
-                );
+                .defineListAllowEmpty("entity_blacklist", List.of(), value -> value instanceof String);
         BUILDER.pop();
 
         BUILDER.push("compatibility");
         ENABLE_VANILLA_HUMANOID_COMPATIBILITY = BUILDER
                 .comment(
                         "Enable EFPI's automatic compatibility for entities rendered with Minecraft HumanoidModel.",
-                        "Default: true. Restart the game/server after changing this option."
+                        "Default: true. Reload the world/server after changing this option."
                 )
                 .define("enable_vanilla_humanoid_compatibility", true);
         ENABLE_GECKOLIB_HUMANOID_COMPATIBILITY = BUILDER
                 .comment(
                         "Enable EFPI's automatic compatibility for humanoid GeckoLib entity models.",
                         "Default: true. This has no effect when GeckoLib is not installed.",
-                        "Restart the game/server after changing this option."
+                        "Reload the world/server after changing this option."
                 )
                 .define("enable_geckolib_humanoid_compatibility", true);
+        ENABLE_VANILLA_SPIDER_COMPATIBILITY = BUILDER
+                .comment(
+                        "Enable EFPI's automatic compatibility for unpatched entities rendered with Minecraft SpiderModel.",
+                        "The source mob keeps its original AI; EFPI uses a lightweight SPIDER patch only for posture/execution states.",
+                        "Default: true. Reload the world/server after changing this option."
+                )
+                .define("enable_vanilla_spider_compatibility", true);
         BUILDER.pop();
 
         SPEC = BUILDER.build();
@@ -91,11 +95,11 @@ public final class PostureServerConfig {
         return ENABLE_GECKOLIB_HUMANOID_COMPATIBILITY.get();
     }
 
-    /**
-     * Treat an EFPI-owned automatic compatibility target as posture-disabled when
-     * its server switch is off. Existing explicit Epic Fight patches are not
-     * affected because only EFPI-owned registrations participate in this check.
-     */
+    public static boolean vanillaSpiderCompatibilityEnabled() {
+        return ENABLE_VANILLA_SPIDER_COMPATIBILITY.get();
+    }
+
+    /** Treat an EFPI-owned automatic compatibility target as disabled when its switch is off. */
     public static boolean isBlacklisted(ResourceLocation entityId) {
         if (entityId == null) {
             return false;
