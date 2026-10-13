@@ -8,7 +8,7 @@ import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.entity.EntityRenderer;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.LivingEntity;
-import org.joml.Quaternionf;
+import org.joml.Matrix4f;
 import org.slf4j.Logger;
 import software.bernie.geckolib.cache.object.BakedGeoModel;
 import software.bernie.geckolib.cache.object.GeoBone;
@@ -18,37 +18,32 @@ import software.bernie.geckolib.model.GeoModel;
 import software.bernie.geckolib.renderer.GeoEntityRenderer;
 import software.bernie.geckolib.renderer.layer.GeoRenderLayer;
 import software.bernie.geckolib.util.RenderUtils;
-import yesman.epicfight.api.animation.Joint;
-import yesman.epicfight.api.animation.JointTransform;
-import yesman.epicfight.api.animation.Pose;
 import yesman.epicfight.api.model.Armature;
-import yesman.epicfight.api.utils.math.Vec3f;
+import yesman.epicfight.api.utils.math.OpenMatrix4f;
 import yesman.epicfight.world.capabilities.entitypatch.LivingEntityPatch;
 
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Bridges GeckoLib attachment bones/render-layers onto the Epic Fight BIPED pose.
+ * Replays GeckoLib attachment layers directly on Epic Fight's final joint pose.
  *
- * <p>Epic Fight cancels GeckoLib's normal render from GeoRenderEvent.Pre while
- * overrideRender() is active. That means Gecko's actuallyRender() never updates
- * its bones and its GeoRenderLayers never run. A renderer that draws a cape or
- * other decoration after super.render() can therefore read a stale bone pose,
- * while BlockAndItemGeoLayer / ItemArmorGeoLayer disappear entirely.</p>
+ * <p>The body mesh already uses Epic Fight skinning matrices successfully. For
+ * attachments we therefore avoid converting EF transforms back into Gecko bone
+ * Euler angles. Instead, each source GeoBone is evaluated once in its bind pose,
+ * then transformed at render time with the exact same EF skin matrix used by the
+ * skinned body:</p>
  *
- * <p>This bridge deliberately leaves the already-working EF skinned body mesh
- * alone. It resets the source GeoBone tree to the bind snapshot, applies the
- * current EF local JointTransform at semantic joint transitions, then replays
- * Gecko's per-bone render-layer callbacks on that synchronized hierarchy. The
- * synchronized bones are intentionally left in place for the remainder of the
- * source renderer call so post-super custom attachment rendering can use them.</p>
+ * <pre>
+ * attachment = (currentJoint * inverseBindJoint) * geoBoneBind
+ * </pre>
+ *
+ * <p>This preserves the original Gecko pivot/offset while following the final EF
+ * joint matrix, which is substantially more stable for hats, shoulder pieces,
+ * back items and held-item anchors than reconstructing pos/rot values.</p>
  */
 @SuppressWarnings({"rawtypes", "unchecked"})
 final class GeckoAttachmentBridge {
@@ -93,25 +88,61 @@ final class GeckoAttachmentBridge {
                 return;
             }
 
-            Armature armature = entityPatch.getArmature();
-            Pose efPose = entityPatch.getAnimator().getPose(partialTicks);
-            Map<GeoBone, Integer> bindings = new IdentityHashMap<>();
-
-            for (GeoBone top : bakedModel.topLevelBones()) {
-                syncBoneTree(top, -1, armature, efPose, bindings);
+            List<GeoRenderLayer> layers = new ArrayList<>(geoRenderer.getRenderLayers());
+            if (layers.isEmpty()) {
+                return;
             }
 
-            replayPerBoneLayers(
-                    geoRenderer,
-                    animatable,
-                    bakedModel,
-                    bindings,
-                    bufferSource,
-                    poseStack,
-                    packedLight,
-                    packedOverlay,
-                    partialTicks
-            );
+            // GeoLib's normal render is cancelled while EF overrideRender() is
+            // active, so the source bone tree may contain a stale animation pose.
+            // Restore the bind snapshot before measuring its absolute matrices.
+            for (GeoBone top : bakedModel.topLevelBones()) {
+                resetTreeToInitial(top);
+            }
+
+            ResourceLocation texture = geoRenderer.getTextureLocation(animatable);
+            RenderType renderType = geoRenderer.getRenderType(animatable, texture, bufferSource, partialTicks);
+            VertexConsumer baseBuffer = renderType == null ? null : bufferSource.getBuffer(renderType);
+
+            for (GeoRenderLayer layer : layers) {
+                layer.preRender(
+                        poseStack,
+                        animatable,
+                        bakedModel,
+                        renderType,
+                        bufferSource,
+                        baseBuffer,
+                        partialTicks,
+                        packedLight,
+                        packedOverlay
+                );
+            }
+
+            if (renderType == null || baseBuffer == null) {
+                return;
+            }
+
+            Armature armature = entityPatch.getArmature();
+            OpenMatrix4f[] skinMatrices = armature.getPoseMatrices();
+            PoseStack bindStack = new PoseStack();
+
+            for (GeoBone top : bakedModel.topLevelBones()) {
+                replayBoneLayers(
+                        top,
+                        -1,
+                        skinMatrices,
+                        layers,
+                        animatable,
+                        renderType,
+                        bufferSource,
+                        baseBuffer,
+                        poseStack,
+                        bindStack,
+                        packedLight,
+                        packedOverlay,
+                        partialTicks
+                );
+            }
         } catch (Throwable throwable) {
             if (WARNED_RENDERERS.add(sourceRenderer.getClass())) {
                 LOGGER.warn(
@@ -124,174 +155,17 @@ final class GeckoAttachmentBridge {
         }
     }
 
-    private static void syncBoneTree(
-            GeoBone bone,
-            int inheritedJoint,
-            Armature armature,
-            Pose efPose,
-            Map<GeoBone, Integer> bindings) {
-        if (bone == null) {
-            return;
-        }
-
-        resetToInitial(bone);
-
-        Integer explicitJoint = classifyJoint(bone, inheritedJoint);
-        int joint = explicitJoint != null
-                ? explicitJoint
-                : (inheritedJoint >= 0 ? inheritedJoint : ROOT);
-        bindings.put(bone, joint);
-
-        // Only apply an EF local transform when the Geo hierarchy actually
-        // transitions to another semantic BIPED joint. Applying the same joint
-        // transform to every unknown child would compound rotations.
-        if (inheritedJoint < 0 || (explicitJoint != null && joint != inheritedJoint)) {
-            applyJointAnimation(bone, armature, efPose, joint);
-        }
-
-        if (!bone.isHidingChildren()) {
-            for (GeoBone child : bone.getChildBones()) {
-                syncBoneTree(child, joint, armature, efPose, bindings);
-            }
-        }
-    }
-
-    private static void resetToInitial(GeoBone bone) {
-        BoneSnapshot snapshot = bone.getInitialSnapshot();
-        if (snapshot == null) {
-            return;
-        }
-
-        bone.setPosX(snapshot.getOffsetX());
-        bone.setPosY(snapshot.getOffsetY());
-        bone.setPosZ(snapshot.getOffsetZ());
-        bone.setRotX(snapshot.getRotX());
-        bone.setRotY(snapshot.getRotY());
-        bone.setRotZ(snapshot.getRotZ());
-        bone.setScaleX(snapshot.getScaleX());
-        bone.setScaleY(snapshot.getScaleY());
-        bone.setScaleZ(snapshot.getScaleZ());
-    }
-
-    private static void applyJointAnimation(GeoBone bone, Armature armature, Pose pose, int jointId) {
-        BoneSnapshot snapshot = bone.getInitialSnapshot();
-        Joint joint = armature.searchJointById(jointId);
-        if (snapshot == null || joint == null) {
-            return;
-        }
-
-        JointTransform transform = pose.orElseEmpty(joint.getName());
-        Vec3f translation = transform.translation();
-        Vec3f scale = transform.scale();
-        float[] rotation = quaternionToZyxEuler(transform.rotation());
-
-        // Gecko's bone translation convention negates X in prepMatrixForBone,
-        // while Y/Z retain their sign. EF animation translation is in model
-        // units, Gecko bone offsets are in model pixels.
-        bone.setPosX(snapshot.getOffsetX() - translation.x * 16.0F);
-        bone.setPosY(snapshot.getOffsetY() + translation.y * 16.0F);
-        bone.setPosZ(snapshot.getOffsetZ() + translation.z * 16.0F);
-
-        // Epic Fight's own GeoMeshPartDefinition converts Gecko animation
-        // rotation as (initial - current). Mirror that convention here when
-        // projecting an EF joint rotation back onto Gecko attachment bones.
-        bone.setRotX(snapshot.getRotX() - rotation[0]);
-        bone.setRotY(snapshot.getRotY() - rotation[1]);
-        bone.setRotZ(snapshot.getRotZ() - rotation[2]);
-
-        bone.setScaleX(snapshot.getScaleX() * scale.x);
-        bone.setScaleY(snapshot.getScaleY() * scale.y);
-        bone.setScaleZ(snapshot.getScaleZ() * scale.z);
-    }
-
-    /**
-     * Returns X/Y/Z angles for Rz(z) * Ry(y) * Rx(x), matching GeckoLib's
-     * rotateMatrixAroundBone order.
-     */
-    private static float[] quaternionToZyxEuler(Quaternionf source) {
-        Quaternionf q = new Quaternionf(source).normalize();
-        float x = q.x;
-        float y = q.y;
-        float z = q.z;
-        float w = q.w;
-
-        float sinXCosY = 2.0F * (w * x + y * z);
-        float cosXCosY = 1.0F - 2.0F * (x * x + y * y);
-        float rotX = (float)Math.atan2(sinXCosY, cosXCosY);
-
-        float sinY = 2.0F * (w * y - z * x);
-        float rotY = Math.abs(sinY) >= 1.0F
-                ? (float)Math.copySign(Math.PI / 2.0, sinY)
-                : (float)Math.asin(sinY);
-
-        float sinZCosY = 2.0F * (w * z + x * y);
-        float cosZCosY = 1.0F - 2.0F * (y * y + z * z);
-        float rotZ = (float)Math.atan2(sinZCosY, cosZCosY);
-
-        return new float[] {rotX, rotY, rotZ};
-    }
-
-    private static void replayPerBoneLayers(
-            GeoEntityRenderer geoRenderer,
-            GeoAnimatable animatable,
-            BakedGeoModel bakedModel,
-            Map<GeoBone, Integer> bindings,
-            MultiBufferSource bufferSource,
-            PoseStack poseStack,
-            int packedLight,
-            int packedOverlay,
-            float partialTicks) {
-        List<GeoRenderLayer> layers = new ArrayList<>(geoRenderer.getRenderLayers());
-        if (layers.isEmpty()) {
-            return;
-        }
-
-        ResourceLocation texture = geoRenderer.getTextureLocation(animatable);
-        RenderType renderType = geoRenderer.getRenderType(animatable, texture, bufferSource, partialTicks);
-        VertexConsumer baseBuffer = renderType == null ? null : bufferSource.getBuffer(renderType);
-
-        for (GeoRenderLayer layer : layers) {
-            layer.preRender(
-                    poseStack,
-                    animatable,
-                    bakedModel,
-                    renderType,
-                    bufferSource,
-                    baseBuffer,
-                    partialTicks,
-                    packedLight,
-                    packedOverlay
-            );
-        }
-
-        if (renderType == null || baseBuffer == null) {
-            return;
-        }
-
-        for (GeoBone top : bakedModel.topLevelBones()) {
-            replayBoneLayers(
-                    top,
-                    layers,
-                    animatable,
-                    renderType,
-                    bufferSource,
-                    baseBuffer,
-                    poseStack,
-                    packedLight,
-                    packedOverlay,
-                    partialTicks
-            );
-        }
-    }
-
     private static void replayBoneLayers(
             GeoBone bone,
+            int inheritedJoint,
+            OpenMatrix4f[] skinMatrices,
             List<GeoRenderLayer> layers,
             GeoAnimatable animatable,
             RenderType renderType,
             MultiBufferSource bufferSource,
             VertexConsumer baseBuffer,
             PoseStack poseStack,
+            PoseStack bindStack,
             int packedLight,
             int packedOverlay,
             float partialTicks) {
@@ -299,8 +173,30 @@ final class GeckoAttachmentBridge {
             return;
         }
 
+        Integer explicitJoint = classifyJoint(bone, inheritedJoint);
+        int joint = explicitJoint != null
+                ? explicitJoint
+                : (inheritedJoint >= 0 ? inheritedJoint : ROOT);
+
+        // Build the absolute Gecko bind matrix exactly as GeckoLib does during
+        // recursive model rendering. This captures every parent pivot, local
+        // rotation and local offset instead of approximating them from names.
+        bindStack.pushPose();
+        RenderUtils.prepMatrixForBone(bindStack, bone);
+        Matrix4f geoBind = new Matrix4f(bindStack.last().pose());
+
+        // EF poseMatrices[j] is already currentJoint * inverseBindJoint. Applying
+        // it to the original absolute Gecko bind matrix gives the attachment its
+        // original bind offset while following precisely the same deformation as
+        // body vertices assigned to this joint.
+        Matrix4f attachment = geoBind;
+        if (joint >= 0 && joint < skinMatrices.length && skinMatrices[joint] != null) {
+            Matrix4f skin = OpenMatrix4f.exportToMojangMatrix(skinMatrices[joint]);
+            attachment = new Matrix4f(skin).mul(geoBind);
+        }
+
         poseStack.pushPose();
-        RenderUtils.prepMatrixForBone(poseStack, bone);
+        poseStack.mulPoseMatrix(attachment);
 
         for (GeoRenderLayer layer : layers) {
             layer.renderForBone(
@@ -316,16 +212,21 @@ final class GeckoAttachmentBridge {
             );
         }
 
+        poseStack.popPose();
+
         if (!bone.isHidingChildren()) {
             for (GeoBone child : bone.getChildBones()) {
                 replayBoneLayers(
                         child,
+                        joint,
+                        skinMatrices,
                         layers,
                         animatable,
                         renderType,
                         bufferSource,
                         baseBuffer,
                         poseStack,
+                        bindStack,
                         packedLight,
                         packedOverlay,
                         partialTicks
@@ -333,7 +234,30 @@ final class GeckoAttachmentBridge {
             }
         }
 
-        poseStack.popPose();
+        bindStack.popPose();
+    }
+
+    private static void resetTreeToInitial(GeoBone bone) {
+        if (bone == null) {
+            return;
+        }
+
+        BoneSnapshot snapshot = bone.getInitialSnapshot();
+        if (snapshot != null) {
+            bone.setPosX(snapshot.getOffsetX());
+            bone.setPosY(snapshot.getOffsetY());
+            bone.setPosZ(snapshot.getOffsetZ());
+            bone.setRotX(snapshot.getRotX());
+            bone.setRotY(snapshot.getRotY());
+            bone.setRotZ(snapshot.getRotZ());
+            bone.setScaleX(snapshot.getScaleX());
+            bone.setScaleY(snapshot.getScaleY());
+            bone.setScaleZ(snapshot.getScaleZ());
+        }
+
+        for (GeoBone child : bone.getChildBones()) {
+            resetTreeToInitial(child);
+        }
     }
 
     private static Integer classifyJoint(GeoBone bone, int inheritedJoint) {
