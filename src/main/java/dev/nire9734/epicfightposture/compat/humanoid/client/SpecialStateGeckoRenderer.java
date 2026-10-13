@@ -58,6 +58,15 @@ public final class SpecialStateGeckoRenderer extends PatchedEntityRenderer<
 
         poseStack.pushPose();
         this.mulPoseStack(poseStack, armature, entity, entitypatch, partialTicks);
+        GeckoSourceScaleBridge.apply(
+                entity,
+                renderer,
+                buffer,
+                poseStack,
+                packedLight,
+                overlay,
+                partialTicks
+        );
         this.setArmaturePose(entitypatch, armature, partialTicks);
 
         SkinnedMesh runtimeMesh = this.mesh.get();

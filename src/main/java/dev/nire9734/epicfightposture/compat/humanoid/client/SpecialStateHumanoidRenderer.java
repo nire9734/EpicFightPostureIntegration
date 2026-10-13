@@ -1,7 +1,10 @@
 package dev.nire9734.epicfightposture.compat.humanoid.client;
 
+import com.mojang.blaze3d.vertex.PoseStack;
 import dev.nire9734.epicfightposture.compat.humanoid.LightweightHumanoidPatch;
+import dev.nire9734.epicfightposture.mixin.client.LivingEntityRendererScaleInvoker;
 import net.minecraft.client.model.HumanoidModel;
+import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.entity.EntityRendererProvider;
 import net.minecraft.client.renderer.entity.LivingEntityRenderer;
 import net.minecraft.client.renderer.entity.layers.CustomHeadLayer;
@@ -41,6 +44,7 @@ public final class SpecialStateHumanoidRenderer extends PatchedLivingEntityRende
         SkinnedMesh> {
 
     private final AssetAccessor<SkinnedMesh> mesh;
+    private LivingEntityRenderer<LivingEntity, HumanoidModel<LivingEntity>> activeSourceRenderer;
 
     public SpecialStateHumanoidRenderer(
             EntityRendererProvider.Context context,
@@ -62,6 +66,41 @@ public final class SpecialStateHumanoidRenderer extends PatchedLivingEntityRende
                 )
         );
         this.addPatchedLayer(CustomHeadLayer.class, new PatchedHeadLayer<>());
+    }
+
+    @Override
+    public void render(
+            LivingEntity entity,
+            LightweightHumanoidPatch entitypatch,
+            LivingEntityRenderer<LivingEntity, HumanoidModel<LivingEntity>> renderer,
+            MultiBufferSource buffer,
+            PoseStack poseStack,
+            int packedLight,
+            float partialTicks) {
+        this.activeSourceRenderer = renderer;
+        try {
+            super.render(entity, entitypatch, renderer, buffer, poseStack, packedLight, partialTicks);
+        } finally {
+            this.activeSourceRenderer = null;
+        }
+    }
+
+    @Override
+    public void mulPoseStack(
+            PoseStack poseStack,
+            Armature armature,
+            LivingEntity entity,
+            LightweightHumanoidPatch entitypatch,
+            float partialTicks) {
+        super.mulPoseStack(poseStack, armature, entity, entitypatch, partialTicks);
+
+        // Epic Fight's model matrix does not know about scale overrides supplied
+        // by the source renderer. Reapply the exact source scale hook after EF's
+        // transform so large/small compatibility mobs retain their normal size.
+        if (this.activeSourceRenderer != null) {
+            ((LivingEntityRendererScaleInvoker) (Object) this.activeSourceRenderer)
+                    .efpi$invokeScale(entity, poseStack, partialTicks);
+        }
     }
 
     @Override
