@@ -20,7 +20,7 @@ The mod is designed to preserve the original mob implementation. It does **not**
 - Respects Epic Fight patches supplied by Epic Fight or other compatibility mods instead of replacing them
 - Supports `CustomExecuteEntity` implementations from Combat Evolution
 - Displays health and posture together in the combat HUD
-- Uses server-authoritative multiplayer posture state
+- Uses server-authoritative multiplayer posture state and server policy synchronization
 - Includes posture scaling, blacklist, and automatic-compatibility server settings
 - Includes a client-side Combat Evolution execution sound volume setting
 
@@ -56,6 +56,8 @@ Entities already managed by Combat Evolution's own native posture implementation
 
 Version 2.0.0 expands automatic compatibility beyond the behavior available in 1.1.0. EFPI can discover supported renderer/model layouts and register lightweight Epic Fight patches without replacing the source mob's normal implementation.
 
+Automatic renderer compatibility is experimental. Detection is intentionally conservative: a target that cannot be classified and prepared safely is skipped instead of being guessed.
+
 Three automatic compatibility paths are handled independently.
 
 ### Minecraft HumanoidModel
@@ -64,13 +66,13 @@ EFPI inspects registered entity renderers and detects living entities whose rend
 
 For compatible targets, EFPI registers a lightweight BIPED Epic Fight patch. The original renderer remains active during normal gameplay. Epic Fight's patched renderer is used only when EFPI needs special posture-state rendering.
 
-The source `HumanoidModel` is converted through Epic Fight's own vanilla humanoid model transformer where possible.
+The source `HumanoidModel` is converted through Epic Fight's own vanilla humanoid model transformer. If conversion fails, automatic compatibility is not installed for that target.
 
 ### GeckoLib Humanoids
 
 When GeckoLib is installed, EFPI also inspects `GeoEntityRenderer` models.
 
-A Gecko model is accepted only when its bone hierarchy can be classified as a supported humanoid layout. Detection is semantic rather than tied to one specific mod or entity name.
+A Gecko model is accepted only when its bone names, hierarchy, topology, left/right structure, and major-limb geometry can be classified as a supported humanoid layout. Detection is semantic rather than tied to one specific mod or entity name.
 
 For accepted models EFPI can:
 
@@ -82,7 +84,7 @@ For accepted models EFPI can:
 
 Normal GeckoLib animation and rendering remain untouched outside EFPI's special posture states.
 
-Not every GeckoLib model is guaranteed to be compatible. Non-humanoid, ambiguous, highly custom, or dynamically selected models can be rejected safely.
+Not every GeckoLib model is guaranteed to be compatible. Non-humanoid, ambiguous, highly custom, dynamically selected, or otherwise unsupported models fail closed instead of being forced through the BIPED path.
 
 ### Minecraft SpiderModel
 
@@ -98,7 +100,7 @@ This path is intended for standard Minecraft-style spider renderer/model layouts
 
 EFPI does not overwrite a patch already supplied by Epic Fight, another compatibility addon, or another earlier patch-registry subscriber.
 
-The automatic compatibility switches described below apply only to lightweight patches owned by EFPI. They do not disable explicit Epic Fight compatibility supplied by another mod.
+Entities with an existing Epic Fight patch are excluded from EFPI automatic renderer discovery entirely. The automatic compatibility switches described below apply only to lightweight patches owned by EFPI; they do not disable explicit Epic Fight compatibility supplied by another mod.
 
 ## Confirmed Compatibility
 
@@ -113,10 +115,10 @@ Compatibility with every third-party renderer, custom Geo layer, or custom spide
 
 ## Server Configuration
 
-The server configuration is stored per world at:
+EFPI 2.0.0 stores server policy globally for the Minecraft installation/server rather than separately inside each world.
 
 ```text
-<world>/serverconfig/epicfight_posture_integration-server.toml
+config/epicfight_posture_integration/server.toml
 ```
 
 Example:
@@ -152,9 +154,15 @@ enable_vanilla_spider_compatibility = true
 
 All three automatic compatibility options default to `true`.
 
-After changing a compatibility option, reload the world/server so patch ownership and server configuration are consistent. In single-player, return to the title screen and reopen the world. On a dedicated server, restart the server process.
+On a dedicated server, this file is the authoritative configuration. Its relevant values, including the compatibility switches and entity blacklist, are synchronized to clients when they join. A client's local `server.toml` does not override the remote server. In single-player, the same global file is used by the integrated server.
 
-`entity_blacklist` remains the per-entity override. Blacklisted IDs do not use EFPI posture or EFPI automatic compatibility.
+Restart the server after changing an automatic compatibility option so patch ownership is rebuilt consistently.
+
+`entity_blacklist` remains the per-entity override. Blacklisted IDs do not use EFPI posture or active EFPI automatic compatibility behavior.
+
+### Upgrading from 1.1.0
+
+The public 1.1.0 release used Forge's per-world server config location. Version 2.0.0 uses the global file above. If you customized the old per-world `serverconfig/epicfight_posture_integration-server.toml`, copy those values into the new global `server.toml` once after upgrading.
 
 ## Client Configuration
 
@@ -174,11 +182,11 @@ The **Execution Sound Volume** setting changes only the local player's Combat Ev
 
 ## Multiplayer
 
-Posture state is controlled by the server. Clients receive synchronized posture information only for entities they are tracking.
+Posture state and EFPI server policy are controlled by the server. Clients receive synchronized posture information only for entities they are tracking, plus the server's authoritative EFPI configuration when joining.
 
 Important state changes such as posture damage, posture breaks, execution start, recovery start, and return to normal are synchronized immediately. Continuous recovery uses reduced-frequency synchronization to avoid unnecessary traffic.
 
-EFPI 2.0.0 uses network protocol version `2`. The public 1.1.0 release used protocol version `1`; 2.0.0 adds renderer-discovery packets and is not network-compatible with 1.1.0. Client and server should therefore use the same EFPI version.
+EFPI 2.0.0 uses network protocol version `2`. The public 1.1.0 release used protocol version `1`; 2.0.0 adds renderer-discovery and server-settings synchronization packets and is not network-compatible with 1.1.0. Client and server should therefore use the same EFPI version.
 
 ## Dedicated Server Renderer Discovery
 
@@ -188,26 +196,24 @@ The flow is:
 
 1. An operator-level client joins the dedicated server.
 2. The server sends a one-time discovery request with a nonce.
-3. The client scans its registered renderers and classifies compatible vanilla `HumanoidModel`, GeckoLib humanoid, and vanilla `SpiderModel` entities separately.
+3. The client uses the renderer compatibility snapshot already validated during client startup.
 4. The result is sent back to the server.
 5. The server validates entity IDs and stores the result as pending discovery data.
 6. Restart the dedicated server to promote the pending compatibility targets to active targets before Epic Fight's patch registry runs.
 
 Only players with the required operator permission level can submit discovery reports.
 
-The dedicated-server cache is stored at:
+The dedicated-server renderer cache is automatically managed at:
 
 ```text
-config/epicfight_posture_integration/humanoid-server-discovery.json
+config/epicfight_posture_integration/cache/renderer-discovery.json
 ```
 
-The client renderer cache is stored at:
+This JSON file is **not a user configuration file**. EFPI creates and updates it automatically. Manual editing is not supported. It can be deleted while the server is stopped to reset renderer discovery; a trusted operator client will then need to report compatible renderers again.
 
-```text
-config/epicfight_posture_integration/humanoid-detected.json
-```
+Client renderer discovery is not persisted to disk. The client validates registered renderers fresh on every launch, prepares compatible special-state meshes, and keeps the verified report snapshot only in memory.
 
-Both caches use environment fingerprints derived from loaded mod IDs and versions. When the relevant mod environment changes, stale discovery data is ignored rather than reused blindly.
+The dedicated-server cache uses an environment fingerprint derived from loaded mod IDs and versions. When the server mod environment changes, stale discovery data is discarded instead of being reused blindly.
 
 The 2.0.0 renderer-discovery cache format starts at schema version `1`.
 
@@ -217,7 +223,7 @@ Vanilla `HumanoidModel`, GeckoLib humanoid, and vanilla `SpiderModel` targets ar
 
 On dedicated servers, reports are keyed by client environment fingerprint. If client environments disagree about whether an entity belongs to one of those supported renderer kinds or is unsupported, that entity is placed in the conflict set instead of being automatically enabled.
 
-If troubleshooting automatic compatibility, the discovery JSON files can be removed while the game/server is stopped. EFPI will recreate them through normal detection.
+The renderer cache is internal generated state, not a place to manually add compatibility targets. Deleting it while the server is stopped is the supported reset mechanism.
 
 ## Shields and Guard Breaks
 
@@ -237,7 +243,7 @@ Posture state is created lazily rather than for every living entity.
 
 The implementation also avoids repeated reflective method discovery, unnecessary Epic Fight patch lookups, maximum-posture recalculation every tick, per-tick posture synchronization, and duplicate Combat Evolution posture processing.
 
-Renderer discovery and runtime mesh preparation happen during renderer-registration/discovery phases rather than every frame.
+Renderer discovery and runtime mesh preparation happen during renderer-registration/discovery phases rather than every frame. Dedicated-server discovery requests reuse the already validated in-memory client snapshot instead of rebaking Gecko meshes on login.
 
 ## Known Limitations
 

@@ -17,6 +17,7 @@ import java.io.Reader;
 import java.io.Writer;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -28,7 +29,9 @@ public final class HumanoidServerDiscoveryStore {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final int SCHEMA_VERSION = 1;
-    private static final String FILE_NAME = "humanoid-server-discovery.json";
+    private static final String CACHE_DIRECTORY = "cache";
+    private static final String FILE_NAME = "renderer-discovery.json";
+    private static final String LEGACY_FILE_NAME = "humanoid-server-discovery.json";
     private static final int MAX_REPORT_ENVIRONMENTS = 64;
 
     private static State state = State.fresh("");
@@ -183,6 +186,7 @@ public final class HumanoidServerDiscoveryStore {
     }
 
     private static State load() {
+        migrateLegacyPath();
         Path path = path();
         if (!Files.isRegularFile(path)) {
             return State.fresh("");
@@ -274,6 +278,21 @@ public final class HumanoidServerDiscoveryStore {
         }
     }
 
+    private static void migrateLegacyPath() {
+        Path current = path();
+        Path legacy = legacyPath();
+        if (Files.exists(current) || !Files.isRegularFile(legacy)) {
+            return;
+        }
+        try {
+            Files.createDirectories(current.getParent());
+            Files.move(legacy, current, StandardCopyOption.REPLACE_EXISTING);
+            LOGGER.info("Moved EFPI renderer discovery cache to {}", current);
+        } catch (IOException exception) {
+            LOGGER.warn("Failed to move legacy EFPI renderer discovery cache {}", legacy, exception);
+        }
+    }
+
     private static boolean hasOverlap(Set<ResourceLocation> first, Set<ResourceLocation> second) {
         Set<ResourceLocation> overlap = new HashSet<>(first);
         overlap.retainAll(second);
@@ -325,7 +344,14 @@ public final class HumanoidServerDiscoveryStore {
     private static Path path() {
         return FMLPaths.CONFIGDIR.get()
                 .resolve(EpicFightPostureIntegration.MODID)
+                .resolve(CACHE_DIRECTORY)
                 .resolve(FILE_NAME);
+    }
+
+    private static Path legacyPath() {
+        return FMLPaths.CONFIGDIR.get()
+                .resolve(EpicFightPostureIntegration.MODID)
+                .resolve(LEGACY_FILE_NAME);
     }
 
     public record ActiveTargets(

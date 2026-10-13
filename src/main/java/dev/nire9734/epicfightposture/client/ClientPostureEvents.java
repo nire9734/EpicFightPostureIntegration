@@ -1,14 +1,16 @@
 package dev.nire9734.epicfightposture.client;
 
 import dev.nire9734.epicfightposture.EpicFightPostureIntegration;
+import dev.nire9734.epicfightposture.PostureServerConfig;
 import net.minecraft.world.entity.Entity;
 import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
 import net.minecraftforge.event.entity.EntityLeaveLevelEvent;
 import net.minecraftforge.event.level.LevelEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
-/** Event-driven cleanup for client posture cache. */
+/** Event-driven cleanup for client posture and synchronized server-policy caches. */
 @Mod.EventBusSubscriber(
         modid = EpicFightPostureIntegration.MODID,
         bus = Mod.EventBusSubscriber.Bus.FORGE,
@@ -29,6 +31,12 @@ public final class ClientPostureEvents {
         if (event.getLevel().isClientSide()) {
             ClientPostureStore.clear();
         }
+    }
+
+    @SubscribeEvent
+    public static void onLoggingOut(ClientPlayerNetworkEvent.LoggingOut event) {
+        ClientPostureStore.clear();
+        PostureServerConfig.clearRemoteSnapshot();
     }
 
     private ClientPostureEvents() {

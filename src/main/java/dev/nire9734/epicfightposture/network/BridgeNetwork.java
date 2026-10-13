@@ -10,6 +10,8 @@ import net.minecraftforge.network.PacketDistributor;
 import net.minecraftforge.network.simple.SimpleChannel;
 
 public final class BridgeNetwork {
+    // Public 1.1.0 used protocol 1. The unreleased 2.0.0 contract remains protocol 2,
+    // including renderer discovery and server-settings synchronization packets.
     private static final String VERSION = "2";
     private static SimpleChannel channel;
     private static boolean initialized;
@@ -41,6 +43,12 @@ public final class BridgeNetwork {
                 .encoder(HumanoidDiscoveryUploadPacket::encode)
                 .decoder(HumanoidDiscoveryUploadPacket::decode)
                 .consumerMainThread(HumanoidDiscoveryUploadPacket::handle)
+                .add();
+
+        channel.messageBuilder(ServerSettingsSyncPacket.class, 3, NetworkDirection.PLAY_TO_CLIENT)
+                .encoder(ServerSettingsSyncPacket::encode)
+                .decoder(ServerSettingsSyncPacket::decode)
+                .consumerMainThread(ServerSettingsSyncPacket::handle)
                 .add();
     }
 

@@ -49,11 +49,8 @@ public final class VanillaHumanoidCompat {
                     active.vanillaSpider()
             );
         } else {
-            // Keep the file migration/validation path for diagnostics, but never
-            // install a client patch solely from a previous renderer cache. Live
-            // renderer discovery revalidates and prepares the special-state mesh
-            // before registerDiscoveredAtRuntime() is allowed to install a patch.
-            HumanoidCompatDiscoveryStore.load(HumanoidEnvironmentFingerprint.current());
+            // Client renderer compatibility is rediscovered and validated every launch.
+            // The current result stays in memory only; no client discovery file is needed.
             cachedDetected = Map.of();
         }
     }
@@ -108,13 +105,15 @@ public final class VanillaHumanoidCompat {
         return externallyPatched;
     }
 
-    /** Returns whether the server-authoritative switch permits this EFPI-owned lightweight patch. */
+    /** Returns whether server-authoritative settings permit this EFPI-owned lightweight patch. */
     public static synchronized boolean isCompatibilityEnabled(ResourceLocation id) {
         if (id == null) {
             return false;
         }
         CompatibilityKind kind = registeredByEfpi.get(id);
-        return kind != null && compatibilityKindEnabled(kind);
+        return kind != null
+                && !PostureServerConfig.isExplicitlyBlacklisted(id)
+                && compatibilityKindEnabled(kind);
     }
 
     public static boolean isCompatibilityEnabled(EntityType<?> entityType) {
@@ -129,7 +128,10 @@ public final class VanillaHumanoidCompat {
         }
 
         ResourceLocation id = EntityType.getKey(entityType);
-        if (id == null || PostureServerConfig.isBlacklisted(id) || externallyPatched.contains(id)) {
+        // Client discovery happens before a multiplayer server can synchronize its
+        // policy. Prepare every safe renderer target now; synchronized settings
+        // decide whether the lightweight patch is allowed to act after login.
+        if (id == null || externallyPatched.contains(id)) {
             return false;
         }
 
@@ -140,7 +142,6 @@ public final class VanillaHumanoidCompat {
                     id, previous, kind);
         }
         cachedDetected = Map.copyOf(updated);
-        saveClientCache();
 
         try {
             registerRuntime(entityType, kind);
@@ -156,13 +157,12 @@ public final class VanillaHumanoidCompat {
         return entityType == null || PostureServerConfig.isBlacklisted(EntityType.getKey(entityType));
     }
 
-    /** Stores renderer targets that passed the current client compatibility preparation. */
+    /** Stores renderer targets that passed the current client compatibility preparation in memory. */
     public static synchronized void replaceDetectedCache(
             Set<ResourceLocation> vanillaHumanoid,
             Set<ResourceLocation> geckoLibHumanoid,
             Set<ResourceLocation> vanillaSpider) {
         cachedDetected = buildKindMap(vanillaHumanoid, geckoLibHumanoid, vanillaSpider);
-        saveClientCache();
     }
 
     private static boolean compatibilityKindEnabled(CompatibilityKind kind) {
@@ -215,30 +215,6 @@ public final class VanillaHumanoidCompat {
                 result.put(id, kind);
             }
         }
-    }
-
-    private static void saveClientCache() {
-        if (FMLEnvironment.dist != Dist.CLIENT) {
-            return;
-        }
-
-        Set<ResourceLocation> vanilla = new HashSet<>();
-        Set<ResourceLocation> gecko = new HashSet<>();
-        Set<ResourceLocation> spider = new HashSet<>();
-        for (Map.Entry<ResourceLocation, CompatibilityKind> entry : cachedDetected.entrySet()) {
-            switch (entry.getValue()) {
-                case VANILLA_HUMANOID -> vanilla.add(entry.getKey());
-                case GECKOLIB_HUMANOID -> gecko.add(entry.getKey());
-                case VANILLA_SPIDER -> spider.add(entry.getKey());
-            }
-        }
-
-        HumanoidCompatDiscoveryStore.save(
-                HumanoidEnvironmentFingerprint.current(),
-                vanilla,
-                gecko,
-                spider
-        );
     }
 
     private static void registerRuntime(EntityType<?> entityType, CompatibilityKind kind) {
