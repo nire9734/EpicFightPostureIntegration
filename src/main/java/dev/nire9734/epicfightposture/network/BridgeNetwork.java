@@ -10,7 +10,7 @@ import net.minecraftforge.network.PacketDistributor;
 import net.minecraftforge.network.simple.SimpleChannel;
 
 public final class BridgeNetwork {
-    private static final String VERSION = "3";
+    private static final String VERSION = "4";
     private static SimpleChannel channel;
     private static boolean initialized;
 
