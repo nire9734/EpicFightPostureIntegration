@@ -23,29 +23,22 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
-/**
- * Dedicated-server persistence for OP-supplied humanoid renderer observations.
- * Reports are keyed by client environment fingerprint, so multiple players on
- * the same mod environment count as one observation rather than multiple votes.
- */
+/** Dedicated-server persistence for trusted client renderer observations. */
 public final class HumanoidServerDiscoveryStore {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
-    private static final int SCHEMA_VERSION = 2;
+    private static final int SCHEMA_VERSION = 3;
     private static final String FILE_NAME = "humanoid-server-discovery.json";
     private static final int MAX_REPORT_ENVIRONMENTS = 64;
 
     private static State state = State.fresh("");
 
-    /**
-     * Loads the previous server state. A pending list from the previous process
-     * becomes active now, before Epic Fight's entity-patch registry event runs.
-     */
+    /** Promotes the previous process's pending lists before Epic Fight patch registration. */
     public static synchronized ActiveTargets bootstrap(String serverFingerprint) {
         State loaded = load();
         if (!serverFingerprint.equals(loaded.serverFingerprint)) {
             if (!loaded.serverFingerprint.isEmpty()) {
-                LOGGER.info("EFPI Humanoid discovery cache is stale after a server mod-set change; clearing it");
+                LOGGER.info("EFPI renderer discovery cache is stale after a server mod-set change; clearing it");
             }
             state = State.fresh(serverFingerprint);
             save();
@@ -54,36 +47,34 @@ public final class HumanoidServerDiscoveryStore {
 
         state = loaded;
         if (!state.activeVanilla.equals(state.pendingVanilla)
-                || !state.activeGecko.equals(state.pendingGecko)) {
+                || !state.activeGecko.equals(state.pendingGecko)
+                || !state.activeSpider.equals(state.pendingSpider)) {
             state.activeVanilla = new HashSet<>(state.pendingVanilla);
             state.activeGecko = new HashSet<>(state.pendingGecko);
+            state.activeSpider = new HashSet<>(state.pendingSpider);
             LOGGER.info(
-                    "EFPI activated {} dedicated-server Humanoid compatibility target(s): {} vanilla, {} GeckoLib",
-                    state.activeVanilla.size() + state.activeGecko.size(),
+                    "EFPI activated {} dedicated-server renderer compatibility target(s): {} vanilla humanoid, {} GeckoLib humanoid, {} vanilla SpiderModel",
+                    state.activeVanilla.size() + state.activeGecko.size() + state.activeSpider.size(),
                     state.activeVanilla.size(),
-                    state.activeGecko.size()
+                    state.activeGecko.size(),
+                    state.activeSpider.size()
             );
             save();
         }
-        return new ActiveTargets(state.activeVanilla, state.activeGecko);
+        return new ActiveTargets(state.activeVanilla, state.activeGecko, state.activeSpider);
     }
 
     public static synchronized UpdateResult acceptReport(
             String environmentFingerprint,
             Set<ResourceLocation> inspected,
             Set<ResourceLocation> vanillaHumanoid,
-            Set<ResourceLocation> geckoLibHumanoid) {
+            Set<ResourceLocation> geckoLibHumanoid,
+            Set<ResourceLocation> vanillaSpider) {
         if (!state.reports.containsKey(environmentFingerprint)
                 && state.reports.size() >= MAX_REPORT_ENVIRONMENTS) {
-            LOGGER.warn("Ignoring EFPI Humanoid discovery report because {} environment reports are already stored",
+            LOGGER.warn("Ignoring EFPI renderer discovery report because {} environment reports are already stored",
                     MAX_REPORT_ENVIRONMENTS);
-            return new UpdateResult(
-                    false,
-                    false,
-                    state.pendingVanilla.size(),
-                    state.pendingGecko.size(),
-                    state.conflicts.size()
-            );
+            return currentResult(false);
         }
 
         state.reports.put(
@@ -91,19 +82,36 @@ public final class HumanoidServerDiscoveryStore {
                 new Report(
                         new HashSet<>(inspected),
                         new HashSet<>(vanillaHumanoid),
-                        new HashSet<>(geckoLibHumanoid)
+                        new HashSet<>(geckoLibHumanoid),
+                        new HashSet<>(vanillaSpider)
                 )
         );
         rebuildPending();
         save();
 
         boolean restartRequired = !state.pendingVanilla.equals(state.activeVanilla)
-                || !state.pendingGecko.equals(state.activeGecko);
+                || !state.pendingGecko.equals(state.activeGecko)
+                || !state.pendingSpider.equals(state.activeSpider);
         return new UpdateResult(
                 true,
                 restartRequired,
                 state.pendingVanilla.size(),
                 state.pendingGecko.size(),
+                state.pendingSpider.size(),
+                state.conflicts.size()
+        );
+    }
+
+    private static UpdateResult currentResult(boolean accepted) {
+        boolean restartRequired = !state.pendingVanilla.equals(state.activeVanilla)
+                || !state.pendingGecko.equals(state.activeGecko)
+                || !state.pendingSpider.equals(state.activeSpider);
+        return new UpdateResult(
+                accepted,
+                restartRequired,
+                state.pendingVanilla.size(),
+                state.pendingGecko.size(),
+                state.pendingSpider.size(),
                 state.conflicts.size()
         );
     }
@@ -111,12 +119,14 @@ public final class HumanoidServerDiscoveryStore {
     public static synchronized Set<ResourceLocation> active() {
         Set<ResourceLocation> result = new HashSet<>(state.activeVanilla);
         result.addAll(state.activeGecko);
+        result.addAll(state.activeSpider);
         return Set.copyOf(result);
     }
 
     public static synchronized Set<ResourceLocation> pending() {
         Set<ResourceLocation> result = new HashSet<>(state.pendingVanilla);
         result.addAll(state.pendingGecko);
+        result.addAll(state.pendingSpider);
         return Set.copyOf(result);
     }
 
@@ -131,31 +141,44 @@ public final class HumanoidServerDiscoveryStore {
             for (ResourceLocation id : report.inspected) {
                 Observation observation = observations.computeIfAbsent(id, ignored -> new Observation());
                 if (report.vanillaHumanoid.contains(id)) {
-                    observation.vanilla = true;
+                    observation.vanillaHumanoid = true;
                 } else if (report.geckoLibHumanoid.contains(id)) {
-                    observation.gecko = true;
+                    observation.geckoHumanoid = true;
+                } else if (report.vanillaSpider.contains(id)) {
+                    observation.vanillaSpider = true;
                 } else {
-                    observation.nonHumanoid = true;
+                    observation.unsupported = true;
                 }
             }
         }
 
         Set<ResourceLocation> pendingVanilla = new HashSet<>();
         Set<ResourceLocation> pendingGecko = new HashSet<>();
+        Set<ResourceLocation> pendingSpider = new HashSet<>();
         Set<ResourceLocation> conflicts = new HashSet<>();
+
         for (Map.Entry<ResourceLocation, Observation> entry : observations.entrySet()) {
             Observation observation = entry.getValue();
-            if (observation.vanilla && !observation.gecko && !observation.nonHumanoid) {
-                pendingVanilla.add(entry.getKey());
-            } else if (observation.gecko && !observation.vanilla && !observation.nonHumanoid) {
-                pendingGecko.add(entry.getKey());
-            } else if (observation.vanilla || observation.gecko) {
+            int supportedKinds = (observation.vanillaHumanoid ? 1 : 0)
+                    + (observation.geckoHumanoid ? 1 : 0)
+                    + (observation.vanillaSpider ? 1 : 0);
+
+            if (!observation.unsupported && supportedKinds == 1) {
+                if (observation.vanillaHumanoid) {
+                    pendingVanilla.add(entry.getKey());
+                } else if (observation.geckoHumanoid) {
+                    pendingGecko.add(entry.getKey());
+                } else {
+                    pendingSpider.add(entry.getKey());
+                }
+            } else if (supportedKinds > 0) {
                 conflicts.add(entry.getKey());
             }
         }
 
         state.pendingVanilla = pendingVanilla;
         state.pendingGecko = pendingGecko;
+        state.pendingSpider = pendingSpider;
         state.conflicts = conflicts;
     }
 
@@ -174,19 +197,18 @@ public final class HumanoidServerDiscoveryStore {
             JsonObject root = parsed.getAsJsonObject();
             int schema = readInt(root, "schema", -1);
             if (schema != SCHEMA_VERSION) {
-                LOGGER.info(
-                        "Ignoring legacy EFPI dedicated-server Humanoid discovery cache {} with schema {}",
-                        path,
-                        schema
-                );
+                LOGGER.info("Ignoring legacy EFPI dedicated-server renderer discovery cache {} with schema {}",
+                        path, schema);
                 return State.fresh("");
             }
 
             State loaded = State.fresh(readString(root, "server_fingerprint"));
             loaded.activeVanilla = readIds(root.get("active_vanilla"));
             loaded.activeGecko = readIds(root.get("active_geckolib"));
+            loaded.activeSpider = readIds(root.get("active_vanilla_spider"));
             loaded.pendingVanilla = readIds(root.get("pending_vanilla"));
             loaded.pendingGecko = readIds(root.get("pending_geckolib"));
+            loaded.pendingSpider = readIds(root.get("pending_vanilla_spider"));
             loaded.conflicts = readIds(root.get("conflicts"));
 
             JsonElement reportsElement = root.get("reports");
@@ -199,19 +221,19 @@ public final class HumanoidServerDiscoveryStore {
                     Set<ResourceLocation> inspected = readIds(reportObject.get("inspected"));
                     Set<ResourceLocation> vanilla = readIds(reportObject.get("vanilla_humanoid"));
                     Set<ResourceLocation> gecko = readIds(reportObject.get("geckolib_humanoid"));
+                    Set<ResourceLocation> spider = readIds(reportObject.get("vanilla_spider"));
                     vanilla.retainAll(inspected);
                     gecko.retainAll(inspected);
-                    Set<ResourceLocation> overlap = new HashSet<>(vanilla);
-                    overlap.retainAll(gecko);
-                    if (!overlap.isEmpty()) {
+                    spider.retainAll(inspected);
+                    if (hasOverlap(vanilla, gecko) || hasOverlap(vanilla, spider) || hasOverlap(gecko, spider)) {
                         continue;
                     }
-                    loaded.reports.put(entry.getKey(), new Report(inspected, vanilla, gecko));
+                    loaded.reports.put(entry.getKey(), new Report(inspected, vanilla, gecko, spider));
                 }
             }
             return loaded;
         } catch (Exception exception) {
-            LOGGER.warn("Failed to read EFPI dedicated-server Humanoid discovery cache {}; starting empty", path, exception);
+            LOGGER.warn("Failed to read EFPI dedicated-server renderer discovery cache {}; starting empty", path, exception);
             return State.fresh("");
         }
     }
@@ -225,8 +247,10 @@ public final class HumanoidServerDiscoveryStore {
             root.addProperty("server_fingerprint", state.serverFingerprint);
             root.add("active_vanilla", toJsonArray(state.activeVanilla));
             root.add("active_geckolib", toJsonArray(state.activeGecko));
+            root.add("active_vanilla_spider", toJsonArray(state.activeSpider));
             root.add("pending_vanilla", toJsonArray(state.pendingVanilla));
             root.add("pending_geckolib", toJsonArray(state.pendingGecko));
+            root.add("pending_vanilla_spider", toJsonArray(state.pendingSpider));
             root.add("conflicts", toJsonArray(state.conflicts));
 
             JsonObject reports = new JsonObject();
@@ -237,6 +261,7 @@ public final class HumanoidServerDiscoveryStore {
                         report.add("inspected", toJsonArray(entry.getValue().inspected));
                         report.add("vanilla_humanoid", toJsonArray(entry.getValue().vanillaHumanoid));
                         report.add("geckolib_humanoid", toJsonArray(entry.getValue().geckoLibHumanoid));
+                        report.add("vanilla_spider", toJsonArray(entry.getValue().vanillaSpider));
                         reports.add(entry.getKey(), report);
                     });
             root.add("reports", reports);
@@ -245,15 +270,19 @@ public final class HumanoidServerDiscoveryStore {
                 GSON.toJson(root, writer);
             }
         } catch (IOException exception) {
-            LOGGER.warn("Failed to write EFPI dedicated-server Humanoid discovery cache {}", path, exception);
+            LOGGER.warn("Failed to write EFPI dedicated-server renderer discovery cache {}", path, exception);
         }
+    }
+
+    private static boolean hasOverlap(Set<ResourceLocation> first, Set<ResourceLocation> second) {
+        Set<ResourceLocation> overlap = new HashSet<>(first);
+        overlap.retainAll(second);
+        return !overlap.isEmpty();
     }
 
     private static JsonArray toJsonArray(Set<ResourceLocation> ids) {
         JsonArray array = new JsonArray();
-        ids.stream()
-                .sorted(Comparator.comparing(ResourceLocation::toString))
-                .forEach(id -> array.add(id.toString()));
+        ids.stream().sorted(Comparator.comparing(ResourceLocation::toString)).forEach(id -> array.add(id.toString()));
         return array;
     }
 
@@ -299,14 +328,18 @@ public final class HumanoidServerDiscoveryStore {
                 .resolve(FILE_NAME);
     }
 
-    public record ActiveTargets(Set<ResourceLocation> vanillaHumanoid, Set<ResourceLocation> geckoLibHumanoid) {
+    public record ActiveTargets(
+            Set<ResourceLocation> vanillaHumanoid,
+            Set<ResourceLocation> geckoLibHumanoid,
+            Set<ResourceLocation> vanillaSpider) {
         public ActiveTargets {
             vanillaHumanoid = vanillaHumanoid == null ? Set.of() : Set.copyOf(vanillaHumanoid);
             geckoLibHumanoid = geckoLibHumanoid == null ? Set.of() : Set.copyOf(geckoLibHumanoid);
+            vanillaSpider = vanillaSpider == null ? Set.of() : Set.copyOf(vanillaSpider);
         }
 
         public static ActiveTargets empty() {
-            return new ActiveTargets(Set.of(), Set.of());
+            return new ActiveTargets(Set.of(), Set.of(), Set.of());
         }
     }
 
@@ -315,30 +348,35 @@ public final class HumanoidServerDiscoveryStore {
             boolean restartRequired,
             int pendingVanillaCount,
             int pendingGeckoCount,
+            int pendingSpiderCount,
             int conflictCount) {
         public int pendingCount() {
-            return pendingVanillaCount + pendingGeckoCount;
+            return pendingVanillaCount + pendingGeckoCount + pendingSpiderCount;
         }
     }
 
     private static final class Observation {
-        boolean vanilla;
-        boolean gecko;
-        boolean nonHumanoid;
+        boolean vanillaHumanoid;
+        boolean geckoHumanoid;
+        boolean vanillaSpider;
+        boolean unsupported;
     }
 
     private static final class Report {
         final Set<ResourceLocation> inspected;
         final Set<ResourceLocation> vanillaHumanoid;
         final Set<ResourceLocation> geckoLibHumanoid;
+        final Set<ResourceLocation> vanillaSpider;
 
         Report(
                 Set<ResourceLocation> inspected,
                 Set<ResourceLocation> vanillaHumanoid,
-                Set<ResourceLocation> geckoLibHumanoid) {
+                Set<ResourceLocation> geckoLibHumanoid,
+                Set<ResourceLocation> vanillaSpider) {
             this.inspected = inspected;
             this.vanillaHumanoid = vanillaHumanoid;
             this.geckoLibHumanoid = geckoLibHumanoid;
+            this.vanillaSpider = vanillaSpider;
         }
     }
 
@@ -346,8 +384,10 @@ public final class HumanoidServerDiscoveryStore {
         final String serverFingerprint;
         Set<ResourceLocation> activeVanilla = new HashSet<>();
         Set<ResourceLocation> activeGecko = new HashSet<>();
+        Set<ResourceLocation> activeSpider = new HashSet<>();
         Set<ResourceLocation> pendingVanilla = new HashSet<>();
         Set<ResourceLocation> pendingGecko = new HashSet<>();
+        Set<ResourceLocation> pendingSpider = new HashSet<>();
         Set<ResourceLocation> conflicts = new HashSet<>();
         final Map<String, Report> reports = new HashMap<>();
 
