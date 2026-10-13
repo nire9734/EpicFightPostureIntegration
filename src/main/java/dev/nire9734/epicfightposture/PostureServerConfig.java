@@ -1,6 +1,7 @@
 package dev.nire9734.epicfightposture;
 
 import com.mojang.logging.LogUtils;
+import dev.nire9734.epicfightposture.compat.humanoid.VanillaHumanoidCompat;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraftforge.common.ForgeConfigSpec;
 import net.minecraftforge.fml.event.config.ModConfigEvent;
@@ -90,8 +91,20 @@ public final class PostureServerConfig {
         return ENABLE_GECKOLIB_HUMANOID_COMPATIBILITY.get();
     }
 
+    /**
+     * Treat an EFPI-owned automatic compatibility target as posture-disabled when
+     * its server switch is off. Existing explicit Epic Fight patches are not
+     * affected because only EFPI-owned registrations participate in this check.
+     */
     public static boolean isBlacklisted(ResourceLocation entityId) {
-        return entityId != null && blacklist.contains(entityId);
+        if (entityId == null) {
+            return false;
+        }
+        if (blacklist.contains(entityId)) {
+            return true;
+        }
+        return VanillaHumanoidCompat.isRegisteredByEfpi(entityId)
+                && !VanillaHumanoidCompat.isCompatibilityEnabled(entityId);
     }
 
     @SubscribeEvent
