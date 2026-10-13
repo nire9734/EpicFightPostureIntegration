@@ -1,10 +1,12 @@
 package dev.nire9734.epicfightposture.compat.humanoid.client;
 
 import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.logging.LogUtils;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntList;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
+import org.slf4j.Logger;
 import software.bernie.geckolib.cache.object.BakedGeoModel;
 import software.bernie.geckolib.cache.object.GeoBone;
 import software.bernie.geckolib.cache.object.GeoCube;
@@ -33,17 +35,15 @@ import java.util.Set;
 import java.util.function.Supplier;
 
 /**
- * Generic GeckoLib humanoid analyser + mesh bridge.
+ * Generic GeckoLib humanoid analyser + special-state mesh bridge.
  *
- * <p>Humanoid detection is independent from mesh conversion, so a renderer
- * experiment cannot remove posture/execution compatibility. The normal mesh
- * path stays deliberately conservative. Only a limb that has no explicit
- * forearm/lower-leg bone is delegated to Epic Fight 20.14.x's own
- * GeoModelTransformer LimbPartTransformer. That transformer clips the cube at
- * the BIPED elbow/knee plane and creates the exact Arm/Hand/Elbow or
- * Thigh/Leg/Knee joint assignment used by Epic Fight.</p>
+ * <p>Humanoid detection is independent from mesh conversion. A failed renderer
+ * bake must never remove posture/execution compatibility. One-bone limb geometry
+ * is delegated to Epic Fight's own GeoModelTransformer limb splitter, while all
+ * unrelated Gecko child/marker bones stay on the conservative one-joint path.</p>
  */
 public final class GeckoHumanoidModelAdapter {
+    private static final Logger LOGGER = LogUtils.getLogger();
     private static final MeshPartDefinition PART = new RuntimeGeoPart("gecko_humanoid");
 
     private static final int ROOT = 0;
@@ -91,7 +91,7 @@ public final class GeckoHumanoidModelAdapter {
 
     private static volatile LimbTransformers cachedLimbTransformers;
 
-    /** Pure semantic probe. No mesh generation is performed here. */
+    /** Semantic-only compatibility probe; never performs a mesh bake. */
     public static ProbeResult probe(BakedGeoModel model) {
         Resolution resolution = resolve(model);
         return resolution == null
@@ -134,9 +134,6 @@ public final class GeckoHumanoidModelAdapter {
             if (rightLowerLeg != null) joints.put(rightLowerLeg, LEG_R);
             if (leftLowerLeg != null) joints.put(leftLowerLeg, LEG_L);
 
-            // Only one-bone limbs need synthetic elbow/knee geometry. Rigs with
-            // an explicit lower limb already have a real hinge and stay on the
-            // conservative mapping above.
             Map<GeoBone, HumanoidModelTransformer.PartTransformer<GeoCube>> splitters = new HashMap<>();
             LimbTransformers ef = limbTransformers();
             if (rightForearm == null) splitters.put(resolution.rightArm(), ef.rightArm());
@@ -149,6 +146,7 @@ public final class GeckoHumanoidModelAdapter {
                     ? Result.unsupported("mesh bake returned null")
                     : Result.supported(mesh);
         } catch (Throwable throwable) {
+            LOGGER.warn("EFPI Gecko humanoid special-state mesh bake failed", throwable);
             return Result.unsupported("mesh bake failed: " + throwable.getClass().getSimpleName());
         }
     }
@@ -203,7 +201,7 @@ public final class GeckoHumanoidModelAdapter {
         PoseStack stack = new PoseStack();
 
         for (GeoBone top : model.topLevelBones()) {
-            bakeBone(top, ROOT, null, joints, splitters, stack, vertices, indices);
+            bakeBone(top, ROOT, joints, splitters, stack, vertices, indices);
         }
 
         if (vertices.isEmpty()) {
@@ -212,10 +210,13 @@ public final class GeckoHumanoidModelAdapter {
         return SingleGroupVertexBuilder.loadVertexInformation(vertices, indices);
     }
 
+    /**
+     * Splitters are intentionally local to the exact semantic limb bone. They
+     * are never inherited by marker/armor/accessory child bones.
+     */
     private static void bakeBone(
             GeoBone bone,
             int inheritedJoint,
-            HumanoidModelTransformer.PartTransformer<GeoCube> inheritedSplitter,
             Map<GeoBone, Integer> joints,
             Map<GeoBone, HumanoidModelTransformer.PartTransformer<GeoCube>> splitters,
             PoseStack stack,
@@ -226,8 +227,7 @@ public final class GeckoHumanoidModelAdapter {
         }
 
         int joint = joints.getOrDefault(bone, inheritedJoint);
-        HumanoidModelTransformer.PartTransformer<GeoCube> activeSplitter =
-                splitters.getOrDefault(bone, inheritedSplitter);
+        HumanoidModelTransformer.PartTransformer<GeoCube> splitter = splitters.get(bone);
 
         stack.pushPose();
         RenderUtils.prepMatrixForBone(stack, bone);
@@ -242,8 +242,8 @@ public final class GeckoHumanoidModelAdapter {
             RenderUtils.rotateMatrixAroundCube(stack, cube);
             RenderUtils.translateAwayFromPivotPoint(stack, cube);
 
-            if (activeSplitter != null) {
-                bakeSplitCube(activeSplitter, stack, cube, vertices, indices);
+            if (splitter != null && canUseEfLimbSplitter(cube)) {
+                bakeSplitCube(splitter, stack, cube, vertices, indices);
             } else {
                 bakeSimpleCube(joint, stack, cube, vertices, indices);
             }
@@ -253,24 +253,61 @@ public final class GeckoHumanoidModelAdapter {
 
         if (!bone.isHidingChildren()) {
             for (GeoBone child : bone.getChildBones()) {
-                bakeBone(
-                        child,
-                        joint,
-                        activeSplitter,
-                        joints,
-                        splitters,
-                        stack,
-                        vertices,
-                        indices);
+                bakeBone(child, joint, joints, splitters, stack, vertices, indices);
             }
         }
         stack.popPose();
     }
 
     /**
-     * Runs one cube through Epic Fight's own LimbPartTransformer in an isolated
-     * local vertex/index buffer, then rebases its indices into the already-built
-     * conservative mesh. This avoids depending on IndexCounter's private state.
+     * EF 20.14.x's LimbPartTransformer assumes every cube face exists, contains
+     * four valid vertices and has a cardinal local-space normal. Gecko models may
+     * contain marker/placeholder cubes that violate those assumptions.
+     */
+    private static boolean canUseEfLimbSplitter(GeoCube cube) {
+        GeoQuad[] quads = cube == null ? null : cube.quads();
+        if (quads == null || quads.length == 0) {
+            return false;
+        }
+
+        for (GeoQuad quad : quads) {
+            if (!isRenderableQuad(quad) || !isAxisAlignedUnit(quad.normal())) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean isRenderableQuad(GeoQuad quad) {
+        if (quad == null || quad.normal() == null) {
+            return false;
+        }
+        GeoVertex[] vertices = quad.vertices();
+        if (vertices == null || vertices.length != 4) {
+            return false;
+        }
+        for (GeoVertex vertex : vertices) {
+            if (vertex == null || vertex.position() == null) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean isAxisAlignedUnit(Vector3f normal) {
+        if (normal == null) return false;
+        float x = normal.x();
+        float y = normal.y();
+        float z = normal.z();
+
+        return (Math.abs(x) == 1.0F && y == 0.0F && z == 0.0F)
+                || (Math.abs(y) == 1.0F && x == 0.0F && z == 0.0F)
+                || (Math.abs(z) == 1.0F && x == 0.0F && y == 0.0F);
+    }
+
+    /**
+     * Runs a valid one-bone limb cube through Epic Fight's exact limb splitter,
+     * then rebases the local output into the runtime mesh.
      */
     private static void bakeSplitCube(
             HumanoidModelTransformer.PartTransformer<GeoCube> splitter,
@@ -307,7 +344,7 @@ public final class GeckoHumanoidModelAdapter {
             List<SingleGroupVertexBuilder> vertices,
             Map<MeshPartDefinition, IntList> indices) {
         for (GeoQuad quad : cube.quads()) {
-            if (quad == null || quad.vertices() == null || quad.vertices().length != 4) {
+            if (!isRenderableQuad(quad)) {
                 continue;
             }
 
