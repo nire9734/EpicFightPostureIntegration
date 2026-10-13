@@ -22,6 +22,8 @@ public final class PostureServerConfig {
     public static final ForgeConfigSpec.DoubleValue MINIMUM_POSTURE;
     public static final ForgeConfigSpec.BooleanValue USE_ARMOR_SCALING;
     public static final ForgeConfigSpec.ConfigValue<List<? extends String>> ENTITY_BLACKLIST;
+    public static final ForgeConfigSpec.BooleanValue ENABLE_VANILLA_HUMANOID_COMPATIBILITY;
+    public static final ForgeConfigSpec.BooleanValue ENABLE_GECKOLIB_HUMANOID_COMPATIBILITY;
     public static final ForgeConfigSpec SPEC;
 
     private static volatile Set<ResourceLocation> blacklist = Set.of();
@@ -48,6 +50,23 @@ public final class PostureServerConfig {
                         value -> value instanceof String
                 );
         BUILDER.pop();
+
+        BUILDER.push("compatibility");
+        ENABLE_VANILLA_HUMANOID_COMPATIBILITY = BUILDER
+                .comment(
+                        "Enable EFPI's automatic compatibility for entities rendered with Minecraft HumanoidModel.",
+                        "Default: true. Restart the game/server after changing this option."
+                )
+                .define("enable_vanilla_humanoid_compatibility", true);
+        ENABLE_GECKOLIB_HUMANOID_COMPATIBILITY = BUILDER
+                .comment(
+                        "Enable EFPI's automatic compatibility for humanoid GeckoLib entity models.",
+                        "Default: true. This has no effect when GeckoLib is not installed.",
+                        "Restart the game/server after changing this option."
+                )
+                .define("enable_geckolib_humanoid_compatibility", true);
+        BUILDER.pop();
+
         SPEC = BUILDER.build();
     }
 
@@ -61,6 +80,14 @@ public final class PostureServerConfig {
 
     public static boolean useArmorScaling() {
         return USE_ARMOR_SCALING.get();
+    }
+
+    public static boolean vanillaHumanoidCompatibilityEnabled() {
+        return ENABLE_VANILLA_HUMANOID_COMPATIBILITY.get();
+    }
+
+    public static boolean geckoLibHumanoidCompatibilityEnabled() {
+        return ENABLE_GECKOLIB_HUMANOID_COMPATIBILITY.get();
     }
 
     public static boolean isBlacklisted(ResourceLocation entityId) {
