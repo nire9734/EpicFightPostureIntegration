@@ -1,82 +1,101 @@
 # Epic Fight Posture Integration
 
-Epic Fight Posture Integration adds a posture system to Epic Fight entities that are compatible with Combat Evolution's execution system.
+Epic Fight Posture Integration adds a server-authoritative posture system to Epic Fight entities and connects posture breaks to Combat Evolution executions.
 
-The mod does **not** replace or modify the existing Epic Fight AI, targeting, pathfinding, or attack behavior of supported entities. Instead, it adds a separate posture layer that works alongside Epic Fight and Combat Evolution.
-
-Reduce an enemy's posture through attacks and parries, break their posture, and open them up for Combat Evolution executions.
+The mod is designed to preserve the original mob implementation. It does **not** replace normal AI, targeting, pathfinding, attacks, or ordinary rendering for automatically supported mobs. Automatic compatibility uses a lightweight Epic Fight patch only where necessary for posture-break and execution-related behavior.
 
 ## Features
 
 - Adds posture to compatible Epic Fight entities
-- Preserves existing Epic Fight AI and combat behavior
-- Uses Epic Fight Impact values to calculate posture damage
-- Applies posture damage when enemy attacks are successfully parried
+- Uses Epic Fight Impact values for posture damage
+- Applies posture damage to attackers after successful parries
 - Supports posture breaks and Combat Evolution executions
-- Supports standard humanoid Epic Fight entity patches
-- Supports Combat Evolution `CustomExecuteEntity` implementations
-- Automatically supports compatible modded entities
+- Preserves existing mob AI and normal rendering
+- Automatically supports compatible Minecraft `HumanoidModel` mobs
+- Automatically detects supported GeckoLib humanoid models
+- Uses Epic Fight BIPED animation for special posture states
+- Converts supported GeckoLib humanoid geometry to an Epic Fight skinned mesh
+- Preserves supported GeckoLib per-bone equipment and attachment rendering during special states
+- Respects Epic Fight patches supplied by Epic Fight or other compatibility mods instead of replacing them
+- Supports `CustomExecuteEntity` implementations from Combat Evolution
 - Displays health and posture together in the combat HUD
-- Supports multiplayer synchronization with server-authoritative posture state
-- Includes configurable posture scaling and an entity blacklist
-- Avoids unnecessary per-tick processing through lazy state creation and throttled synchronization
+- Uses server-authoritative multiplayer posture state
+- Includes posture scaling, blacklist, and automatic-compatibility server settings
+- Includes a client-side Combat Evolution execution sound volume setting
 
 ## Requirements
 
 - Minecraft 1.20.1
 - Forge 47.4.10 or newer within the 47.x series
-- Epic Fight 20.14.17 or newer compatible 20.14.x version
-- Combat Evolution 2.2.8 or newer compatible 2.2.x / 2.3.x version
+- Epic Fight 20.14.17 or another compatible 20.14.x release
+- Combat Evolution 2.2.8 through the compatible 2.3.x series
 
 Epic Fight and Combat Evolution are required on both the client and server.
 
-## How It Works
+GeckoLib is **optional**. It is only required when using GeckoLib mobs that need EFPI's automatic Gecko humanoid compatibility.
 
-Each supported entity receives a separate posture value. Maximum posture is calculated primarily from maximum health, armor, and armor toughness.
+The main tested development combination for 2.0.0 is:
 
-Epic Fight attacks deal posture damage based on their Impact value. Successful parries also damage the attacker's posture, allowing defensive play to create posture breaks without first reducing the target's health.
+- Forge 47.4.10
+- Epic Fight 20.14.17
+- Combat Evolution 2.3.1
+- GeckoLib 4.8.4 when Gecko compatibility is used
 
-When posture reaches zero, the entity enters a broken state. If the entity supports Combat Evolution execution behavior, it can become vulnerable to execution. During execution, posture remains at zero. If the entity is not executed, it transitions into recovery and gradually returns to its normal state.
+## How Posture Works
 
-## Supported Entities
+Each eligible entity receives a separate posture value. Maximum posture is calculated primarily from maximum health and, when enabled, armor and armor toughness.
 
-An entity can receive posture when it has a compatible Epic Fight patch and can participate in Combat Evolution's execution system.
+Epic Fight attacks deal posture damage based on Impact. Successful parries also damage the attacker's posture, allowing defensive play to create posture breaks without first reducing health.
 
-The mod recognizes entities whose Epic Fight patch either:
+When posture reaches zero, EFPI attempts to apply the entity's neutralize/guard-break animation. During execution, posture remains locked at zero. If the entity is not executed, it enters recovery and returns to normal behavior.
 
-- uses a humanoid armature compatible with Combat Evolution's standard execution system; or
-- implements Combat Evolution's `CustomExecuteEntity` support.
+Entities already managed by Combat Evolution's own native posture implementation are left to Combat Evolution to avoid duplicate posture systems.
 
-This applies to both vanilla and modded entities. There is no vanilla-only restriction.
+## Automatic Humanoid Compatibility
 
-Entities already managed directly by Combat Evolution's own posture implementation are left to Combat Evolution so that duplicate posture systems, break handling, and HUD behavior are avoided.
+Version 2.0.0 adds two independent automatic compatibility systems.
 
-## Modded Mob Compatibility
+### Minecraft HumanoidModel
 
-Per-mod compatibility code is normally not required.
+EFPI inspects registered entity renderers and detects living entities whose renderer model is a Minecraft `HumanoidModel`.
 
-If another mod or compatibility addon correctly gives an entity an Epic Fight patch that meets the supported execution conditions, Epic Fight Posture Integration can detect it automatically.
+For compatible targets, EFPI registers a lightweight BIPED Epic Fight patch. The original renderer remains active during normal gameplay. Epic Fight's patched renderer is used only when EFPI needs special posture-state rendering.
 
-### Confirmed Compatibility
+The source `HumanoidModel` is converted through Epic Fight's own vanilla humanoid model transformer where possible.
 
-The following combination has been tested successfully:
+### GeckoLib Humanoids
 
-- Illager Invasion
-- Epic Fight - Mod Compat
+When GeckoLib is installed, EFPI also inspects `GeoEntityRenderer` models.
 
-Other Epic Fight-compatible mob mods may also work automatically. Compatibility ultimately depends on the Epic Fight patch and Combat Evolution execution support provided to the entity.
+A Gecko model is accepted only when its bone hierarchy can be classified as a supported humanoid layout. Detection is semantic rather than tied to one specific mod or entity name.
 
-## Shields and Guard Breaks
+For accepted models EFPI can:
 
-When an entity's posture is broken, active item use such as shield blocking is interrupted. The same check is performed again when execution begins.
+- register the same lightweight BIPED patch used for automatic humanoid compatibility;
+- convert supported Geo model geometry into an Epic Fight `SkinnedMesh`;
+- split suitable one-bone arms and legs so Epic Fight elbow and knee joints can animate them;
+- replay supported Gecko per-bone item, armor, and attachment layers using the Epic Fight joint pose; and
+- bridge certain post-render attachment paths that read Gecko bone transforms directly.
 
-The shield itself is not removed or damaged by this system. After the break or execution state ends, the entity's normal AI may use the shield again.
+Normal GeckoLib animation and rendering remain untouched outside EFPI's special posture states.
 
-## HUD
+Not every GeckoLib model is guaranteed to be compatible. Non-humanoid, ambiguous, highly custom, or dynamically selected models can be rejected safely.
 
-Supported entities use a combined Health + Posture display. The HUD can appear when the entity has taken health damage, its posture has been reduced, it is posture-broken, it is being executed, or it is recovering from a posture break.
+### Existing Epic Fight Patches Take Priority
 
-This allows posture damage caused only by parries to remain visible even while the enemy is still at full health.
+EFPI does not overwrite a patch already supplied by Epic Fight, another compatibility addon, or another earlier patch-registry subscriber.
+
+The automatic compatibility switches described below apply only to lightweight patches owned by EFPI. They do not disable explicit Epic Fight compatibility supplied by another mod.
+
+## Confirmed Compatibility
+
+The automatic compatibility system has been tested with:
+
+- vanilla-style and modded entities using Minecraft `HumanoidModel`;
+- Iron's Spells 'n Spellbooks humanoid GeckoLib mobs, including special-state body animation, equipment/attachment rendering, and its humanoid cape path; and
+- additional GeckoLib humanoid models during development.
+
+Compatibility with every third-party renderer or custom Geo layer cannot be guaranteed.
 
 ## Server Configuration
 
@@ -93,61 +112,125 @@ Example:
 
 # Global maximum posture multiplier.
 # 1.0 = default
-# 0.5 = 50%
-# 2.0 = 200%
 global_multiplier = 1.0
 
-# Minimum maximum posture an eligible entity can have.
+# Minimum maximum posture an eligible mob can have.
 minimum_posture = 1.0
 
-# Whether Armor and Armor Toughness affect maximum posture.
+# Whether armor and armor toughness affect maximum posture.
 use_armor_scaling = true
 
-# Entities that will not use the posture system.
-# Use entity IDs in the format "namespace:entity".
+# Entities excluded from EFPI posture and automatic Humanoid compatibility.
+# Use namespace:entity IDs.
 entity_blacklist = []
+
+[compatibility]
+
+# Automatic compatibility for Minecraft HumanoidModel entities.
+enable_vanilla_humanoid_compatibility = true
+
+# Automatic compatibility for supported GeckoLib humanoid entities.
+enable_geckolib_humanoid_compatibility = true
 ```
 
-`global_multiplier` multiplies the final calculated maximum posture. `minimum_posture` sets the lowest possible maximum posture after scaling. When `use_armor_scaling` is disabled, armor and armor toughness do not contribute to posture scaling.
+Both automatic compatibility options default to `true`.
 
-Both vanilla and modded entity IDs can be added to `entity_blacklist`. Unsupported entities do not need to be blacklisted; they are ignored automatically.
+After changing a compatibility option, reload the world/server so patch ownership and server configuration are consistent. In single-player, return to the title screen and reopen the world. On a dedicated server, restart the server process.
+
+`entity_blacklist` remains the per-entity override. Blacklisted IDs do not use EFPI posture or EFPI automatic Humanoid compatibility.
 
 ## Client Configuration
 
 The client configuration is stored at:
 
 ```text
-config/epicfight_posture_integration-client.toml
+config/epicfight_posture_integration/client.toml
 ```
 
-It can also be changed directly in-game from:
+It can also be changed in-game from:
 
 ```text
 Mods -> Epic Fight Posture Integration -> Config
 ```
 
-The **Execution Sound Volume** slider changes only the local player's Combat Evolution execution sound effects. It ranges from 0% (muted) to 100% (Combat Evolution's original volume) and defaults to 70%. This setting is client-side and is not synchronized by multiplayer servers.
+The **Execution Sound Volume** setting changes only the local player's Combat Evolution execution sound effects. It ranges from 0% to 100% of Combat Evolution's original volume and defaults to 70%.
 
 ## Multiplayer
 
-Posture is controlled by the server. Clients receive synchronized posture information for entities they are tracking.
+Posture state is controlled by the server. Clients receive synchronized posture information only for entities they are tracking.
 
-Important state changes such as posture damage, parries, posture breaks, execution start, recovery start, and return to normal state are synchronized immediately. Continuous recovery uses reduced-frequency synchronization to avoid unnecessary network traffic.
+Important state changes such as posture damage, posture breaks, execution start, recovery start, and return to normal are synchronized immediately. Continuous recovery uses reduced-frequency synchronization to avoid unnecessary traffic.
+
+EFPI 2.0.0 uses a revised network protocol. Client and server should use the same EFPI version.
+
+## Dedicated Server Humanoid Discovery
+
+A dedicated server cannot inspect Minecraft client renderer classes directly. EFPI therefore uses a guarded client-report system for automatic Humanoid compatibility.
+
+The flow is:
+
+1. An operator-level client joins the dedicated server.
+2. The server sends a one-time discovery request with a nonce.
+3. The client scans its registered renderers and classifies compatible vanilla `HumanoidModel` and GeckoLib humanoid entities separately.
+4. The result is sent back to the server.
+5. The server validates entity IDs and stores the result as pending discovery data.
+6. Restart the dedicated server to promote the pending compatibility targets to active targets before Epic Fight's patch registry runs.
+
+Only players with the required operator permission level can submit discovery reports.
+
+The dedicated-server cache is stored at:
+
+```text
+config/epicfight_posture_integration/humanoid-server-discovery.json
+```
+
+The client renderer cache is stored at:
+
+```text
+config/epicfight_posture_integration/humanoid-detected.json
+```
+
+Both caches use environment fingerprints derived from loaded mod IDs and versions. When the relevant mod environment changes, stale discovery data is ignored rather than reused blindly.
+
+Version 2.0.0 introduces a new discovery-cache schema. Older automatic-Humanoid discovery caches are intentionally ignored and rebuilt.
+
+## Cache and Conflict Handling
+
+Vanilla `HumanoidModel` and GeckoLib humanoid targets are stored separately.
+
+On dedicated servers, reports are keyed by client environment fingerprint. If client environments disagree about whether an entity is vanilla-humanoid, Gecko-humanoid, or non-humanoid, that entity is placed in the conflict set instead of being automatically enabled.
+
+If troubleshooting automatic compatibility, the discovery JSON files can be removed while the game/server is stopped. EFPI will recreate them through normal detection.
+
+## Shields and Guard Breaks
+
+When posture is broken, active item use such as shield blocking is interrupted. The same check is performed when execution begins.
+
+The shield itself is not removed or damaged by EFPI. After the special state ends, the entity's original AI may use it again.
+
+## HUD
+
+Supported entities use a combined Health + Posture display. The HUD can appear when health has been reduced, posture has been reduced, the entity is posture-broken, it is being executed, or it is recovering.
+
+This allows posture damage caused only by parries to remain visible while health is still full.
 
 ## Performance
 
-Posture state is created only when needed rather than being initialized for every possible entity in the world.
+Posture state is created lazily rather than for every living entity.
 
 The implementation also avoids repeated reflective method discovery, unnecessary Epic Fight patch lookups, maximum-posture recalculation every tick, per-tick posture synchronization, and duplicate Combat Evolution posture processing.
 
+Renderer discovery and runtime mesh preparation happen during renderer-registration/discovery phases rather than every frame.
+
 ## Known Limitations
 
-- Compatibility depends on the Epic Fight patch provided to an entity.
-- A visually humanoid mob is not automatically compatible.
-- Entities without a valid Epic Fight patch cannot receive posture.
-- Execution compatibility ultimately depends on Combat Evolution.
-- Some third-party Epic Fight compatibility addons may implement unusual guard, stun, or animation behavior that requires additional testing.
-- Compatibility with every Epic Fight addon or mob mod cannot be guaranteed.
+- Automatic compatibility requires a renderer/model structure EFPI can classify safely.
+- A visually humanoid mob is not automatically compatible if its renderer or bone hierarchy is unconventional.
+- GeckoLib models with dynamic per-entity model resources may fail closed instead of being guessed.
+- Highly custom full-model Geo render layers, physics systems, or mod-specific post-render code may require additional compatibility work.
+- Execution compatibility ultimately depends on Combat Evolution's execution behavior.
+- Existing third-party Epic Fight patches take priority over EFPI's automatic lightweight patch.
+- Dedicated servers require a trusted operator client to discover renderer-based compatibility targets, followed by a restart when the pending set changes.
 
 ## Building From Source
 
@@ -167,9 +250,24 @@ Linux/macOS:
 
 The generated JAR is placed in `build/libs/`.
 
+GitHub Actions performs the same project build and uploads the generated JAR as an artifact.
+
 ## Reporting Issues
 
-When reporting a compatibility issue, include the Minecraft, Forge, Epic Fight, Combat Evolution, and Epic Fight Posture Integration versions; the affected entity ID; the mod that adds the entity; any Epic Fight compatibility addon used; and relevant logs. For performance problems, a Spark profiler result is also useful.
+For compatibility issues, include:
+
+- Minecraft version
+- Forge version
+- Epic Fight version
+- Combat Evolution version
+- GeckoLib version if applicable
+- Epic Fight Posture Integration version
+- affected entity ID
+- mod that adds the entity
+- any Epic Fight compatibility addon in use
+- relevant logs
+
+For performance issues, a Spark profiler result is also useful.
 
 ## Credits
 
@@ -177,8 +275,9 @@ Epic Fight Posture Integration is an unofficial third-party addon.
 
 - **Epic Fight** — Antikythera Studios
 - **Combat Evolution** — ShelMarow
+- **GeckoLib** — optional compatibility target/API
 
-This project is not affiliated with or endorsed by the developers of Epic Fight or Combat Evolution. Epic Fight and Combat Evolution remain separate projects and are distributed under their respective licenses.
+This project is not affiliated with or endorsed by the developers of Epic Fight, Combat Evolution, or GeckoLib. Those projects remain separate and are distributed under their respective licenses.
 
 ## License
 
