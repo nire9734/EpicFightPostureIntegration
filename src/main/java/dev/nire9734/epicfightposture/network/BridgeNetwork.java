@@ -4,12 +4,13 @@ import dev.nire9734.epicfightposture.EpicFightPostureIntegration;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
+import net.minecraftforge.network.NetworkDirection;
 import net.minecraftforge.network.NetworkRegistry;
 import net.minecraftforge.network.PacketDistributor;
 import net.minecraftforge.network.simple.SimpleChannel;
 
 public final class BridgeNetwork {
-    private static final String VERSION = "2";
+    private static final String VERSION = "3";
     private static SimpleChannel channel;
     private static boolean initialized;
 
@@ -24,19 +25,19 @@ public final class BridgeNetwork {
                 VERSION::equals
         );
 
-        channel.messageBuilder(PostureSyncPacket.class, 0)
+        channel.messageBuilder(PostureSyncPacket.class, 0, NetworkDirection.PLAY_TO_CLIENT)
                 .encoder(PostureSyncPacket::encode)
                 .decoder(PostureSyncPacket::decode)
                 .consumerMainThread(PostureSyncPacket::handle)
                 .add();
 
-        channel.messageBuilder(HumanoidDiscoveryRequestPacket.class, 1)
+        channel.messageBuilder(HumanoidDiscoveryRequestPacket.class, 1, NetworkDirection.PLAY_TO_CLIENT)
                 .encoder(HumanoidDiscoveryRequestPacket::encode)
                 .decoder(HumanoidDiscoveryRequestPacket::decode)
                 .consumerMainThread(HumanoidDiscoveryRequestPacket::handle)
                 .add();
 
-        channel.messageBuilder(HumanoidDiscoveryUploadPacket.class, 2)
+        channel.messageBuilder(HumanoidDiscoveryUploadPacket.class, 2, NetworkDirection.PLAY_TO_SERVER)
                 .encoder(HumanoidDiscoveryUploadPacket::encode)
                 .decoder(HumanoidDiscoveryUploadPacket::decode)
                 .consumerMainThread(HumanoidDiscoveryUploadPacket::handle)
