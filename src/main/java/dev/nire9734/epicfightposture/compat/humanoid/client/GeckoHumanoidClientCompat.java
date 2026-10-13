@@ -56,9 +56,27 @@ public final class GeckoHumanoidClientCompat {
                 // Dynamic per-entity models fail closed here instead of guessing.
                 ResourceLocation modelLocation = geoModel.getModelResource(null);
                 BakedGeoModel bakedModel = geoModel.getBakedModel(modelLocation);
+
+                // Compatibility discovery must not depend on the renderer bake.
+                GeckoHumanoidModelAdapter.ProbeResult probe = GeckoHumanoidModelAdapter.probe(bakedModel);
+                if (!probe.supported()) {
+                    LOGGER.debug("EFPI Gecko humanoid probe rejected {}: {}", entityId, probe.reason());
+                    continue;
+                }
+
+                compatible.add(entityId);
+                compatibleTypes.add(entityType);
+
+                // Mesh preparation is best-effort. If it fails, the posture patch
+                // is still registered so gauge/break/execution mechanics remain.
                 GeckoHumanoidModelAdapter.Result result = GeckoHumanoidModelAdapter.analyseAndBake(bakedModel);
-                if (!result.supported()) {
-                    LOGGER.debug("EFPI Gecko humanoid probe rejected {}: {}", entityId, result.reason());
+                if (!result.supported() || result.mesh() == null) {
+                    LOGGER.warn(
+                            "EFPI detected Gecko humanoid {} but could not prepare its special-state mesh: {}. "
+                                    + "Posture compatibility remains enabled.",
+                            entityId,
+                            result.reason()
+                    );
                     continue;
                 }
 
@@ -66,12 +84,9 @@ public final class GeckoHumanoidClientCompat {
                         EpicFightPostureIntegration.MODID,
                         "runtime_gecko/" + entityId.getNamespace() + "/" + entityId.getPath()
                 );
-                AssetAccessor<SkinnedMesh> mesh = SelfAccessor.create(runtimeMeshId, result.mesh());
-                RUNTIME_MESHES.put(entityType, mesh);
-                compatible.add(entityId);
-                compatibleTypes.add(entityType);
+                RUNTIME_MESHES.put(entityType, SelfAccessor.create(runtimeMeshId, result.mesh()));
             } catch (Throwable throwable) {
-                LOGGER.debug("EFPI could not inspect GeckoLib model for {}", entityId, throwable);
+                LOGGER.warn("EFPI could not inspect GeckoLib model for {}", entityId, throwable);
             }
         }
 
@@ -87,12 +102,12 @@ public final class GeckoHumanoidClientCompat {
             PatchedRenderersEvent.Add event,
             Set<EntityType<?>> entityTypes) {
         Set<EntityType<?>> alreadyPatched = new HashSet<>(EntityPatchProvider.getPatchedEntities());
-        int registered = 0;
+        int patched = 0;
+        int rendered = 0;
 
         for (EntityType<?> entityType : entityTypes) {
             ResourceLocation entityId = EntityType.getKey(entityType);
-            AssetAccessor<SkinnedMesh> mesh = RUNTIME_MESHES.get(entityType);
-            if (entityId == null || mesh == null) continue;
+            if (entityId == null) continue;
 
             boolean oursAlready = VanillaHumanoidCompat.isRegisteredByEfpi(entityId);
             if (alreadyPatched.contains(entityType) && !oursAlready) {
@@ -103,15 +118,28 @@ public final class GeckoHumanoidClientCompat {
             if (!oursAlready && !VanillaHumanoidCompat.registerDiscoveredAtRuntime(entityType)) {
                 continue;
             }
+            patched++;
+
+            AssetAccessor<SkinnedMesh> mesh = RUNTIME_MESHES.get(entityType);
+            if (mesh == null) {
+                LOGGER.warn(
+                        "EFPI registered Gecko humanoid posture patch for {}, but no special-state mesh is available",
+                        entityId
+                );
+                continue;
+            }
 
             event.addPatchedEntityRenderer(
                     entityType,
                     type -> new SpecialStateGeckoRenderer(mesh, event.getContext())
             );
-            registered++;
+            rendered++;
         }
 
-        LOGGER.info("EFPI auto-detected {} GeckoLib humanoid entity type(s), registered {}", entityTypes.size(), registered);
+        LOGGER.info(
+                "EFPI auto-detected {} GeckoLib humanoid entity type(s): {} patched, {} special renderer(s)",
+                entityTypes.size(), patched, rendered
+        );
     }
 
     private GeckoHumanoidClientCompat() {
