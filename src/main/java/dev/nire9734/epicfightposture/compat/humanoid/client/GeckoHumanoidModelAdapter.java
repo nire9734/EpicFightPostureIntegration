@@ -1,43 +1,30 @@
 package dev.nire9734.epicfightposture.compat.humanoid.client;
 
-import com.mojang.blaze3d.vertex.PoseStack;
-import it.unimi.dsi.fastutil.ints.IntList;
 import software.bernie.geckolib.cache.object.BakedGeoModel;
 import software.bernie.geckolib.cache.object.GeoBone;
-import software.bernie.geckolib.cache.object.GeoCube;
 import software.bernie.geckolib.core.state.BoneSnapshot;
-import software.bernie.geckolib.util.RenderUtils;
-import yesman.epicfight.api.client.model.Mesh;
-import yesman.epicfight.api.client.model.MeshPartDefinition;
-import yesman.epicfight.api.client.model.SingleGroupVertexBuilder;
 import yesman.epicfight.api.client.model.SkinnedMesh;
 import yesman.epicfight.api.client.model.transformer.GeoModelTransformer;
 import yesman.epicfight.api.client.model.transformer.HumanoidModelTransformer;
-import yesman.epicfight.api.utils.math.OpenMatrix4f;
 
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Set;
-import java.util.function.Supplier;
 
 /**
  * Generic GeckoLib humanoid analyser + Epic Fight mesh bridge.
  *
- * <p>EFPI only discovers the semantic humanoid regions. The actual cube
- * deformation is delegated to Epic Fight 20.14.x's own GeoModelTransformer
- * PartTransformers. This is important for one-bone Gecko limbs: Epic Fight's
- * LimbPartTransformer physically clips polygons at its elbow/knee plane and
- * inserts the intermediate joint instead of relying on a coarse per-vertex
- * weight approximation.</p>
+ * <p>EFPI only identifies semantic humanoid regions. Once those regions are
+ * known, the actual mesh conversion is delegated to Epic Fight 20.14.x's full
+ * GeoModelTransformer bake pipeline, including GeoMeshPartDefinition metadata,
+ * polygon clipping and limb joint assignment.</p>
  */
 public final class GeckoHumanoidModelAdapter {
-    private static final MeshPartDefinition PART = new RuntimeGeoPart("gecko_humanoid");
-
     private static final Set<String> BODY = aliases(
             "body", "torso", "chest", "upperbody", "upper_body", "trunk");
     private static final Set<String> HEAD_NAMES = aliases("head", "skull");
@@ -54,7 +41,7 @@ public final class GeckoHumanoidModelAdapter {
             "leftleg", "left_leg", "legleft", "leg_left", "lleg",
             "leftthigh", "left_thigh", "thighleft", "thigh_left");
 
-    private static volatile EfTransformers efTransformers;
+    private static volatile EfGeoBridge efGeoBridge;
 
     public static Result analyseAndBake(BakedGeoModel model) {
         if (model == null || model.topLevelBones() == null || model.topLevelBones().isEmpty()) {
@@ -66,7 +53,7 @@ public final class GeckoHumanoidModelAdapter {
             collect(root, 0, bones);
         }
 
-        GeoBone body = findBest(bones, BODY);
+        GeoBone body = findBestBody(bones);
         GeoBone head = findBest(bones, HEAD_NAMES);
         GeoBone rightArm = findBest(bones, RIGHT_ARM);
         GeoBone leftArm = findBest(bones, LEFT_ARM);
@@ -86,178 +73,123 @@ public final class GeckoHumanoidModelAdapter {
                 resetToInitial(top);
             }
 
-            EfTransformers transformers = transformers();
-            SkinnedMesh mesh = bake(
+            SkinnedMesh mesh = bakeWithEpicFight(
                     body,
                     head,
                     rightArm,
                     leftArm,
                     rightLeg,
                     leftLeg,
-                    transformers);
+                    bridge());
 
             return mesh == null
-                    ? Result.unsupported("mesh bake returned null")
+                    ? Result.unsupported("Epic Fight Geo bake returned null")
                     : Result.supported(mesh);
         } catch (Throwable throwable) {
-            return Result.unsupported("mesh bake failed: " + throwable.getClass().getSimpleName());
+            return Result.unsupported("Epic Fight Geo bake failed: " + throwable.getClass().getSimpleName());
         }
     }
 
-    private static SkinnedMesh bake(
+    /**
+     * Epic Fight's armor Geo transformer expects each body region as an
+     * independent partition. Entity Geo rigs often nest head/arms under torso,
+     * so those semantic roots are detached only for the duration of the bake to
+     * avoid the chest partition recursively baking them a second time.
+     */
+    private static SkinnedMesh bakeWithEpicFight(
             GeoBone body,
             GeoBone head,
             GeoBone rightArm,
             GeoBone leftArm,
             GeoBone rightLeg,
             GeoBone leftLeg,
-            EfTransformers transformers) {
-        List<SingleGroupVertexBuilder> vertices = new ArrayList<>();
-        Map<MeshPartDefinition, IntList> indices = new HashMap<>();
-        HumanoidModelTransformer.PartTransformer.IndexCounter indexCounter =
-                new HumanoidModelTransformer.PartTransformer.IndexCounter();
+            EfGeoBridge bridge) throws ReflectiveOperationException {
+        Set<GeoBone> independentRoots = Set.of(head, rightArm, leftArm, rightLeg, leftLeg);
+        List<DetachedBone> detached = new ArrayList<>();
 
-        Set<GeoBone> semanticRoots = Set.of(head, rightArm, leftArm, rightLeg, leftLeg);
+        detachNestedSemanticRoots(body, independentRoots, detached);
 
-        // The body root may be a zero-cube wrapper (Ancient Knight uses "body"
-        // above "torso"). Walk it with CHEST while stopping at the other
-        // semantic roots so geometry is neither duplicated nor assigned to the
-        // wrong Epic Fight joint family.
-        bakeRegion(
-                body,
-                transformers.chest(),
-                semanticRoots,
-                new PoseStack(),
-                vertices,
-                indices,
-                indexCounter);
+        try {
+            List<Object> partitions = new ArrayList<>(6);
+            partitions.add(bridge.newPartition(bridge.head(), head));
+            partitions.add(bridge.newPartition(bridge.chest(), body));
+            partitions.add(bridge.newPartition(bridge.rightArm(), rightArm));
+            partitions.add(bridge.newPartition(bridge.leftArm(), leftArm));
+            partitions.add(bridge.newPartition(bridge.leftLeg(), leftLeg));
+            partitions.add(bridge.newPartition(bridge.rightLeg(), rightLeg));
 
-        bakeRegion(
-                head,
-                transformers.head(),
-                Set.of(),
-                new PoseStack(),
-                vertices,
-                indices,
-                indexCounter);
-        bakeRegion(
-                rightArm,
-                transformers.rightArm(),
-                Set.of(),
-                new PoseStack(),
-                vertices,
-                indices,
-                indexCounter);
-        bakeRegion(
-                leftArm,
-                transformers.leftArm(),
-                Set.of(),
-                new PoseStack(),
-                vertices,
-                indices,
-                indexCounter);
-        bakeRegion(
-                rightLeg,
-                transformers.rightLeg(),
-                Set.of(),
-                new PoseStack(),
-                vertices,
-                indices,
-                indexCounter);
-        bakeRegion(
-                leftLeg,
-                transformers.leftLeg(),
-                Set.of(),
-                new PoseStack(),
-                vertices,
-                indices,
-                indexCounter);
-
-        if (vertices.isEmpty()) {
-            return null;
+            Object baked = bridge.bakeMesh().invoke(null, partitions);
+            return baked instanceof SkinnedMesh skinnedMesh ? skinnedMesh : null;
+        } finally {
+            // We detached in reverse child-index order. Restore in reverse record
+            // order so each original insertion index becomes valid again.
+            for (int i = detached.size() - 1; i >= 0; i--) {
+                DetachedBone entry = detached.get(i);
+                List<GeoBone> children = entry.parent().getChildBones();
+                int index = Math.max(0, Math.min(entry.index(), children.size()));
+                children.add(index, entry.bone());
+            }
         }
-        return SingleGroupVertexBuilder.loadVertexInformation(vertices, indices);
     }
 
-    private static void bakeRegion(
-            GeoBone bone,
-            HumanoidModelTransformer.PartTransformer<GeoCube> transformer,
-            Set<GeoBone> stopAtChildren,
-            PoseStack stack,
-            List<SingleGroupVertexBuilder> vertices,
-            Map<MeshPartDefinition, IntList> indices,
-            HumanoidModelTransformer.PartTransformer.IndexCounter indexCounter) {
-        if (bone == null || bone.isHidden()) {
+    private static void detachNestedSemanticRoots(
+            GeoBone parent,
+            Set<GeoBone> semanticRoots,
+            List<DetachedBone> detached) {
+        if (parent == null || parent.isHidingChildren()) {
             return;
         }
 
-        stack.pushPose();
-        RenderUtils.prepMatrixForBone(stack, bone);
-
-        for (GeoCube cube : bone.getCubes()) {
-            if (cube == null || cube.quads() == null) {
-                continue;
-            }
-
-            stack.pushPose();
-            RenderUtils.translateToPivotPoint(stack, cube);
-            RenderUtils.rotateMatrixAroundCube(stack, cube);
-            RenderUtils.translateAwayFromPivotPoint(stack, cube);
-
-            // Delegate the actual mesh generation to Epic Fight. For arms and
-            // legs this invokes GeoModelTransformer$LimbPartTransformer, which
-            // splits quads at y=1.125 (elbow) / y=0.375 (knee) and assigns the
-            // exact Arm/Hand/Elbow and Thigh/Leg/Knee joints used by BIPED.
-            transformer.bakeCube(stack, PART, cube, vertices, indices, indexCounter);
-            stack.popPose();
-        }
-
-        if (!bone.isHidingChildren()) {
-            for (GeoBone child : bone.getChildBones()) {
-                if (child == null || stopAtChildren.contains(child)) {
-                    continue;
-                }
-                bakeRegion(
-                        child,
-                        transformer,
-                        stopAtChildren,
-                        stack,
-                        vertices,
-                        indices,
-                        indexCounter);
+        List<GeoBone> children = parent.getChildBones();
+        for (int i = children.size() - 1; i >= 0; i--) {
+            GeoBone child = children.get(i);
+            if (semanticRoots.contains(child)) {
+                children.remove(i);
+                detached.add(new DetachedBone(parent, child, i));
+            } else {
+                detachNestedSemanticRoots(child, semanticRoots, detached);
             }
         }
-
-        stack.popPose();
     }
 
-    @SuppressWarnings("unchecked")
-    private static EfTransformers transformers() throws ReflectiveOperationException {
-        EfTransformers cached = efTransformers;
+    private static EfGeoBridge bridge() throws ReflectiveOperationException {
+        EfGeoBridge cached = efGeoBridge;
         if (cached != null) {
             return cached;
         }
 
         synchronized (GeckoHumanoidModelAdapter.class) {
-            cached = efTransformers;
+            cached = efGeoBridge;
             if (cached != null) {
                 return cached;
             }
 
-            cached = new EfTransformers(
+            Class<?> partitionClass = Class.forName(
+                    "yesman.epicfight.api.client.model.transformer.GeoModelTransformer$GeoModelPartition");
+            Constructor<?> partitionConstructor = partitionClass.getDeclaredConstructor(
+                    HumanoidModelTransformer.PartTransformer.class,
+                    GeoBone.class);
+            partitionConstructor.setAccessible(true);
+
+            Method bakeMesh = GeoModelTransformer.class.getDeclaredMethod("bakeMeshFromCubes", List.class);
+            bakeMesh.setAccessible(true);
+
+            cached = new EfGeoBridge(
+                    partitionConstructor,
+                    bakeMesh,
                     transformerField("HEAD"),
                     transformerField("CHEST"),
                     transformerField("RIGHT_ARM"),
                     transformerField("LEFT_ARM"),
                     transformerField("RIGHT_LEG"),
                     transformerField("LEFT_LEG"));
-            efTransformers = cached;
+            efGeoBridge = cached;
             return cached;
         }
     }
 
     @SuppressWarnings("unchecked")
-    private static HumanoidModelTransformer.PartTransformer<GeoCube> transformerField(String name)
+    private static HumanoidModelTransformer.PartTransformer<?> transformerField(String name)
             throws ReflectiveOperationException {
         Field field = GeoModelTransformer.class.getDeclaredField(name);
         field.setAccessible(true);
@@ -265,7 +197,7 @@ public final class GeckoHumanoidModelAdapter {
         if (!(value instanceof HumanoidModelTransformer.PartTransformer<?> transformer)) {
             throw new ReflectiveOperationException("Unexpected Epic Fight transformer field: " + name);
         }
-        return (HumanoidModelTransformer.PartTransformer<GeoCube>) transformer;
+        return transformer;
     }
 
     private static void resetToInitial(GeoBone bone) {
@@ -299,6 +231,30 @@ public final class GeckoHumanoidModelAdapter {
         for (GeoBone child : bone.getChildBones()) {
             collect(child, depth + 1, out);
         }
+    }
+
+    /** Prefer the actual geometry-bearing torso over a zero-cube wrapper named body. */
+    private static GeoBone findBestBody(List<BoneCandidate> bones) {
+        BoneCandidate best = null;
+        int bestScore = 0;
+        boolean tied = false;
+
+        for (BoneCandidate candidate : bones) {
+            int score = score(candidate.normalizedName(), BODY) - candidate.depth();
+            if (candidate.bone().getCubes() != null && !candidate.bone().getCubes().isEmpty()) {
+                score += 20;
+            }
+
+            if (score > bestScore) {
+                bestScore = score;
+                best = candidate;
+                tied = false;
+            } else if (score > 0 && score == bestScore) {
+                tied = true;
+            }
+        }
+
+        return bestScore >= 70 && !tied && best != null ? best.bone() : null;
     }
 
     private static GeoBone findBest(List<BoneCandidate> bones, Set<String> aliases) {
@@ -354,8 +310,6 @@ public final class GeckoHumanoidModelAdapter {
             }
             cursor = cursor.getParent();
         }
-
-        // Some models put head/arms beside the torso under a common wrapper.
         return topAncestor(ancestorCandidate) == topAncestor(childCandidate);
     }
 
@@ -395,24 +349,21 @@ public final class GeckoHumanoidModelAdapter {
     private record BoneCandidate(GeoBone bone, int depth, String normalizedName) {
     }
 
-    private record EfTransformers(
-            HumanoidModelTransformer.PartTransformer<GeoCube> head,
-            HumanoidModelTransformer.PartTransformer<GeoCube> chest,
-            HumanoidModelTransformer.PartTransformer<GeoCube> rightArm,
-            HumanoidModelTransformer.PartTransformer<GeoCube> leftArm,
-            HumanoidModelTransformer.PartTransformer<GeoCube> rightLeg,
-            HumanoidModelTransformer.PartTransformer<GeoCube> leftLeg) {
+    private record DetachedBone(GeoBone parent, GeoBone bone, int index) {
     }
 
-    private record RuntimeGeoPart(String partName) implements MeshPartDefinition {
-        @Override
-        public Mesh.RenderProperties renderProperties() {
-            return null;
-        }
-
-        @Override
-        public Supplier<OpenMatrix4f> getModelPartAnimationProvider() {
-            return () -> null;
+    private record EfGeoBridge(
+            Constructor<?> partitionConstructor,
+            Method bakeMesh,
+            HumanoidModelTransformer.PartTransformer<?> head,
+            HumanoidModelTransformer.PartTransformer<?> chest,
+            HumanoidModelTransformer.PartTransformer<?> rightArm,
+            HumanoidModelTransformer.PartTransformer<?> leftArm,
+            HumanoidModelTransformer.PartTransformer<?> rightLeg,
+            HumanoidModelTransformer.PartTransformer<?> leftLeg) {
+        Object newPartition(HumanoidModelTransformer.PartTransformer<?> transformer, GeoBone bone)
+                throws ReflectiveOperationException {
+            return this.partitionConstructor.newInstance(transformer, bone);
         }
     }
 
