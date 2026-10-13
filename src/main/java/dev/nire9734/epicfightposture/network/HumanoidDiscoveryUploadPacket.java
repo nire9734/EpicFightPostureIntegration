@@ -22,18 +22,21 @@ public final class HumanoidDiscoveryUploadPacket {
     private final Set<ResourceLocation> inspected;
     private final Set<ResourceLocation> vanillaHumanoid;
     private final Set<ResourceLocation> geckoLibHumanoid;
+    private final Set<ResourceLocation> vanillaSpider;
 
     public HumanoidDiscoveryUploadPacket(
             UUID nonce,
             String environmentFingerprint,
             Set<ResourceLocation> inspected,
             Set<ResourceLocation> vanillaHumanoid,
-            Set<ResourceLocation> geckoLibHumanoid) {
+            Set<ResourceLocation> geckoLibHumanoid,
+            Set<ResourceLocation> vanillaSpider) {
         this.nonce = nonce;
         this.environmentFingerprint = environmentFingerprint == null ? "" : environmentFingerprint;
         this.inspected = Set.copyOf(inspected);
         this.vanillaHumanoid = Set.copyOf(vanillaHumanoid);
         this.geckoLibHumanoid = Set.copyOf(geckoLibHumanoid);
+        this.vanillaSpider = Set.copyOf(vanillaSpider);
     }
 
     public static void encode(HumanoidDiscoveryUploadPacket packet, FriendlyByteBuf buf) {
@@ -42,6 +45,7 @@ public final class HumanoidDiscoveryUploadPacket {
         writeIds(buf, packet.inspected);
         writeIds(buf, packet.vanillaHumanoid);
         writeIds(buf, packet.geckoLibHumanoid);
+        writeIds(buf, packet.vanillaSpider);
     }
 
     public static HumanoidDiscoveryUploadPacket decode(FriendlyByteBuf buf) {
@@ -50,12 +54,14 @@ public final class HumanoidDiscoveryUploadPacket {
         Set<ResourceLocation> inspected = readIds(buf);
         Set<ResourceLocation> vanillaHumanoid = readIds(buf);
         Set<ResourceLocation> geckoLibHumanoid = readIds(buf);
+        Set<ResourceLocation> vanillaSpider = readIds(buf);
         return new HumanoidDiscoveryUploadPacket(
                 nonce,
                 fingerprint,
                 inspected,
                 vanillaHumanoid,
-                geckoLibHumanoid
+                geckoLibHumanoid,
+                vanillaSpider
         );
     }
 
@@ -70,25 +76,24 @@ public final class HumanoidDiscoveryUploadPacket {
                 packet.environmentFingerprint,
                 packet.inspected,
                 packet.vanillaHumanoid,
-                packet.geckoLibHumanoid
+                packet.geckoLibHumanoid,
+                packet.vanillaSpider
         ));
         context.setPacketHandled(true);
     }
 
     private static void writeIds(FriendlyByteBuf buf, Set<ResourceLocation> ids) {
         if (ids.size() > MAX_ENTITY_IDS) {
-            throw new IllegalArgumentException("Too many entity IDs in Humanoid discovery packet");
+            throw new IllegalArgumentException("Too many entity IDs in renderer discovery packet");
         }
         buf.writeVarInt(ids.size());
-        ids.stream()
-                .sorted(Comparator.comparing(ResourceLocation::toString))
-                .forEach(buf::writeResourceLocation);
+        ids.stream().sorted(Comparator.comparing(ResourceLocation::toString)).forEach(buf::writeResourceLocation);
     }
 
     private static Set<ResourceLocation> readIds(FriendlyByteBuf buf) {
         int count = buf.readVarInt();
         if (count < 0 || count > MAX_ENTITY_IDS) {
-            throw new IllegalArgumentException("Invalid Humanoid discovery entity count: " + count);
+            throw new IllegalArgumentException("Invalid renderer discovery entity count: " + count);
         }
 
         Set<ResourceLocation> ids = new HashSet<>();
