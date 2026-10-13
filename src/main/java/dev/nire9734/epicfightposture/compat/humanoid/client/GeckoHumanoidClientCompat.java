@@ -89,7 +89,9 @@ public final class GeckoHumanoidClientCompat {
                 Set.of(),
                 Set.copyOf(compatible),
                 Set.of(),
-                Set.copyOf(compatibleTypes)
+                Set.of(),
+                Set.copyOf(compatibleTypes),
+                Set.of()
         );
     }
 
