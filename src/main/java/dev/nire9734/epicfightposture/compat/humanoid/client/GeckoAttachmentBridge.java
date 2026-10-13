@@ -192,9 +192,12 @@ final class GeckoAttachmentBridge {
         bone.setPosY(snapshot.getOffsetY() + translation.y * 16.0F);
         bone.setPosZ(snapshot.getOffsetZ() + translation.z * 16.0F);
 
-        bone.setRotX(snapshot.getRotX() + rotation[0]);
-        bone.setRotY(snapshot.getRotY() + rotation[1]);
-        bone.setRotZ(snapshot.getRotZ() + rotation[2]);
+        // Epic Fight's own GeoMeshPartDefinition converts Gecko animation
+        // rotation as (initial - current). Mirror that convention here when
+        // projecting an EF joint rotation back onto Gecko attachment bones.
+        bone.setRotX(snapshot.getRotX() - rotation[0]);
+        bone.setRotY(snapshot.getRotY() - rotation[1]);
+        bone.setRotZ(snapshot.getRotZ() - rotation[2]);
 
         bone.setScaleX(snapshot.getScaleX() * scale.x);
         bone.setScaleY(snapshot.getScaleY() * scale.y);
