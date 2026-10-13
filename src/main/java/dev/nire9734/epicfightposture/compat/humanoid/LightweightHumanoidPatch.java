@@ -12,7 +12,7 @@ import yesman.epicfight.world.capabilities.entitypatch.LivingEntityPatch;
 import yesman.epicfight.world.damagesource.StunType;
 
 /**
- * Minimal Epic Fight bridge for mobs whose original renderer uses HumanoidModel.
+ * Minimal Epic Fight bridge for automatically detected humanoid mobs.
  *
  * <p>This intentionally does not extend MobPatch. Epic Fight therefore does not
  * install/replace mob combat goals through this patch. The original mod remains
@@ -40,6 +40,9 @@ public final class LightweightHumanoidPatch extends LivingEntityPatch<LivingEnti
 
     @Override
     public boolean applyStun(StunType stunType, float stunTime) {
+        if (!compatibilityEnabled()) {
+            return false;
+        }
         // Do not opt compatibility mobs into Epic Fight's ordinary hit reactions.
         // EFPI only needs NEUTRALIZE when posture reaches zero.
         if (stunType != StunType.NEUTRALIZE) {
@@ -50,6 +53,9 @@ public final class LightweightHumanoidPatch extends LivingEntityPatch<LivingEnti
 
     @Override
     public AssetAccessor<? extends StaticAnimation> getHitAnimation(StunType stunType) {
+        if (!compatibilityEnabled()) {
+            return null;
+        }
         return stunType == StunType.NEUTRALIZE
                 ? Animations.BIPED_COMMON_NEUTRALIZED
                 : null;
@@ -58,15 +64,19 @@ public final class LightweightHumanoidPatch extends LivingEntityPatch<LivingEnti
     /**
      * Keep the source mod's renderer for normal gameplay. Epic Fight's patched
      * renderer is allowed to replace it only while EFPI says the target is in a
-     * special posture state. The side-safe bridge is false on dedicated servers.
+     * special posture state and this compatibility kind is enabled by the server.
      */
     @Override
     public boolean overrideRender() {
-        return HumanoidRenderState.shouldOverride(this.original);
+        return compatibilityEnabled() && HumanoidRenderState.shouldOverride(this.original);
     }
 
     @Override
     public Faction getFaction() {
         return Factions.NEUTRAL;
+    }
+
+    private boolean compatibilityEnabled() {
+        return this.original != null && VanillaHumanoidCompat.isCompatibilityEnabled(this.original.getType());
     }
 }
