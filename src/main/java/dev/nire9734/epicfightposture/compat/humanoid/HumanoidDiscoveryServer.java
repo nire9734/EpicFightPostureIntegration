@@ -54,7 +54,8 @@ public final class HumanoidDiscoveryServer {
             UUID nonce,
             String environmentFingerprint,
             Set<ResourceLocation> inspected,
-            Set<ResourceLocation> humanoid) {
+            Set<ResourceLocation> vanillaHumanoid,
+            Set<ResourceLocation> geckoLibHumanoid) {
         if (FMLEnvironment.dist != Dist.DEDICATED_SERVER
                 || sender == null
                 || !sender.hasPermissions(REQUIRED_PERMISSION_LEVEL)) {
@@ -70,8 +71,14 @@ public final class HumanoidDiscoveryServer {
             sender.sendSystemMessage(Component.literal("EFPI: rejected invalid Humanoid discovery fingerprint."));
             return;
         }
-        if (!inspected.containsAll(humanoid)) {
+        if (!inspected.containsAll(vanillaHumanoid) || !inspected.containsAll(geckoLibHumanoid)) {
             sender.sendSystemMessage(Component.literal("EFPI: rejected inconsistent Humanoid discovery report."));
+            return;
+        }
+        Set<ResourceLocation> overlap = new HashSet<>(vanillaHumanoid);
+        overlap.retainAll(geckoLibHumanoid);
+        if (!overlap.isEmpty()) {
+            sender.sendSystemMessage(Component.literal("EFPI: rejected ambiguous Humanoid discovery report."));
             return;
         }
 
@@ -83,13 +90,16 @@ public final class HumanoidDiscoveryServer {
             }
         }
 
-        Set<ResourceLocation> validHumanoid = new HashSet<>(humanoid);
-        validHumanoid.retainAll(validInspected);
+        Set<ResourceLocation> validVanilla = new HashSet<>(vanillaHumanoid);
+        validVanilla.retainAll(validInspected);
+        Set<ResourceLocation> validGecko = new HashSet<>(geckoLibHumanoid);
+        validGecko.retainAll(validInspected);
 
         HumanoidServerDiscoveryStore.UpdateResult result = HumanoidServerDiscoveryStore.acceptReport(
                 environmentFingerprint,
                 validInspected,
-                validHumanoid
+                validVanilla,
+                validGecko
         );
 
         if (!result.accepted()) {
@@ -98,7 +108,9 @@ public final class HumanoidDiscoveryServer {
         }
 
         String summary = "EFPI: Humanoid discovery: "
-                + result.pendingCount() + " confirmed, "
+                + result.pendingCount() + " confirmed ("
+                + result.pendingVanillaCount() + " vanilla, "
+                + result.pendingGeckoCount() + " GeckoLib), "
                 + result.conflictCount() + " conflict(s).";
         if (result.restartRequired()) {
             summary += " Restart the server to apply the pending compatibility list.";
