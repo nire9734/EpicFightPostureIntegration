@@ -7,7 +7,9 @@
   "injectors": {
     "defaultRequire": 1
   },
-  "mixins": [],
+  "mixins": [
+    "SpiderExecutionMixin"
+  ],
   "client": [
     "client.BridgeHealthBarMixin",
     "client.IronsHumanoidRendererCapeMixin"
