@@ -6,6 +6,7 @@ import dev.nire9734.epicfightposture.network.BridgeNetwork;
 import dev.nire9734.epicfightposture.network.HumanoidDiscoveryUploadPacket;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.model.HumanoidModel;
+import net.minecraft.client.model.SpiderModel;
 import net.minecraft.client.renderer.entity.EntityRenderer;
 import net.minecraft.client.renderer.entity.LivingEntityRenderer;
 import net.minecraft.resources.ResourceLocation;
@@ -36,7 +37,9 @@ public final class HumanoidClientDiscovery {
     public static ScanSnapshot scan(Map<EntityType<?>, EntityRenderer<?>> renderers) {
         Set<ResourceLocation> inspected = new HashSet<>();
         Set<ResourceLocation> vanillaHumanoid = new HashSet<>();
+        Set<ResourceLocation> vanillaSpider = new HashSet<>();
         Set<EntityType<?>> vanillaHumanoidTypes = new HashSet<>();
+        Set<EntityType<?>> vanillaSpiderTypes = new HashSet<>();
 
         for (Map.Entry<EntityType<?>, EntityRenderer<?>> entry : renderers.entrySet()) {
             EntityType<?> entityType = entry.getKey();
@@ -52,9 +55,13 @@ public final class HumanoidClientDiscovery {
             }
 
             inspected.add(id);
-            if (livingRenderer.getModel() instanceof HumanoidModel<?>) {
+            Object model = livingRenderer.getModel();
+            if (model instanceof HumanoidModel<?>) {
                 vanillaHumanoid.add(id);
                 vanillaHumanoidTypes.add(entityType);
+            } else if (model instanceof SpiderModel<?>) {
+                vanillaSpider.add(id);
+                vanillaSpiderTypes.add(entityType);
             }
         }
 
@@ -67,27 +74,34 @@ public final class HumanoidClientDiscovery {
 
         inspected.addAll(extra.inspected());
         vanillaHumanoid.addAll(extra.vanillaHumanoid());
-
+        vanillaSpider.addAll(extra.vanillaSpider());
         Set<ResourceLocation> geckoHumanoid = new HashSet<>(extra.geckoLibHumanoid());
-        Set<ResourceLocation> overlap = new HashSet<>(vanillaHumanoid);
-        overlap.retainAll(geckoHumanoid);
-        if (!overlap.isEmpty()) {
-            vanillaHumanoid.removeAll(overlap);
-            geckoHumanoid.removeAll(overlap);
+
+        Set<ResourceLocation> ambiguous = new HashSet<>();
+        collectOverlap(ambiguous, vanillaHumanoid, geckoHumanoid);
+        collectOverlap(ambiguous, vanillaHumanoid, vanillaSpider);
+        collectOverlap(ambiguous, geckoHumanoid, vanillaSpider);
+        if (!ambiguous.isEmpty()) {
+            vanillaHumanoid.removeAll(ambiguous);
+            geckoHumanoid.removeAll(ambiguous);
+            vanillaSpider.removeAll(ambiguous);
+            vanillaHumanoidTypes.removeIf(type -> ambiguous.contains(EntityType.getKey(type)));
+            vanillaSpiderTypes.removeIf(type -> ambiguous.contains(EntityType.getKey(type)));
         }
 
         Set<EntityType<?>> externalHumanoidTypes = new HashSet<>(extra.externalHumanoidTypes());
-        if (!overlap.isEmpty()) {
-            vanillaHumanoidTypes.removeIf(type -> overlap.contains(EntityType.getKey(type)));
-            externalHumanoidTypes.removeIf(type -> overlap.contains(EntityType.getKey(type)));
+        if (!ambiguous.isEmpty()) {
+            externalHumanoidTypes.removeIf(type -> ambiguous.contains(EntityType.getKey(type)));
         }
 
         return new ScanSnapshot(
                 Set.copyOf(inspected),
                 Set.copyOf(vanillaHumanoid),
                 Set.copyOf(geckoHumanoid),
+                Set.copyOf(vanillaSpider),
                 Set.copyOf(vanillaHumanoidTypes),
-                Set.copyOf(externalHumanoidTypes)
+                Set.copyOf(externalHumanoidTypes),
+                Set.copyOf(vanillaSpiderTypes)
         );
     }
 
@@ -97,29 +111,44 @@ public final class HumanoidClientDiscovery {
         HumanoidCompatDiscoveryStore.save(
                 fingerprint,
                 scan.vanillaHumanoid(),
-                scan.geckoLibHumanoid()
+                scan.geckoLibHumanoid(),
+                scan.vanillaSpider()
         );
         BridgeNetwork.sendToServer(new HumanoidDiscoveryUploadPacket(
                 nonce,
                 fingerprint,
                 scan.inspected(),
                 scan.vanillaHumanoid(),
-                scan.geckoLibHumanoid()
+                scan.geckoLibHumanoid(),
+                scan.vanillaSpider()
         ));
+    }
+
+    private static void collectOverlap(
+            Set<ResourceLocation> target,
+            Set<ResourceLocation> first,
+            Set<ResourceLocation> second) {
+        Set<ResourceLocation> overlap = new HashSet<>(first);
+        overlap.retainAll(second);
+        target.addAll(overlap);
     }
 
     public record ScanSnapshot(
             Set<ResourceLocation> inspected,
             Set<ResourceLocation> vanillaHumanoid,
             Set<ResourceLocation> geckoLibHumanoid,
+            Set<ResourceLocation> vanillaSpider,
             Set<EntityType<?>> vanillaHumanoidTypes,
-            Set<EntityType<?>> externalHumanoidTypes) {
+            Set<EntityType<?>> externalHumanoidTypes,
+            Set<EntityType<?>> vanillaSpiderTypes) {
         public ScanSnapshot {
             inspected = inspected == null ? Set.of() : Set.copyOf(inspected);
             vanillaHumanoid = vanillaHumanoid == null ? Set.of() : Set.copyOf(vanillaHumanoid);
             geckoLibHumanoid = geckoLibHumanoid == null ? Set.of() : Set.copyOf(geckoLibHumanoid);
+            vanillaSpider = vanillaSpider == null ? Set.of() : Set.copyOf(vanillaSpider);
             vanillaHumanoidTypes = vanillaHumanoidTypes == null ? Set.of() : Set.copyOf(vanillaHumanoidTypes);
             externalHumanoidTypes = externalHumanoidTypes == null ? Set.of() : Set.copyOf(externalHumanoidTypes);
+            vanillaSpiderTypes = vanillaSpiderTypes == null ? Set.of() : Set.copyOf(vanillaSpiderTypes);
         }
 
         public Set<ResourceLocation> humanoid() {
@@ -128,8 +157,14 @@ public final class HumanoidClientDiscovery {
             return Set.copyOf(combined);
         }
 
+        public Set<ResourceLocation> automaticTargets() {
+            Set<ResourceLocation> combined = new HashSet<>(humanoid());
+            combined.addAll(vanillaSpider);
+            return Set.copyOf(combined);
+        }
+
         public static ScanSnapshot empty() {
-            return new ScanSnapshot(Set.of(), Set.of(), Set.of(), Set.of(), Set.of());
+            return new ScanSnapshot(Set.of(), Set.of(), Set.of(), Set.of(), Set.of(), Set.of(), Set.of());
         }
     }
 
