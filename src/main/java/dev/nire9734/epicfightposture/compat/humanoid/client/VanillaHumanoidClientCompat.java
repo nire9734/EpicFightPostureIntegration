@@ -45,8 +45,6 @@ public final class VanillaHumanoidClientCompat {
 
         boolean geckoLoaded = ModList.get().isLoaded("geckolib");
         if (geckoLoaded) {
-            // The class itself contains direct GeckoLib references, so only resolve
-            // it after Forge has confirmed that GeckoLib is actually installed.
             GeckoHumanoidClientCompat.installDiscovery();
         } else {
             HumanoidClientDiscovery.installAdditionalScanner(null);
@@ -55,7 +53,10 @@ public final class VanillaHumanoidClientCompat {
         HumanoidClientDiscovery.ScanSnapshot scan = HumanoidClientDiscovery.scan(
                 event.getContext().getEntityRenderDispatcher().renderers
         );
-        VanillaHumanoidCompat.replaceDetectedCache(scan.humanoid());
+        VanillaHumanoidCompat.replaceDetectedCache(
+                scan.vanillaHumanoid(),
+                scan.geckoLibHumanoid()
+        );
 
         Set<EntityType<?>> alreadyPatched = new HashSet<>(EntityPatchProvider.getPatchedEntities());
         for (EntityType<?> entityType : scan.vanillaHumanoidTypes()) {
@@ -66,18 +67,15 @@ public final class VanillaHumanoidClientCompat {
 
             boolean oursAlready = VanillaHumanoidCompat.isRegisteredByEfpi(entityId);
             if (alreadyPatched.contains(entityType) && !oursAlready) {
-                // Never replace an Epic Fight patch supplied by Epic Fight itself,
-                // another compatibility mod, or an earlier registry subscriber.
                 continue;
             }
 
-            if (!oursAlready && !VanillaHumanoidCompat.registerDiscoveredAtRuntime(entityType)) {
+            if (!oursAlready && !VanillaHumanoidCompat.registerDiscoveredAtRuntime(
+                    entityType,
+                    VanillaHumanoidCompat.CompatibilityKind.VANILLA_HUMANOID)) {
                 continue;
             }
 
-            // Convert the source HumanoidModel once during renderer registration.
-            // The conversion itself is Epic Fight's VanillaModelTransformer; EFPI
-            // only keeps the resulting runtime asset and wires it to this entity type.
             AssetAccessor<SkinnedMesh> runtimeMesh = bakeRuntimeMesh(event, entityType, entityId);
 
             event.addPatchedEntityRenderer(
@@ -91,7 +89,7 @@ public final class VanillaHumanoidClientCompat {
         }
 
         LOGGER.info(
-                "EFPI auto-detected {} compatible humanoid entity type(s): {} vanilla, {} external",
+                "EFPI auto-detected {} compatible humanoid entity type(s): {} vanilla, {} GeckoLib",
                 scan.humanoid().size(),
                 scan.vanillaHumanoidTypes().size(),
                 scan.externalHumanoidTypes().size()
