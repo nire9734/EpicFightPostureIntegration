@@ -51,13 +51,9 @@ public final class GeckoHumanoidClientCompat {
 
             try {
                 GeoModel geoModel = geoRenderer.getGeoModel();
-                // GeckoLib 4.4.x exposes the one-argument resource lookup. Most
-                // entity models use a fixed resource and therefore accept null.
-                // Dynamic per-entity models fail closed here instead of guessing.
                 ResourceLocation modelLocation = geoModel.getModelResource(null);
                 BakedGeoModel bakedModel = geoModel.getBakedModel(modelLocation);
 
-                // Compatibility discovery must not depend on the renderer bake.
                 GeckoHumanoidModelAdapter.ProbeResult probe = GeckoHumanoidModelAdapter.probe(bakedModel);
                 if (!probe.supported()) {
                     LOGGER.debug("EFPI Gecko humanoid probe rejected {}: {}", entityId, probe.reason());
@@ -67,8 +63,6 @@ public final class GeckoHumanoidClientCompat {
                 compatible.add(entityId);
                 compatibleTypes.add(entityType);
 
-                // Mesh preparation is best-effort. If it fails, the posture patch
-                // is still registered so gauge/break/execution mechanics remain.
                 GeckoHumanoidModelAdapter.Result result = GeckoHumanoidModelAdapter.analyseAndBake(bakedModel);
                 if (!result.supported() || result.mesh() == null) {
                     LOGGER.warn(
@@ -92,6 +86,7 @@ public final class GeckoHumanoidClientCompat {
 
         return new HumanoidClientDiscovery.ScanSnapshot(
                 Set.copyOf(inspected),
+                Set.of(),
                 Set.copyOf(compatible),
                 Set.of(),
                 Set.copyOf(compatibleTypes)
@@ -111,11 +106,12 @@ public final class GeckoHumanoidClientCompat {
 
             boolean oursAlready = VanillaHumanoidCompat.isRegisteredByEfpi(entityId);
             if (alreadyPatched.contains(entityType) && !oursAlready) {
-                // Respect Epic Fight itself and explicit third-party compat patches.
                 continue;
             }
 
-            if (!oursAlready && !VanillaHumanoidCompat.registerDiscoveredAtRuntime(entityType)) {
+            if (!oursAlready && !VanillaHumanoidCompat.registerDiscoveredAtRuntime(
+                    entityType,
+                    VanillaHumanoidCompat.CompatibilityKind.GECKOLIB_HUMANOID)) {
                 continue;
             }
             patched++;
