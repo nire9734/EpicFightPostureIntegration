@@ -21,6 +21,10 @@ import yesman.epicfight.world.capabilities.entitypatch.LivingEntityPatch;
  * The normal textured pass is always rendered. If Minecraft marks the entity as
  * glowing (for example while it is targeted), an outline pass is rendered in
  * addition to the textured pass instead of replacing it.
+ *
+ * Gecko's source bones and per-bone render layers are synchronized after the EF
+ * body pass so held items, armor and renderer-specific post-super attachments can
+ * follow the same special-state pose without changing the proven body mesh path.
  */
 public final class SpecialStateGeckoRenderer extends PatchedEntityRenderer<
         LivingEntity,
@@ -91,6 +95,22 @@ public final class SpecialStateGeckoRenderer extends PatchedEntityRenderer<
                     armature.getPoseMatrices()
             );
         }
+
+        // Gecko's own render is cancelled by Epic Fight while overrideRender()
+        // is active, so its bone animation and GeoRenderLayer callbacks would
+        // otherwise never run. Keep the body mesh above fully EF-owned, but
+        // synchronize attachment bones to the same EF pose and replay only the
+        // per-bone layer callbacks (items, armor, bone attachments, etc.).
+        GeckoAttachmentBridge.syncAndRenderLayers(
+                entity,
+                entitypatch,
+                renderer,
+                buffer,
+                poseStack,
+                packedLight,
+                overlay,
+                partialTicks
+        );
 
         poseStack.popPose();
     }
