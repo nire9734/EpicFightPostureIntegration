@@ -16,10 +16,13 @@ import yesman.epicfight.api.client.model.Mesh;
 import yesman.epicfight.api.client.model.MeshPartDefinition;
 import yesman.epicfight.api.client.model.SingleGroupVertexBuilder;
 import yesman.epicfight.api.client.model.SkinnedMesh;
+import yesman.epicfight.api.client.model.transformer.GeoModelTransformer;
+import yesman.epicfight.api.client.model.transformer.HumanoidModelTransformer;
 import yesman.epicfight.api.utils.math.OpenMatrix4f;
 import yesman.epicfight.api.utils.math.Vec2f;
 import yesman.epicfight.api.utils.math.Vec3f;
 
+import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -30,13 +33,15 @@ import java.util.Set;
 import java.util.function.Supplier;
 
 /**
- * Generic GeckoLib humanoid analyser + conservative mesh bridge.
+ * Generic GeckoLib humanoid analyser + mesh bridge.
  *
- * <p>Humanoid detection is intentionally independent from mesh conversion.
- * A renderer experiment must never make a previously compatible entity lose
- * its EFPI posture patch, gauge or execution eligibility. The mesh path below
- * is the last-known-good conservative mapping; elbow/knee subdivision can be
- * developed independently on top of this baseline.</p>
+ * <p>Humanoid detection is independent from mesh conversion, so a renderer
+ * experiment cannot remove posture/execution compatibility. The normal mesh
+ * path stays deliberately conservative. Only a limb that has no explicit
+ * forearm/lower-leg bone is delegated to Epic Fight 20.14.x's own
+ * GeoModelTransformer LimbPartTransformer. That transformer clips the cube at
+ * the BIPED elbow/knee plane and creates the exact Arm/Hand/Elbow or
+ * Thigh/Leg/Knee joint assignment used by Epic Fight.</p>
  */
 public final class GeckoHumanoidModelAdapter {
     private static final MeshPartDefinition PART = new RuntimeGeoPart("gecko_humanoid");
@@ -84,6 +89,8 @@ public final class GeckoHumanoidModelAdapter {
             "leftshin", "left_shin", "shinleft", "lshin", "leftcalf");
     private static final Set<String> ROOT_NAMES = aliases("root", "master", "base", "main");
 
+    private static volatile LimbTransformers cachedLimbTransformers;
+
     /** Pure semantic probe. No mesh generation is performed here. */
     public static ProbeResult probe(BakedGeoModel model) {
         Resolution resolution = resolve(model);
@@ -92,10 +99,6 @@ public final class GeckoHumanoidModelAdapter {
                 : new ProbeResult(true, "ok");
     }
 
-    /**
-     * Builds the special-state mesh using the last-known-good conservative
-     * one-bone-per-region mapping. Failure here does not affect probe().
-     */
     public static Result analyseAndBake(BakedGeoModel model) {
         Resolution resolution = resolve(model);
         if (resolution == null) {
@@ -131,7 +134,17 @@ public final class GeckoHumanoidModelAdapter {
             if (rightLowerLeg != null) joints.put(rightLowerLeg, LEG_R);
             if (leftLowerLeg != null) joints.put(leftLowerLeg, LEG_L);
 
-            SkinnedMesh mesh = bake(model, joints);
+            // Only one-bone limbs need synthetic elbow/knee geometry. Rigs with
+            // an explicit lower limb already have a real hinge and stay on the
+            // conservative mapping above.
+            Map<GeoBone, HumanoidModelTransformer.PartTransformer<GeoCube>> splitters = new HashMap<>();
+            LimbTransformers ef = limbTransformers();
+            if (rightForearm == null) splitters.put(resolution.rightArm(), ef.rightArm());
+            if (leftForearm == null) splitters.put(resolution.leftArm(), ef.leftArm());
+            if (rightLowerLeg == null) splitters.put(resolution.rightLeg(), ef.rightLeg());
+            if (leftLowerLeg == null) splitters.put(resolution.leftLeg(), ef.leftLeg());
+
+            SkinnedMesh mesh = bake(model, joints, splitters);
             return mesh == null
                     ? Result.unsupported("mesh bake returned null")
                     : Result.supported(mesh);
@@ -181,14 +194,16 @@ public final class GeckoHumanoidModelAdapter {
                 leftLeg);
     }
 
-    private static SkinnedMesh bake(BakedGeoModel model, Map<GeoBone, Integer> joints) {
+    private static SkinnedMesh bake(
+            BakedGeoModel model,
+            Map<GeoBone, Integer> joints,
+            Map<GeoBone, HumanoidModelTransformer.PartTransformer<GeoCube>> splitters) {
         List<SingleGroupVertexBuilder> vertices = new ArrayList<>();
         Map<MeshPartDefinition, IntList> indices = new HashMap<>();
-        int[] indexCounter = {0};
         PoseStack stack = new PoseStack();
 
         for (GeoBone top : model.topLevelBones()) {
-            bakeBone(top, ROOT, joints, stack, vertices, indices, indexCounter);
+            bakeBone(top, ROOT, null, joints, splitters, stack, vertices, indices);
         }
 
         if (vertices.isEmpty()) {
@@ -200,64 +215,127 @@ public final class GeckoHumanoidModelAdapter {
     private static void bakeBone(
             GeoBone bone,
             int inheritedJoint,
+            HumanoidModelTransformer.PartTransformer<GeoCube> inheritedSplitter,
             Map<GeoBone, Integer> joints,
+            Map<GeoBone, HumanoidModelTransformer.PartTransformer<GeoCube>> splitters,
             PoseStack stack,
             List<SingleGroupVertexBuilder> vertices,
-            Map<MeshPartDefinition, IntList> indices,
-            int[] indexCounter) {
+            Map<MeshPartDefinition, IntList> indices) {
         if (bone == null || bone.isHidden()) {
             return;
         }
 
         int joint = joints.getOrDefault(bone, inheritedJoint);
+        HumanoidModelTransformer.PartTransformer<GeoCube> activeSplitter =
+                splitters.getOrDefault(bone, inheritedSplitter);
+
         stack.pushPose();
         RenderUtils.prepMatrixForBone(stack, bone);
 
         for (GeoCube cube : bone.getCubes()) {
+            if (cube == null || cube.quads() == null) {
+                continue;
+            }
+
             stack.pushPose();
             RenderUtils.translateToPivotPoint(stack, cube);
             RenderUtils.rotateMatrixAroundCube(stack, cube);
             RenderUtils.translateAwayFromPivotPoint(stack, cube);
 
-            for (GeoQuad quad : cube.quads()) {
-                if (quad == null) {
-                    continue;
-                }
-
-                Vector3f normal = new Vector3f(quad.normal());
-                normal.mul(stack.last().normal());
-
-                for (GeoVertex vertex : quad.vertices()) {
-                    Vector4f pos = new Vector4f(vertex.position(), 1.0F);
-                    pos.mul(stack.last().pose());
-                    vertices.add(new SingleGroupVertexBuilder()
-                            .setPosition(new Vec3f(pos.x(), pos.y(), pos.z()))
-                            .setNormal(new Vec3f(normal.x(), normal.y(), normal.z()))
-                            .setTextureCoordinate(new Vec2f(vertex.texU(), vertex.texV()))
-                            .setEffectiveJointIDs(new Vec3f(joint, 0, 0))
-                            .setEffectiveJointWeights(new Vec3f(1.0F, 0.0F, 0.0F))
-                            .setEffectiveJointNumber(1));
-                }
-
-                triangulateQuad(indices, PART, indexCounter);
+            if (activeSplitter != null) {
+                bakeSplitCube(activeSplitter, stack, cube, vertices, indices);
+            } else {
+                bakeSimpleCube(joint, stack, cube, vertices, indices);
             }
+
             stack.popPose();
         }
 
         if (!bone.isHidingChildren()) {
             for (GeoBone child : bone.getChildBones()) {
-                bakeBone(child, joint, joints, stack, vertices, indices, indexCounter);
+                bakeBone(
+                        child,
+                        joint,
+                        activeSplitter,
+                        joints,
+                        splitters,
+                        stack,
+                        vertices,
+                        indices);
             }
         }
         stack.popPose();
     }
 
+    /**
+     * Runs one cube through Epic Fight's own LimbPartTransformer in an isolated
+     * local vertex/index buffer, then rebases its indices into the already-built
+     * conservative mesh. This avoids depending on IndexCounter's private state.
+     */
+    private static void bakeSplitCube(
+            HumanoidModelTransformer.PartTransformer<GeoCube> splitter,
+            PoseStack stack,
+            GeoCube cube,
+            List<SingleGroupVertexBuilder> vertices,
+            Map<MeshPartDefinition, IntList> indices) {
+        List<SingleGroupVertexBuilder> localVertices = new ArrayList<>();
+        Map<MeshPartDefinition, IntList> localIndices = new HashMap<>();
+        HumanoidModelTransformer.PartTransformer.IndexCounter localCounter =
+                new HumanoidModelTransformer.PartTransformer.IndexCounter();
+
+        splitter.bakeCube(stack, PART, cube, localVertices, localIndices, localCounter);
+        if (localVertices.isEmpty()) {
+            return;
+        }
+
+        int vertexOffset = vertices.size();
+        vertices.addAll(localVertices);
+
+        for (Map.Entry<MeshPartDefinition, IntList> entry : localIndices.entrySet()) {
+            IntList target = indices.computeIfAbsent(entry.getKey(), ignored -> new IntArrayList());
+            IntList source = entry.getValue();
+            for (int i = 0; i < source.size(); i++) {
+                target.add(source.getInt(i) + vertexOffset);
+            }
+        }
+    }
+
+    private static void bakeSimpleCube(
+            int joint,
+            PoseStack stack,
+            GeoCube cube,
+            List<SingleGroupVertexBuilder> vertices,
+            Map<MeshPartDefinition, IntList> indices) {
+        for (GeoQuad quad : cube.quads()) {
+            if (quad == null || quad.vertices() == null || quad.vertices().length != 4) {
+                continue;
+            }
+
+            Vector3f normal = new Vector3f(quad.normal());
+            normal.mul(stack.last().normal());
+
+            int first = vertices.size();
+            for (GeoVertex vertex : quad.vertices()) {
+                Vector4f pos = new Vector4f(vertex.position(), 1.0F);
+                pos.mul(stack.last().pose());
+                vertices.add(new SingleGroupVertexBuilder()
+                        .setPosition(new Vec3f(pos.x(), pos.y(), pos.z()))
+                        .setNormal(new Vec3f(normal.x(), normal.y(), normal.z()))
+                        .setTextureCoordinate(new Vec2f(vertex.texU(), vertex.texV()))
+                        .setEffectiveJointIDs(new Vec3f(joint, 0, 0))
+                        .setEffectiveJointWeights(new Vec3f(1.0F, 0.0F, 0.0F))
+                        .setEffectiveJointNumber(1));
+            }
+
+            triangulateQuad(indices, PART, first);
+        }
+    }
+
     private static void triangulateQuad(
             Map<MeshPartDefinition, IntList> indices,
             MeshPartDefinition part,
-            int[] indexCounter) {
+            int first) {
         IntList list = indices.computeIfAbsent(part, key -> new IntArrayList());
-        int first = indexCounter[0];
         int second = first + 1;
         int third = first + 2;
         int fourth = first + 3;
@@ -268,13 +346,46 @@ public final class GeckoHumanoidModelAdapter {
         addIndexTriplet(list, fourth);
         addIndexTriplet(list, second);
         addIndexTriplet(list, third);
-        indexCounter[0] += 4;
     }
 
     private static void addIndexTriplet(IntList list, int index) {
         list.add(index);
         list.add(index);
         list.add(index);
+    }
+
+    private static LimbTransformers limbTransformers() throws ReflectiveOperationException {
+        LimbTransformers cached = cachedLimbTransformers;
+        if (cached != null) {
+            return cached;
+        }
+
+        synchronized (GeckoHumanoidModelAdapter.class) {
+            cached = cachedLimbTransformers;
+            if (cached != null) {
+                return cached;
+            }
+
+            cached = new LimbTransformers(
+                    transformerField("RIGHT_ARM"),
+                    transformerField("LEFT_ARM"),
+                    transformerField("RIGHT_LEG"),
+                    transformerField("LEFT_LEG"));
+            cachedLimbTransformers = cached;
+            return cached;
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static HumanoidModelTransformer.PartTransformer<GeoCube> transformerField(String name)
+            throws ReflectiveOperationException {
+        Field field = GeoModelTransformer.class.getDeclaredField(name);
+        field.setAccessible(true);
+        Object value = field.get(null);
+        if (!(value instanceof HumanoidModelTransformer.PartTransformer<?> transformer)) {
+            throw new ReflectiveOperationException("Unexpected Epic Fight transformer field: " + name);
+        }
+        return (HumanoidModelTransformer.PartTransformer<GeoCube>) transformer;
     }
 
     private static void resetToInitial(GeoBone bone) {
@@ -426,6 +537,13 @@ public final class GeckoHumanoidModelAdapter {
     }
 
     private record BoneCandidate(GeoBone bone, int depth, String normalizedName) {
+    }
+
+    private record LimbTransformers(
+            HumanoidModelTransformer.PartTransformer<GeoCube> rightArm,
+            HumanoidModelTransformer.PartTransformer<GeoCube> leftArm,
+            HumanoidModelTransformer.PartTransformer<GeoCube> rightLeg,
+            HumanoidModelTransformer.PartTransformer<GeoCube> leftLeg) {
     }
 
     private record RuntimeGeoPart(String partName) implements MeshPartDefinition {
