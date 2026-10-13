@@ -9,6 +9,7 @@ import net.minecraft.client.renderer.entity.EntityRenderer;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.LivingEntity;
 import org.joml.Matrix4f;
+import org.joml.Quaternionf;
 import org.slf4j.Logger;
 import software.bernie.geckolib.cache.object.BakedGeoModel;
 import software.bernie.geckolib.cache.object.GeoBone;
@@ -19,8 +20,11 @@ import software.bernie.geckolib.renderer.GeoEntityRenderer;
 import software.bernie.geckolib.renderer.layer.GeoRenderLayer;
 import software.bernie.geckolib.util.RenderUtils;
 import yesman.epicfight.api.animation.Joint;
+import yesman.epicfight.api.animation.JointTransform;
+import yesman.epicfight.api.animation.Pose;
 import yesman.epicfight.api.model.Armature;
 import yesman.epicfight.api.utils.math.OpenMatrix4f;
+import yesman.epicfight.api.utils.math.Vec3f;
 import yesman.epicfight.world.capabilities.entitypatch.LivingEntityPatch;
 
 import java.util.ArrayList;
@@ -30,22 +34,25 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Replays GeckoLib attachment layers directly on Epic Fight's final joint pose.
+ * Bridges GeckoLib attachment rendering onto Epic Fight's final BIPED pose.
  *
- * <p>The body mesh already uses Epic Fight skinning successfully. For attachments
- * we avoid converting EF transforms back into Gecko bone Euler angles. Instead,
- * each source GeoBone is evaluated once in its bind pose and transformed with
- * the exact joint matrix composition used by {@code SkinnedMesh.drawPosed}:</p>
+ * <p>Normal Gecko render layers are replayed with the exact matrix composition
+ * used by {@code SkinnedMesh.drawPosed}:</p>
  *
  * <pre>
  * attachment = (poseMatrix * joint.toOrigin) * geoBoneBind
  * </pre>
  *
- * <p>{@code joint.toOrigin} is Epic Fight's inverse-bind transform. It is
- * essential here: {@code Armature#getPoseMatrices()} contains current joint
- * transforms, not complete skin matrices. Omitting {@code toOrigin} applies the
- * joint bind translation twice and makes hats, shoulder pieces and held-item
- * anchors spread away from the animated body.</p>
+ * <p>This is the precise path for held items, armor, hats and normal per-bone
+ * layers. Some mods also draw attachments <em>after</em> their Gecko renderer's
+ * {@code super.render()} call by directly reading a source {@link GeoBone} and
+ * calling {@link RenderUtils#prepMatrixForBone}. Those callbacks happen after
+ * Epic Fight's Gecko pre-render cancellation has returned, so the source bone
+ * would otherwise stay in bind/stale pose. For that second path only, semantic
+ * anchor bones are also synchronized back to the current EF local pose after
+ * the matrix-based layer replay. This keeps hard-coded capes/back attachments
+ * following the body without sacrificing the exact matrix path used by normal
+ * Gecko render layers.</p>
  */
 @SuppressWarnings({"rawtypes", "unchecked"})
 final class GeckoAttachmentBridge {
@@ -90,61 +97,67 @@ final class GeckoAttachmentBridge {
                 return;
             }
 
-            List<GeoRenderLayer> layers = new ArrayList<>(geoRenderer.getRenderLayers());
-            if (layers.isEmpty()) {
-                return;
-            }
-
-            // GeckoLib's normal render is cancelled while EF overrideRender() is
-            // active, so the source bone tree may contain a stale animation pose.
-            // Restore the bind snapshot before measuring its absolute matrices.
+            // Gecko's normal render is cancelled while EF overrideRender() is
+            // active, so source bones can contain an arbitrary stale animation.
+            // Start from the model bind snapshot for deterministic matrices.
             for (GeoBone top : bakedModel.topLevelBones()) {
                 resetTreeToInitial(top);
             }
 
-            ResourceLocation texture = geoRenderer.getTextureLocation(animatable);
-            RenderType renderType = geoRenderer.getRenderType(animatable, texture, bufferSource, partialTicks);
-            VertexConsumer baseBuffer = renderType == null ? null : bufferSource.getBuffer(renderType);
-
-            for (GeoRenderLayer layer : layers) {
-                layer.preRender(
-                        poseStack,
-                        animatable,
-                        bakedModel,
-                        renderType,
-                        bufferSource,
-                        baseBuffer,
-                        partialTicks,
-                        packedLight,
-                        packedOverlay
-                );
-            }
-
-            if (renderType == null || baseBuffer == null) {
-                return;
-            }
-
             Armature armature = entityPatch.getArmature();
             OpenMatrix4f[] poseMatrices = armature.getPoseMatrices();
-            PoseStack bindStack = new PoseStack();
+            List<GeoRenderLayer> layers = new ArrayList<>(geoRenderer.getRenderLayers());
 
+            // Path 1: normal Gecko per-bone layers. Keep these fully matrix based.
+            if (!layers.isEmpty()) {
+                ResourceLocation texture = geoRenderer.getTextureLocation(animatable);
+                RenderType renderType = geoRenderer.getRenderType(animatable, texture, bufferSource, partialTicks);
+                VertexConsumer baseBuffer = renderType == null ? null : bufferSource.getBuffer(renderType);
+
+                for (GeoRenderLayer layer : layers) {
+                    layer.preRender(
+                            poseStack,
+                            animatable,
+                            bakedModel,
+                            renderType,
+                            bufferSource,
+                            baseBuffer,
+                            partialTicks,
+                            packedLight,
+                            packedOverlay
+                    );
+                }
+
+                if (renderType != null && baseBuffer != null) {
+                    PoseStack bindStack = new PoseStack();
+                    for (GeoBone top : bakedModel.topLevelBones()) {
+                        replayBoneLayers(
+                                top,
+                                -1,
+                                armature,
+                                poseMatrices,
+                                layers,
+                                animatable,
+                                renderType,
+                                bufferSource,
+                                baseBuffer,
+                                poseStack,
+                                bindStack,
+                                packedLight,
+                                packedOverlay,
+                                partialTicks
+                        );
+                    }
+                }
+            }
+
+            // Path 2: renderer-specific post-super drawing. Iron's HumanoidRenderer,
+            // for example, reads the live "torso" GeoBone and then draws its
+            // ArmorCapeLayer after GeoEntityRenderer.render() returns. Leave the
+            // semantic source anchors synchronized for the remainder of that call.
+            Pose efPose = entityPatch.getAnimator().getPose(partialTicks);
             for (GeoBone top : bakedModel.topLevelBones()) {
-                replayBoneLayers(
-                        top,
-                        -1,
-                        armature,
-                        poseMatrices,
-                        layers,
-                        animatable,
-                        renderType,
-                        bufferSource,
-                        baseBuffer,
-                        poseStack,
-                        bindStack,
-                        packedLight,
-                        packedOverlay,
-                        partialTicks
-                );
+                syncPostRenderAnchors(top, -1, armature, efPose);
             }
         } catch (Throwable throwable) {
             if (WARNED_RENDERERS.add(sourceRenderer.getClass())) {
@@ -183,8 +196,7 @@ final class GeckoAttachmentBridge {
                 : (inheritedJoint >= 0 ? inheritedJoint : ROOT);
 
         // Build the absolute Gecko bind matrix exactly as GeckoLib does during
-        // recursive model rendering. This captures every parent pivot, local
-        // rotation and local offset instead of approximating them from names.
+        // recursive rendering. This retains every parent pivot/local offset.
         bindStack.pushPose();
         RenderUtils.prepMatrixForBone(bindStack, bone);
         Matrix4f geoBind = new Matrix4f(bindStack.last().pose());
@@ -243,6 +255,97 @@ final class GeckoAttachmentBridge {
         }
 
         bindStack.popPose();
+    }
+
+    /**
+     * Synchronizes only semantic BIPED transition bones for renderer code that
+     * directly consumes GeoBones after Gecko's cancelled render has returned.
+     * Unknown decoration children retain their authored local bind transform and
+     * therefore inherit the nearest synchronized semantic parent normally.
+     */
+    private static void syncPostRenderAnchors(
+            GeoBone bone,
+            int inheritedJoint,
+            Armature armature,
+            Pose efPose) {
+        if (bone == null) {
+            return;
+        }
+
+        Integer explicitJoint = classifyJoint(bone, inheritedJoint);
+        int jointId = explicitJoint != null
+                ? explicitJoint
+                : (inheritedJoint >= 0 ? inheritedJoint : ROOT);
+
+        if (inheritedJoint < 0 || (explicitJoint != null && jointId != inheritedJoint)) {
+            applyJointAnimationToSourceBone(bone, armature, efPose, jointId);
+        }
+
+        if (!bone.isHidingChildren()) {
+            for (GeoBone child : bone.getChildBones()) {
+                syncPostRenderAnchors(child, jointId, armature, efPose);
+            }
+        }
+    }
+
+    private static void applyJointAnimationToSourceBone(
+            GeoBone bone,
+            Armature armature,
+            Pose pose,
+            int jointId) {
+        BoneSnapshot snapshot = bone.getInitialSnapshot();
+        Joint joint = armature.searchJointById(jointId);
+        if (snapshot == null || joint == null) {
+            return;
+        }
+
+        JointTransform transform = pose.orElseEmpty(joint.getName());
+        Vec3f translation = transform.translation();
+        Vec3f scale = transform.scale();
+        float[] rotation = quaternionToZyxEuler(transform.rotation());
+
+        // Gecko prepMatrixForBone negates X translation while Y/Z keep sign.
+        bone.setPosX(snapshot.getOffsetX() - translation.x * 16.0F);
+        bone.setPosY(snapshot.getOffsetY() + translation.y * 16.0F);
+        bone.setPosZ(snapshot.getOffsetZ() + translation.z * 16.0F);
+
+        // Epic Fight's Gecko bridge uses the inverse rotation delta convention
+        // (initial - current), so mirror that when projecting EF local pose back
+        // onto a live source GeoBone for post-super custom rendering.
+        bone.setRotX(snapshot.getRotX() - rotation[0]);
+        bone.setRotY(snapshot.getRotY() - rotation[1]);
+        bone.setRotZ(snapshot.getRotZ() - rotation[2]);
+
+        bone.setScaleX(snapshot.getScaleX() * scale.x);
+        bone.setScaleY(snapshot.getScaleY() * scale.y);
+        bone.setScaleZ(snapshot.getScaleZ() * scale.z);
+    }
+
+    /**
+     * X/Y/Z angles for Rz(z) * Ry(y) * Rx(x), matching Gecko's bone rotation
+     * order used by prepMatrixForBone.
+     */
+    private static float[] quaternionToZyxEuler(Quaternionf source) {
+        Quaternionf q = new Quaternionf(source).normalize();
+        float x = q.x;
+        float y = q.y;
+        float z = q.z;
+        float w = q.w;
+
+        float sinXCosY = 2.0F * (w * x + y * z);
+        float cosXCosY = 1.0F - 2.0F * (x * x + y * y);
+        float rotX = (float)Math.atan2(sinXCosY, cosXCosY);
+
+        float sinY = 2.0F * (w * y - z * x);
+        float rotY = Math.abs(sinY) >= 1.0F
+                ? (float)Math.copySign(Math.PI / 2.0, sinY)
+                : (float)Math.asin(sinY);
+
+        float sinZCosY = 2.0F * (w * z + x * y);
+        float cosZCosY = 1.0F - 2.0F * (y * y + z * z);
+        float rotZ = (float)Math.atan2(sinZCosY, cosZCosY);
+
+        return new float[] {rotX, rotY, rotZ};
     }
 
     private static void resetTreeToInitial(GeoBone bone) {
