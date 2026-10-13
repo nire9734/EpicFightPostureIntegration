@@ -18,6 +18,7 @@ import software.bernie.geckolib.model.GeoModel;
 import software.bernie.geckolib.renderer.GeoEntityRenderer;
 import software.bernie.geckolib.renderer.layer.GeoRenderLayer;
 import software.bernie.geckolib.util.RenderUtils;
+import yesman.epicfight.api.animation.Joint;
 import yesman.epicfight.api.model.Armature;
 import yesman.epicfight.api.utils.math.OpenMatrix4f;
 import yesman.epicfight.world.capabilities.entitypatch.LivingEntityPatch;
@@ -31,19 +32,20 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Replays GeckoLib attachment layers directly on Epic Fight's final joint pose.
  *
- * <p>The body mesh already uses Epic Fight skinning matrices successfully. For
- * attachments we therefore avoid converting EF transforms back into Gecko bone
- * Euler angles. Instead, each source GeoBone is evaluated once in its bind pose,
- * then transformed at render time with the exact same EF skin matrix used by the
- * skinned body:</p>
+ * <p>The body mesh already uses Epic Fight skinning successfully. For attachments
+ * we avoid converting EF transforms back into Gecko bone Euler angles. Instead,
+ * each source GeoBone is evaluated once in its bind pose and transformed with
+ * the exact joint matrix composition used by {@code SkinnedMesh.drawPosed}:</p>
  *
  * <pre>
- * attachment = (currentJoint * inverseBindJoint) * geoBoneBind
+ * attachment = (poseMatrix * joint.toOrigin) * geoBoneBind
  * </pre>
  *
- * <p>This preserves the original Gecko pivot/offset while following the final EF
- * joint matrix, which is substantially more stable for hats, shoulder pieces,
- * back items and held-item anchors than reconstructing pos/rot values.</p>
+ * <p>{@code joint.toOrigin} is Epic Fight's inverse-bind transform. It is
+ * essential here: {@code Armature#getPoseMatrices()} contains current joint
+ * transforms, not complete skin matrices. Omitting {@code toOrigin} applies the
+ * joint bind translation twice and makes hats, shoulder pieces and held-item
+ * anchors spread away from the animated body.</p>
  */
 @SuppressWarnings({"rawtypes", "unchecked"})
 final class GeckoAttachmentBridge {
@@ -93,7 +95,7 @@ final class GeckoAttachmentBridge {
                 return;
             }
 
-            // GeoLib's normal render is cancelled while EF overrideRender() is
+            // GeckoLib's normal render is cancelled while EF overrideRender() is
             // active, so the source bone tree may contain a stale animation pose.
             // Restore the bind snapshot before measuring its absolute matrices.
             for (GeoBone top : bakedModel.topLevelBones()) {
@@ -123,14 +125,15 @@ final class GeckoAttachmentBridge {
             }
 
             Armature armature = entityPatch.getArmature();
-            OpenMatrix4f[] skinMatrices = armature.getPoseMatrices();
+            OpenMatrix4f[] poseMatrices = armature.getPoseMatrices();
             PoseStack bindStack = new PoseStack();
 
             for (GeoBone top : bakedModel.topLevelBones()) {
                 replayBoneLayers(
                         top,
                         -1,
-                        skinMatrices,
+                        armature,
+                        poseMatrices,
                         layers,
                         animatable,
                         renderType,
@@ -158,7 +161,8 @@ final class GeckoAttachmentBridge {
     private static void replayBoneLayers(
             GeoBone bone,
             int inheritedJoint,
-            OpenMatrix4f[] skinMatrices,
+            Armature armature,
+            OpenMatrix4f[] poseMatrices,
             List<GeoRenderLayer> layers,
             GeoAnimatable animatable,
             RenderType renderType,
@@ -174,7 +178,7 @@ final class GeckoAttachmentBridge {
         }
 
         Integer explicitJoint = classifyJoint(bone, inheritedJoint);
-        int joint = explicitJoint != null
+        int jointId = explicitJoint != null
                 ? explicitJoint
                 : (inheritedJoint >= 0 ? inheritedJoint : ROOT);
 
@@ -185,14 +189,17 @@ final class GeckoAttachmentBridge {
         RenderUtils.prepMatrixForBone(bindStack, bone);
         Matrix4f geoBind = new Matrix4f(bindStack.last().pose());
 
-        // EF poseMatrices[j] is already currentJoint * inverseBindJoint. Applying
-        // it to the original absolute Gecko bind matrix gives the attachment its
-        // original bind offset while following precisely the same deformation as
-        // body vertices assigned to this joint.
         Matrix4f attachment = geoBind;
-        if (joint >= 0 && joint < skinMatrices.length && skinMatrices[joint] != null) {
-            Matrix4f skin = OpenMatrix4f.exportToMojangMatrix(skinMatrices[joint]);
-            attachment = new Matrix4f(skin).mul(geoBind);
+        if (jointId >= 0 && jointId < poseMatrices.length && poseMatrices[jointId] != null) {
+            Joint joint = armature.searchJointById(jointId);
+            if (joint != null) {
+                // Mirror SkinnedMesh.drawPosed exactly:
+                // TOTAL_POSE = poseMatrices[j] * joint.getToOrigin().
+                OpenMatrix4f skin = new OpenMatrix4f(poseMatrices[jointId]);
+                skin.mulBack(joint.getToOrigin());
+                Matrix4f skinMatrix = OpenMatrix4f.exportToMojangMatrix(skin);
+                attachment = new Matrix4f(skinMatrix).mul(geoBind);
+            }
         }
 
         poseStack.pushPose();
@@ -218,8 +225,9 @@ final class GeckoAttachmentBridge {
             for (GeoBone child : bone.getChildBones()) {
                 replayBoneLayers(
                         child,
-                        joint,
-                        skinMatrices,
+                        jointId,
+                        armature,
+                        poseMatrices,
                         layers,
                         animatable,
                         renderType,
