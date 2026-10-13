@@ -135,17 +135,17 @@ public final class VanillaHumanoidCompat {
             return false;
         }
 
-        Map<ResourceLocation, CompatibilityKind> updated = new HashMap<>(cachedDetected);
-        CompatibilityKind previous = updated.put(id, kind);
-        if (previous != null && previous != kind) {
-            LOGGER.warn("EFPI renderer compatibility kind changed for {} from {} to {}; using the latest scan",
-                    id, previous, kind);
-        }
-        cachedDetected = Map.copyOf(updated);
-
         try {
             registerRuntime(entityType, kind);
             registeredByEfpi.put(id, kind);
+
+            Map<ResourceLocation, CompatibilityKind> updated = new HashMap<>(cachedDetected);
+            CompatibilityKind previous = updated.put(id, kind);
+            if (previous != null && previous != kind) {
+                LOGGER.warn("EFPI renderer compatibility kind changed for {} from {} to {}; using the latest scan",
+                        id, previous, kind);
+            }
+            cachedDetected = Map.copyOf(updated);
             return true;
         } catch (Throwable throwable) {
             LOGGER.warn("Failed to install runtime automatic compatibility patch for {}", id, throwable);

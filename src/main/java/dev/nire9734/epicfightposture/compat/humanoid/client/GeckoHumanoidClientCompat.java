@@ -108,10 +108,11 @@ public final class GeckoHumanoidClientCompat {
         );
     }
 
-    public static void registerRenderers(
+    public static Set<EntityType<?>> registerRenderers(
             PatchedRenderersEvent.Add event,
             Set<EntityType<?>> entityTypes) {
         Set<EntityType<?>> alreadyPatched = new HashSet<>(EntityPatchProvider.getPatchedEntities());
+        Set<EntityType<?>> verified = new HashSet<>();
         int patched = 0;
         int rendered = 0;
 
@@ -148,12 +149,14 @@ public final class GeckoHumanoidClientCompat {
                     type -> new SpecialStateGeckoRenderer(mesh, event.getContext())
             );
             rendered++;
+            verified.add(entityType);
         }
 
         LOGGER.info(
-                "EFPI auto-detected {} GeckoLib humanoid entity type(s): {} patched, {} special renderer(s)",
-                entityTypes.size(), patched, rendered
+                "EFPI auto-detected {} GeckoLib humanoid entity type(s): {} patched, {} special renderer(s), {} verified",
+                entityTypes.size(), patched, rendered, verified.size()
         );
+        return Set.copyOf(verified);
     }
 
     private GeckoHumanoidClientCompat() {

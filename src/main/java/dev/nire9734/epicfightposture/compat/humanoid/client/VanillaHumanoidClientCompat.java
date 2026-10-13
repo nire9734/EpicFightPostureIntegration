@@ -58,12 +58,8 @@ public final class VanillaHumanoidClientCompat {
         Set<EntityType<?>> verifiedVanilla = registerVanillaHumanoids(event, scan, alreadyPatched);
         Set<EntityType<?>> verifiedSpider = registerVanillaSpiders(event, scan, alreadyPatched);
         Set<EntityType<?>> verifiedGecko = geckoLoaded
-                ? Set.copyOf(scan.externalHumanoidTypes())
+                ? GeckoHumanoidClientCompat.registerRenderers(event, scan.externalHumanoidTypes())
                 : Set.of();
-
-        if (geckoLoaded) {
-            GeckoHumanoidClientCompat.registerRenderers(event, verifiedGecko);
-        }
 
         Set<ResourceLocation> verifiedVanillaIds = idsOf(verifiedVanilla);
         Set<ResourceLocation> verifiedGeckoIds = idsOf(verifiedGecko);
@@ -117,7 +113,6 @@ public final class VanillaHumanoidClientCompat {
             if (runtimeMesh == null) {
                 continue;
             }
-            verified.add(entityType);
 
             if (!oursAlready && !VanillaHumanoidCompat.registerDiscoveredAtRuntime(
                     entityType,
@@ -129,6 +124,7 @@ public final class VanillaHumanoidClientCompat {
                     entityType,
                     type -> new SpecialStateHumanoidRenderer(event.getContext(), type, runtimeMesh)
             );
+            verified.add(entityType);
         }
 
         return Set.copyOf(verified);
@@ -151,7 +147,6 @@ public final class VanillaHumanoidClientCompat {
                 continue;
             }
 
-            verified.add(entityType);
             if (!oursAlready && !VanillaHumanoidCompat.registerDiscoveredAtRuntime(
                     entityType,
                     VanillaHumanoidCompat.CompatibilityKind.VANILLA_SPIDER)) {
@@ -162,6 +157,7 @@ public final class VanillaHumanoidClientCompat {
                     entityType,
                     type -> new SpecialStateSpiderRenderer(event.getContext(), type)
             );
+            verified.add(entityType);
         }
 
         return Set.copyOf(verified);

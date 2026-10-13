@@ -43,7 +43,6 @@ public final class EpicFightPostureIntegration {
             ClientConfigRegistration.register(context);
         }
 
-        PostureServerConfig.refreshBlacklist();
         VanillaHumanoidCompat.bootstrap();
         BridgeNetwork.init();
     }

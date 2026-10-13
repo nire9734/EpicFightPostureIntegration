@@ -42,6 +42,6 @@ side="BOTH"
 [[dependencies.${mod_id}]]
 modId="geckolib"
 mandatory=false
-versionRange="[4.4,5)"
+versionRange="[4.4.9,5)"
 ordering="AFTER"
 side="BOTH"

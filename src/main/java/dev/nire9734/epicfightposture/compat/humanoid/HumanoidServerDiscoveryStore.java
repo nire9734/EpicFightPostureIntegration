@@ -15,6 +15,7 @@ import org.slf4j.Logger;
 import java.io.IOException;
 import java.io.Reader;
 import java.io.Writer;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -244,6 +245,7 @@ public final class HumanoidServerDiscoveryStore {
 
     private static void save() {
         Path path = path();
+        Path temporary = null;
         try {
             Files.createDirectories(path.getParent());
             JsonObject root = new JsonObject();
@@ -270,11 +272,32 @@ public final class HumanoidServerDiscoveryStore {
                     });
             root.add("reports", reports);
 
-            try (Writer writer = Files.newBufferedWriter(path)) {
+            temporary = Files.createTempFile(path.getParent(), FILE_NAME + ".", ".tmp");
+            try (Writer writer = Files.newBufferedWriter(temporary)) {
                 GSON.toJson(root, writer);
             }
+
+            try {
+                Files.move(
+                        temporary,
+                        path,
+                        StandardCopyOption.ATOMIC_MOVE,
+                        StandardCopyOption.REPLACE_EXISTING
+                );
+            } catch (AtomicMoveNotSupportedException ignored) {
+                Files.move(temporary, path, StandardCopyOption.REPLACE_EXISTING);
+            }
+            temporary = null;
         } catch (IOException exception) {
             LOGGER.warn("Failed to write EFPI dedicated-server renderer discovery cache {}", path, exception);
+        } finally {
+            if (temporary != null) {
+                try {
+                    Files.deleteIfExists(temporary);
+                } catch (IOException cleanupException) {
+                    LOGGER.debug("Failed to remove temporary EFPI renderer discovery cache {}", temporary, cleanupException);
+                }
+            }
         }
     }
 

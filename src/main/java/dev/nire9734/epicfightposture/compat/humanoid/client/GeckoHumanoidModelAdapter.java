@@ -37,10 +37,11 @@ import java.util.function.Supplier;
 /**
  * Generic GeckoLib humanoid analyser + special-state mesh bridge.
  *
- * <p>Humanoid detection is independent from mesh conversion. A failed renderer
- * bake must never remove posture/execution compatibility. One-bone limb geometry
- * is delegated to Epic Fight's own GeoModelTransformer limb splitter, while all
- * unrelated Gecko child/marker bones stay on the conservative one-joint path.</p>
+ * <p>Automatic Gecko compatibility is deliberately fail-closed. Semantic and
+ * topology checks identify candidate humanoids, but a target is accepted only
+ * when its special-state mesh can also be prepared successfully. One-bone limb
+ * geometry is delegated to Epic Fight's own GeoModelTransformer limb splitter,
+ * while unrelated Gecko child/marker bones stay on the conservative one-joint path.</p>
  */
 public final class GeckoHumanoidModelAdapter {
     private static final Logger LOGGER = LogUtils.getLogger();

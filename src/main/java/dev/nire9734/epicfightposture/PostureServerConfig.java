@@ -2,7 +2,11 @@ package dev.nire9734.epicfightposture;
 
 import com.mojang.logging.LogUtils;
 import dev.nire9734.epicfightposture.compat.humanoid.VanillaHumanoidCompat;
+import dev.nire9734.epicfightposture.network.BridgeNetwork;
+import dev.nire9734.epicfightposture.network.ServerSettingsSyncPacket;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.common.ForgeConfigSpec;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
@@ -11,6 +15,7 @@ import net.minecraftforge.fml.event.config.ModConfigEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.loading.FMLEnvironment;
 import net.minecraftforge.fml.util.thread.EffectiveSide;
+import net.minecraftforge.server.ServerLifecycleHooks;
 import org.slf4j.Logger;
 
 import java.util.HashSet;
@@ -32,14 +37,14 @@ public final class PostureServerConfig {
     public static final ForgeConfigSpec.BooleanValue ENABLE_VANILLA_SPIDER_COMPATIBILITY;
     public static final ForgeConfigSpec SPEC;
 
-    private static final Snapshot CLIENT_PERMISSIVE_DEFAULTS = new Snapshot(
+    private static final Snapshot CLIENT_FAIL_CLOSED_DEFAULTS = new Snapshot(
             1.0D,
             1.0D,
             true,
             Set.of(),
-            true,
-            true,
-            true
+            false,
+            false,
+            false
     );
 
     private static volatile Set<ResourceLocation> blacklist = Set.of();
@@ -186,6 +191,7 @@ public final class PostureServerConfig {
     public static void onConfigReloading(ModConfigEvent.Reloading event) {
         if (event.getConfig().getSpec() == SPEC) {
             refreshBlacklist();
+            synchronizeReloadedSettings();
         }
     }
 
@@ -202,6 +208,20 @@ public final class PostureServerConfig {
         blacklist = Set.copyOf(parsed);
     }
 
+    private static void synchronizeReloadedSettings() {
+        MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
+        if (server == null) {
+            return;
+        }
+
+        server.execute(() -> {
+            ServerSettingsSyncPacket packet = ServerSettingsSyncPacket.current();
+            for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+                BridgeNetwork.sendPlayer(player, packet);
+            }
+        });
+    }
+
     private static Snapshot effectiveClientSnapshot() {
         if (FMLEnvironment.dist != Dist.CLIENT) {
             return null;
@@ -214,7 +234,7 @@ public final class PostureServerConfig {
             return null;
         }
         Snapshot snapshot = remoteSnapshot;
-        return snapshot != null ? snapshot : CLIENT_PERMISSIVE_DEFAULTS;
+        return snapshot != null ? snapshot : CLIENT_FAIL_CLOSED_DEFAULTS;
     }
 
     public record Snapshot(
