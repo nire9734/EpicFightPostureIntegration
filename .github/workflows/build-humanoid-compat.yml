@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - dev/vanilla-humanoid-ef-special-render
+      - dev/spider-generalized-compat
   pull_request:
   workflow_dispatch:
 
