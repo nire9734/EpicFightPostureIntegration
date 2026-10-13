@@ -26,7 +26,7 @@ import java.util.Set;
 public final class HumanoidCompatDiscoveryStore {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
-    private static final int SCHEMA_VERSION = 2;
+    private static final int SCHEMA_VERSION = 3;
     private static final String FILE_NAME = "humanoid-detected.json";
     private static final String LEGACY_FILE_NAME = "epicfight_posture_integration-humanoid-detected.json";
 
@@ -40,42 +40,36 @@ public final class HumanoidCompatDiscoveryStore {
         try (Reader reader = Files.newBufferedReader(path)) {
             JsonElement parsed = JsonParser.parseReader(reader);
             if (!parsed.isJsonObject()) {
-                LOGGER.info("Ignoring legacy EFPI Humanoid compatibility cache {}; renderer discovery will run again", path);
+                LOGGER.info("Ignoring legacy EFPI compatibility cache {}; renderer discovery will run again", path);
                 return Cache.empty();
             }
 
             JsonObject root = parsed.getAsJsonObject();
             int schema = readInt(root, "schema", -1);
             if (schema != SCHEMA_VERSION) {
-                LOGGER.info(
-                        "Ignoring EFPI Humanoid compatibility cache {} with schema {}; expected {}",
-                        path,
-                        schema,
-                        SCHEMA_VERSION
-                );
+                LOGGER.info("Ignoring EFPI compatibility cache {} with schema {}; expected {}",
+                        path, schema, SCHEMA_VERSION);
                 return Cache.empty();
             }
 
             String storedFingerprint = readString(root, "environment_fingerprint");
             String expectedFingerprint = expectedEnvironmentFingerprint == null ? "" : expectedEnvironmentFingerprint;
             if (!expectedFingerprint.equals(storedFingerprint)) {
-                LOGGER.info("EFPI Humanoid compatibility cache is stale after a client mod-set change; rediscovering renderers");
+                LOGGER.info("EFPI renderer compatibility cache is stale after a client mod-set change; rediscovering renderers");
                 return Cache.empty();
             }
 
             Set<ResourceLocation> vanilla = readIds(root.get("vanilla_humanoid"));
             Set<ResourceLocation> gecko = readIds(root.get("geckolib_humanoid"));
-            Set<ResourceLocation> overlap = new HashSet<>(vanilla);
-            overlap.retainAll(gecko);
-            if (!overlap.isEmpty()) {
-                LOGGER.warn("Ignoring inconsistent EFPI Humanoid compatibility cache {}; {} ID(s) have multiple renderer kinds",
-                        path, overlap.size());
+            Set<ResourceLocation> spider = readIds(root.get("vanilla_spider"));
+            if (hasOverlap(vanilla, gecko) || hasOverlap(vanilla, spider) || hasOverlap(gecko, spider)) {
+                LOGGER.warn("Ignoring inconsistent EFPI compatibility cache {}; an ID has multiple renderer kinds", path);
                 return Cache.empty();
             }
 
-            return new Cache(Set.copyOf(vanilla), Set.copyOf(gecko));
+            return new Cache(Set.copyOf(vanilla), Set.copyOf(gecko), Set.copyOf(spider));
         } catch (Exception e) {
-            LOGGER.warn("Failed to read Humanoid compatibility cache {}", path, e);
+            LOGGER.warn("Failed to read renderer compatibility cache {}", path, e);
             return Cache.empty();
         }
     }
@@ -83,25 +77,31 @@ public final class HumanoidCompatDiscoveryStore {
     public static void save(
             String environmentFingerprint,
             Set<ResourceLocation> vanillaHumanoid,
-            Set<ResourceLocation> geckoLibHumanoid) {
+            Set<ResourceLocation> geckoLibHumanoid,
+            Set<ResourceLocation> vanillaSpider) {
         Path path = path();
         try {
             Files.createDirectories(path.getParent());
             JsonObject root = new JsonObject();
             root.addProperty("schema", SCHEMA_VERSION);
-            root.addProperty(
-                    "environment_fingerprint",
-                    environmentFingerprint == null ? "" : environmentFingerprint
-            );
+            root.addProperty("environment_fingerprint",
+                    environmentFingerprint == null ? "" : environmentFingerprint);
             root.add("vanilla_humanoid", toJsonArray(vanillaHumanoid));
             root.add("geckolib_humanoid", toJsonArray(geckoLibHumanoid));
+            root.add("vanilla_spider", toJsonArray(vanillaSpider));
 
             try (Writer writer = Files.newBufferedWriter(path)) {
                 GSON.toJson(root, writer);
             }
         } catch (IOException e) {
-            LOGGER.warn("Failed to write Humanoid compatibility cache {}", path, e);
+            LOGGER.warn("Failed to write renderer compatibility cache {}", path, e);
         }
+    }
+
+    private static boolean hasOverlap(Set<ResourceLocation> first, Set<ResourceLocation> second) {
+        Set<ResourceLocation> overlap = new HashSet<>(first);
+        overlap.retainAll(second);
+        return !overlap.isEmpty();
     }
 
     private static JsonArray toJsonArray(Set<ResourceLocation> ids) {
@@ -109,9 +109,7 @@ public final class HumanoidCompatDiscoveryStore {
         if (ids == null) {
             return array;
         }
-        ids.stream()
-                .sorted(Comparator.comparing(ResourceLocation::toString))
-                .forEach(id -> array.add(id.toString()));
+        ids.stream().sorted(Comparator.comparing(ResourceLocation::toString)).forEach(id -> array.add(id.toString()));
         return array;
     }
 
@@ -157,13 +155,12 @@ public final class HumanoidCompatDiscoveryStore {
         if (Files.exists(current) || !Files.isRegularFile(legacy)) {
             return;
         }
-
         try {
             Files.createDirectories(current.getParent());
             Files.move(legacy, current, StandardCopyOption.REPLACE_EXISTING);
-            LOGGER.info("Moved EFPI Humanoid discovery cache to {}", current);
+            LOGGER.info("Moved EFPI renderer discovery cache to {}", current);
         } catch (IOException e) {
-            LOGGER.warn("Failed to move legacy Humanoid compatibility cache {}", legacy, e);
+            LOGGER.warn("Failed to move legacy renderer compatibility cache {}", legacy, e);
         }
     }
 
@@ -173,14 +170,18 @@ public final class HumanoidCompatDiscoveryStore {
                 .resolve(FILE_NAME);
     }
 
-    public record Cache(Set<ResourceLocation> vanillaHumanoid, Set<ResourceLocation> geckoLibHumanoid) {
+    public record Cache(
+            Set<ResourceLocation> vanillaHumanoid,
+            Set<ResourceLocation> geckoLibHumanoid,
+            Set<ResourceLocation> vanillaSpider) {
         public Cache {
             vanillaHumanoid = vanillaHumanoid == null ? Set.of() : Set.copyOf(vanillaHumanoid);
             geckoLibHumanoid = geckoLibHumanoid == null ? Set.of() : Set.copyOf(geckoLibHumanoid);
+            vanillaSpider = vanillaSpider == null ? Set.of() : Set.copyOf(vanillaSpider);
         }
 
         public static Cache empty() {
-            return new Cache(Set.of(), Set.of());
+            return new Cache(Set.of(), Set.of(), Set.of());
         }
     }
 
