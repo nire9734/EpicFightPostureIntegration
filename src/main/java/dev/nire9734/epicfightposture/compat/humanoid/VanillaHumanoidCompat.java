@@ -3,6 +3,7 @@ package dev.nire9734.epicfightposture.compat.humanoid;
 import com.mojang.logging.LogUtils;
 import dev.nire9734.epicfightposture.EpicFightPostureIntegration;
 import dev.nire9734.epicfightposture.PostureServerConfig;
+import dev.nire9734.epicfightposture.compat.spider.LightweightSpiderPatch;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.EntityType;
 import net.minecraftforge.api.distmarker.Dist;
@@ -21,7 +22,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
-/** Lightweight EF patch registration for automatically detected humanoid entities. */
+/** Lightweight EF patch registration for automatically detected renderer-compatible entities. */
 @Mod.EventBusSubscriber(
         modid = EpicFightPostureIntegration.MODID,
         bus = Mod.EventBusSubscriber.Bus.MOD
@@ -33,19 +34,28 @@ public final class VanillaHumanoidCompat {
 
     public enum CompatibilityKind {
         VANILLA_HUMANOID,
-        GECKOLIB_HUMANOID
+        GECKOLIB_HUMANOID,
+        VANILLA_SPIDER
     }
 
     public static void bootstrap() {
         if (FMLEnvironment.dist == Dist.DEDICATED_SERVER) {
             HumanoidServerDiscoveryStore.ActiveTargets active =
                     HumanoidServerDiscoveryStore.bootstrap(HumanoidEnvironmentFingerprint.current());
-            cachedDetected = buildKindMap(active.vanillaHumanoid(), active.geckoLibHumanoid());
+            cachedDetected = buildKindMap(
+                    active.vanillaHumanoid(),
+                    active.geckoLibHumanoid(),
+                    active.vanillaSpider()
+            );
         } else {
             HumanoidCompatDiscoveryStore.Cache cache = HumanoidCompatDiscoveryStore.load(
                     HumanoidEnvironmentFingerprint.current()
             );
-            cachedDetected = buildKindMap(cache.vanillaHumanoid(), cache.geckoLibHumanoid());
+            cachedDetected = buildKindMap(
+                    cache.vanillaHumanoid(),
+                    cache.geckoLibHumanoid(),
+                    cache.vanillaSpider()
+            );
         }
     }
 
@@ -65,7 +75,7 @@ public final class VanillaHumanoidCompat {
                 continue;
             }
 
-            registerIntoEvent(event, entityType);
+            registerIntoEvent(event, entityType, kind);
             registeredByEfpi.put(entityId, kind);
         }
     }
@@ -88,15 +98,6 @@ public final class VanillaHumanoidCompat {
         return entityType != null && isCompatibilityEnabled(EntityType.getKey(entityType));
     }
 
-    /**
-     * Installs a freshly client-discovered type in the current JVM. This keeps
-     * integrated single-player working on the first run, before a restart has
-     * had a chance to consume the persisted discovery cache.
-     *
-     * <p>The client-side registration is kept even when the current SERVER config
-     * disables that kind, because the config may not yet be loaded/synchronized.
-     * Runtime behavior is independently gated by {@link #isCompatibilityEnabled}.</p>
-     */
     public static synchronized boolean registerDiscoveredAtRuntime(
             EntityType<?> entityType,
             CompatibilityKind kind) {
@@ -112,19 +113,18 @@ public final class VanillaHumanoidCompat {
         Map<ResourceLocation, CompatibilityKind> updated = new HashMap<>(cachedDetected);
         CompatibilityKind previous = updated.put(id, kind);
         if (previous != null && previous != kind) {
-            LOGGER.warn("EFPI humanoid renderer kind changed for {} from {} to {}; using the latest scan",
+            LOGGER.warn("EFPI renderer compatibility kind changed for {} from {} to {}; using the latest scan",
                     id, previous, kind);
         }
         cachedDetected = Map.copyOf(updated);
         saveClientCache();
 
         try {
-            Armatures.registerEntityTypeArmature(entityType, Armatures.BIPED);
-            EntityPatchProvider.putCustomEntityPatch(entityType, ignored -> LightweightHumanoidPatch::new);
+            registerRuntime(entityType, kind);
             registeredByEfpi.put(id, kind);
             return true;
         } catch (Throwable throwable) {
-            LOGGER.warn("Failed to install runtime Humanoid compatibility patch for {}", id, throwable);
+            LOGGER.warn("Failed to install runtime automatic compatibility patch for {}", id, throwable);
             return false;
         }
     }
@@ -136,8 +136,9 @@ public final class VanillaHumanoidCompat {
     /** Stores every detected target, including IDs the server may disable or blacklist later. */
     public static synchronized void replaceDetectedCache(
             Set<ResourceLocation> vanillaHumanoid,
-            Set<ResourceLocation> geckoLibHumanoid) {
-        cachedDetected = buildKindMap(vanillaHumanoid, geckoLibHumanoid);
+            Set<ResourceLocation> geckoLibHumanoid,
+            Set<ResourceLocation> vanillaSpider) {
+        cachedDetected = buildKindMap(vanillaHumanoid, geckoLibHumanoid, vanillaSpider);
         saveClientCache();
     }
 
@@ -145,32 +146,52 @@ public final class VanillaHumanoidCompat {
         return switch (kind) {
             case VANILLA_HUMANOID -> PostureServerConfig.vanillaHumanoidCompatibilityEnabled();
             case GECKOLIB_HUMANOID -> PostureServerConfig.geckoLibHumanoidCompatibilityEnabled();
+            case VANILLA_SPIDER -> PostureServerConfig.vanillaSpiderCompatibilityEnabled();
         };
     }
 
     private static Map<ResourceLocation, CompatibilityKind> buildKindMap(
             Set<ResourceLocation> vanillaHumanoid,
-            Set<ResourceLocation> geckoLibHumanoid) {
+            Set<ResourceLocation> geckoLibHumanoid,
+            Set<ResourceLocation> vanillaSpider) {
         Set<ResourceLocation> vanilla = vanillaHumanoid == null ? Set.of() : vanillaHumanoid;
         Set<ResourceLocation> gecko = geckoLibHumanoid == null ? Set.of() : geckoLibHumanoid;
-        Set<ResourceLocation> overlap = new HashSet<>(vanilla);
-        overlap.retainAll(gecko);
-        if (!overlap.isEmpty()) {
-            LOGGER.warn("EFPI ignored {} humanoid target(s) with ambiguous renderer classification", overlap.size());
+        Set<ResourceLocation> spider = vanillaSpider == null ? Set.of() : vanillaSpider;
+
+        Set<ResourceLocation> ambiguous = new HashSet<>();
+        collectOverlap(ambiguous, vanilla, gecko);
+        collectOverlap(ambiguous, vanilla, spider);
+        collectOverlap(ambiguous, gecko, spider);
+        if (!ambiguous.isEmpty()) {
+            LOGGER.warn("EFPI ignored {} target(s) with ambiguous renderer classification", ambiguous.size());
         }
 
         Map<ResourceLocation, CompatibilityKind> result = new HashMap<>();
-        for (ResourceLocation id : vanilla) {
-            if (id != null && !overlap.contains(id)) {
-                result.put(id, CompatibilityKind.VANILLA_HUMANOID);
-            }
-        }
-        for (ResourceLocation id : gecko) {
-            if (id != null && !overlap.contains(id)) {
-                result.put(id, CompatibilityKind.GECKOLIB_HUMANOID);
-            }
-        }
+        addKind(result, vanilla, ambiguous, CompatibilityKind.VANILLA_HUMANOID);
+        addKind(result, gecko, ambiguous, CompatibilityKind.GECKOLIB_HUMANOID);
+        addKind(result, spider, ambiguous, CompatibilityKind.VANILLA_SPIDER);
         return Map.copyOf(result);
+    }
+
+    private static void collectOverlap(
+            Set<ResourceLocation> target,
+            Set<ResourceLocation> first,
+            Set<ResourceLocation> second) {
+        Set<ResourceLocation> overlap = new HashSet<>(first);
+        overlap.retainAll(second);
+        target.addAll(overlap);
+    }
+
+    private static void addKind(
+            Map<ResourceLocation, CompatibilityKind> result,
+            Set<ResourceLocation> ids,
+            Set<ResourceLocation> ambiguous,
+            CompatibilityKind kind) {
+        for (ResourceLocation id : ids) {
+            if (id != null && !ambiguous.contains(id)) {
+                result.put(id, kind);
+            }
+        }
     }
 
     private static void saveClientCache() {
@@ -180,24 +201,50 @@ public final class VanillaHumanoidCompat {
 
         Set<ResourceLocation> vanilla = new HashSet<>();
         Set<ResourceLocation> gecko = new HashSet<>();
+        Set<ResourceLocation> spider = new HashSet<>();
         for (Map.Entry<ResourceLocation, CompatibilityKind> entry : cachedDetected.entrySet()) {
-            if (entry.getValue() == CompatibilityKind.VANILLA_HUMANOID) {
-                vanilla.add(entry.getKey());
-            } else if (entry.getValue() == CompatibilityKind.GECKOLIB_HUMANOID) {
-                gecko.add(entry.getKey());
+            switch (entry.getValue()) {
+                case VANILLA_HUMANOID -> vanilla.add(entry.getKey());
+                case GECKOLIB_HUMANOID -> gecko.add(entry.getKey());
+                case VANILLA_SPIDER -> spider.add(entry.getKey());
             }
         }
 
         HumanoidCompatDiscoveryStore.save(
                 HumanoidEnvironmentFingerprint.current(),
                 vanilla,
-                gecko
+                gecko,
+                spider
         );
     }
 
-    private static void registerIntoEvent(EntityPatchRegistryEvent event, EntityType<?> entityType) {
-        Armatures.registerEntityTypeArmature(entityType, Armatures.BIPED);
-        event.getTypeEntry().put(entityType, ignored -> LightweightHumanoidPatch::new);
+    private static void registerRuntime(EntityType<?> entityType, CompatibilityKind kind) {
+        switch (kind) {
+            case VANILLA_HUMANOID, GECKOLIB_HUMANOID -> {
+                Armatures.registerEntityTypeArmature(entityType, Armatures.BIPED);
+                EntityPatchProvider.putCustomEntityPatch(entityType, ignored -> LightweightHumanoidPatch::new);
+            }
+            case VANILLA_SPIDER -> {
+                Armatures.registerEntityTypeArmature(entityType, Armatures.SPIDER);
+                EntityPatchProvider.putCustomEntityPatch(entityType, ignored -> LightweightSpiderPatch::new);
+            }
+        }
+    }
+
+    private static void registerIntoEvent(
+            EntityPatchRegistryEvent event,
+            EntityType<?> entityType,
+            CompatibilityKind kind) {
+        switch (kind) {
+            case VANILLA_HUMANOID, GECKOLIB_HUMANOID -> {
+                Armatures.registerEntityTypeArmature(entityType, Armatures.BIPED);
+                event.getTypeEntry().put(entityType, ignored -> LightweightHumanoidPatch::new);
+            }
+            case VANILLA_SPIDER -> {
+                Armatures.registerEntityTypeArmature(entityType, Armatures.SPIDER);
+                event.getTypeEntry().put(entityType, ignored -> LightweightSpiderPatch::new);
+            }
+        }
     }
 
     private VanillaHumanoidCompat() {
