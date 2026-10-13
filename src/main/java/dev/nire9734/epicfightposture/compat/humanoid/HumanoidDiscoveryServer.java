@@ -55,7 +55,8 @@ public final class HumanoidDiscoveryServer {
             String environmentFingerprint,
             Set<ResourceLocation> inspected,
             Set<ResourceLocation> vanillaHumanoid,
-            Set<ResourceLocation> geckoLibHumanoid) {
+            Set<ResourceLocation> geckoLibHumanoid,
+            Set<ResourceLocation> vanillaSpider) {
         if (FMLEnvironment.dist != Dist.DEDICATED_SERVER
                 || sender == null
                 || !sender.hasPermissions(REQUIRED_PERMISSION_LEVEL)) {
@@ -68,17 +69,19 @@ public final class HumanoidDiscoveryServer {
         }
 
         if (environmentFingerprint == null || !environmentFingerprint.matches("[0-9a-f]{64}")) {
-            sender.sendSystemMessage(Component.literal("EFPI: rejected invalid Humanoid discovery fingerprint."));
+            sender.sendSystemMessage(Component.literal("EFPI: rejected invalid renderer discovery fingerprint."));
             return;
         }
-        if (!inspected.containsAll(vanillaHumanoid) || !inspected.containsAll(geckoLibHumanoid)) {
-            sender.sendSystemMessage(Component.literal("EFPI: rejected inconsistent Humanoid discovery report."));
+        if (!inspected.containsAll(vanillaHumanoid)
+                || !inspected.containsAll(geckoLibHumanoid)
+                || !inspected.containsAll(vanillaSpider)) {
+            sender.sendSystemMessage(Component.literal("EFPI: rejected inconsistent renderer discovery report."));
             return;
         }
-        Set<ResourceLocation> overlap = new HashSet<>(vanillaHumanoid);
-        overlap.retainAll(geckoLibHumanoid);
-        if (!overlap.isEmpty()) {
-            sender.sendSystemMessage(Component.literal("EFPI: rejected ambiguous Humanoid discovery report."));
+        if (hasOverlap(vanillaHumanoid, geckoLibHumanoid)
+                || hasOverlap(vanillaHumanoid, vanillaSpider)
+                || hasOverlap(geckoLibHumanoid, vanillaSpider)) {
+            sender.sendSystemMessage(Component.literal("EFPI: rejected ambiguous renderer discovery report."));
             return;
         }
 
@@ -94,23 +97,27 @@ public final class HumanoidDiscoveryServer {
         validVanilla.retainAll(validInspected);
         Set<ResourceLocation> validGecko = new HashSet<>(geckoLibHumanoid);
         validGecko.retainAll(validInspected);
+        Set<ResourceLocation> validSpider = new HashSet<>(vanillaSpider);
+        validSpider.retainAll(validInspected);
 
         HumanoidServerDiscoveryStore.UpdateResult result = HumanoidServerDiscoveryStore.acceptReport(
                 environmentFingerprint,
                 validInspected,
                 validVanilla,
-                validGecko
+                validGecko,
+                validSpider
         );
 
         if (!result.accepted()) {
-            sender.sendSystemMessage(Component.literal("EFPI: Humanoid discovery report cache is full; report ignored."));
+            sender.sendSystemMessage(Component.literal("EFPI: renderer discovery report cache is full; report ignored."));
             return;
         }
 
-        String summary = "EFPI: Humanoid discovery: "
+        String summary = "EFPI: renderer discovery: "
                 + result.pendingCount() + " confirmed ("
-                + result.pendingVanillaCount() + " vanilla, "
-                + result.pendingGeckoCount() + " GeckoLib), "
+                + result.pendingVanillaCount() + " vanilla humanoid, "
+                + result.pendingGeckoCount() + " GeckoLib humanoid, "
+                + result.pendingSpiderCount() + " vanilla SpiderModel), "
                 + result.conflictCount() + " conflict(s).";
         if (result.restartRequired()) {
             summary += " Restart the server to apply the pending compatibility list.";
@@ -118,6 +125,12 @@ public final class HumanoidDiscoveryServer {
             summary += " No restart is required.";
         }
         sender.sendSystemMessage(Component.literal(summary));
+    }
+
+    private static boolean hasOverlap(Set<ResourceLocation> first, Set<ResourceLocation> second) {
+        Set<ResourceLocation> overlap = new HashSet<>(first);
+        overlap.retainAll(second);
+        return !overlap.isEmpty();
     }
 
     private HumanoidDiscoveryServer() {
