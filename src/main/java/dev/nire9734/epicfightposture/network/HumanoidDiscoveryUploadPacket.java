@@ -20,32 +20,43 @@ public final class HumanoidDiscoveryUploadPacket {
     private final UUID nonce;
     private final String environmentFingerprint;
     private final Set<ResourceLocation> inspected;
-    private final Set<ResourceLocation> humanoid;
+    private final Set<ResourceLocation> vanillaHumanoid;
+    private final Set<ResourceLocation> geckoLibHumanoid;
 
     public HumanoidDiscoveryUploadPacket(
             UUID nonce,
             String environmentFingerprint,
             Set<ResourceLocation> inspected,
-            Set<ResourceLocation> humanoid) {
+            Set<ResourceLocation> vanillaHumanoid,
+            Set<ResourceLocation> geckoLibHumanoid) {
         this.nonce = nonce;
         this.environmentFingerprint = environmentFingerprint == null ? "" : environmentFingerprint;
         this.inspected = Set.copyOf(inspected);
-        this.humanoid = Set.copyOf(humanoid);
+        this.vanillaHumanoid = Set.copyOf(vanillaHumanoid);
+        this.geckoLibHumanoid = Set.copyOf(geckoLibHumanoid);
     }
 
     public static void encode(HumanoidDiscoveryUploadPacket packet, FriendlyByteBuf buf) {
         buf.writeUUID(packet.nonce);
         buf.writeUtf(packet.environmentFingerprint, FINGERPRINT_LENGTH);
         writeIds(buf, packet.inspected);
-        writeIds(buf, packet.humanoid);
+        writeIds(buf, packet.vanillaHumanoid);
+        writeIds(buf, packet.geckoLibHumanoid);
     }
 
     public static HumanoidDiscoveryUploadPacket decode(FriendlyByteBuf buf) {
         UUID nonce = buf.readUUID();
         String fingerprint = buf.readUtf(FINGERPRINT_LENGTH);
         Set<ResourceLocation> inspected = readIds(buf);
-        Set<ResourceLocation> humanoid = readIds(buf);
-        return new HumanoidDiscoveryUploadPacket(nonce, fingerprint, inspected, humanoid);
+        Set<ResourceLocation> vanillaHumanoid = readIds(buf);
+        Set<ResourceLocation> geckoLibHumanoid = readIds(buf);
+        return new HumanoidDiscoveryUploadPacket(
+                nonce,
+                fingerprint,
+                inspected,
+                vanillaHumanoid,
+                geckoLibHumanoid
+        );
     }
 
     public static void handle(
@@ -58,7 +69,8 @@ public final class HumanoidDiscoveryUploadPacket {
                 packet.nonce,
                 packet.environmentFingerprint,
                 packet.inspected,
-                packet.humanoid
+                packet.vanillaHumanoid,
+                packet.geckoLibHumanoid
         ));
         context.setPacketHandled(true);
     }
