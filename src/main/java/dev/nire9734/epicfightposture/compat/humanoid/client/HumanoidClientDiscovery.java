@@ -35,7 +35,7 @@ public final class HumanoidClientDiscovery {
 
     public static ScanSnapshot scan(Map<EntityType<?>, EntityRenderer<?>> renderers) {
         Set<ResourceLocation> inspected = new HashSet<>();
-        Set<ResourceLocation> humanoid = new HashSet<>();
+        Set<ResourceLocation> vanillaHumanoid = new HashSet<>();
         Set<EntityType<?>> vanillaHumanoidTypes = new HashSet<>();
 
         for (Map.Entry<EntityType<?>, EntityRenderer<?>> entry : renderers.entrySet()) {
@@ -53,7 +53,7 @@ public final class HumanoidClientDiscovery {
 
             inspected.add(id);
             if (livingRenderer.getModel() instanceof HumanoidModel<?>) {
-                humanoid.add(id);
+                vanillaHumanoid.add(id);
                 vanillaHumanoidTypes.add(entityType);
             }
         }
@@ -66,12 +66,26 @@ public final class HumanoidClientDiscovery {
         }
 
         inspected.addAll(extra.inspected());
-        humanoid.addAll(extra.humanoid());
+        vanillaHumanoid.addAll(extra.vanillaHumanoid());
+
+        Set<ResourceLocation> geckoHumanoid = new HashSet<>(extra.geckoLibHumanoid());
+        Set<ResourceLocation> overlap = new HashSet<>(vanillaHumanoid);
+        overlap.retainAll(geckoHumanoid);
+        if (!overlap.isEmpty()) {
+            vanillaHumanoid.removeAll(overlap);
+            geckoHumanoid.removeAll(overlap);
+        }
 
         Set<EntityType<?>> externalHumanoidTypes = new HashSet<>(extra.externalHumanoidTypes());
+        if (!overlap.isEmpty()) {
+            vanillaHumanoidTypes.removeIf(type -> overlap.contains(EntityType.getKey(type)));
+            externalHumanoidTypes.removeIf(type -> overlap.contains(EntityType.getKey(type)));
+        }
+
         return new ScanSnapshot(
                 Set.copyOf(inspected),
-                Set.copyOf(humanoid),
+                Set.copyOf(vanillaHumanoid),
+                Set.copyOf(geckoHumanoid),
                 Set.copyOf(vanillaHumanoidTypes),
                 Set.copyOf(externalHumanoidTypes)
         );
@@ -79,22 +93,43 @@ public final class HumanoidClientDiscovery {
 
     public static void handleServerRequest(UUID nonce) {
         ScanSnapshot scan = scanCurrent();
-        HumanoidCompatDiscoveryStore.save(scan.humanoid());
+        String fingerprint = HumanoidEnvironmentFingerprint.current();
+        HumanoidCompatDiscoveryStore.save(
+                fingerprint,
+                scan.vanillaHumanoid(),
+                scan.geckoLibHumanoid()
+        );
         BridgeNetwork.sendToServer(new HumanoidDiscoveryUploadPacket(
                 nonce,
-                HumanoidEnvironmentFingerprint.current(),
+                fingerprint,
                 scan.inspected(),
-                scan.humanoid()
+                scan.vanillaHumanoid(),
+                scan.geckoLibHumanoid()
         ));
     }
 
     public record ScanSnapshot(
             Set<ResourceLocation> inspected,
-            Set<ResourceLocation> humanoid,
+            Set<ResourceLocation> vanillaHumanoid,
+            Set<ResourceLocation> geckoLibHumanoid,
             Set<EntityType<?>> vanillaHumanoidTypes,
             Set<EntityType<?>> externalHumanoidTypes) {
+        public ScanSnapshot {
+            inspected = inspected == null ? Set.of() : Set.copyOf(inspected);
+            vanillaHumanoid = vanillaHumanoid == null ? Set.of() : Set.copyOf(vanillaHumanoid);
+            geckoLibHumanoid = geckoLibHumanoid == null ? Set.of() : Set.copyOf(geckoLibHumanoid);
+            vanillaHumanoidTypes = vanillaHumanoidTypes == null ? Set.of() : Set.copyOf(vanillaHumanoidTypes);
+            externalHumanoidTypes = externalHumanoidTypes == null ? Set.of() : Set.copyOf(externalHumanoidTypes);
+        }
+
+        public Set<ResourceLocation> humanoid() {
+            Set<ResourceLocation> combined = new HashSet<>(vanillaHumanoid);
+            combined.addAll(geckoLibHumanoid);
+            return Set.copyOf(combined);
+        }
+
         public static ScanSnapshot empty() {
-            return new ScanSnapshot(Set.of(), Set.of(), Set.of(), Set.of());
+            return new ScanSnapshot(Set.of(), Set.of(), Set.of(), Set.of(), Set.of());
         }
     }
 
