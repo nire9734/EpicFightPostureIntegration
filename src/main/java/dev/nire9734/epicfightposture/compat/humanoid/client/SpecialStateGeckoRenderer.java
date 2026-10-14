@@ -10,6 +10,7 @@ import net.minecraft.client.renderer.entity.EntityRendererProvider;
 import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.LivingEntity;
+import yesman.epicfight.api.animation.Pose;
 import yesman.epicfight.api.asset.AssetAccessor;
 import yesman.epicfight.api.client.model.SkinnedMesh;
 import yesman.epicfight.api.model.Armature;
@@ -108,20 +109,18 @@ public final class SpecialStateGeckoRenderer extends PatchedEntityRenderer<
         }
 
         // Gecko's own render is cancelled by Epic Fight while overrideRender()
-        // is active, so its bone animation and GeoRenderLayer callbacks would
-        // otherwise never run. Keep the body mesh above fully EF-owned, but
-        // synchronize attachment bones to the same EF pose and replay only the
-        // per-bone layer callbacks (items, armor, bone attachments, etc.).
-        //
-        // The frame scope does not change that proven path. It only gives the
-        // optional GeoArmorRenderer mixins enough context to split body-only
-        // armor geometry across Root/Chest on a per-vertex basis.
+        // is active, so its GeoRenderLayer callbacks must be replayed manually.
+        // Keep the exact EF skin-matrix path for ordinary attachments. During
+        // ItemArmorGeoLayer torso callbacks only, the frame scope temporarily
+        // supplies the synchronized source-local matrix that Gecko armor expects.
+        Pose attachmentPose = entitypatch.getAnimator().getPose(partialTicks);
         try (GeckoArmorBodySkinningContext.FrameScope ignored =
                      GeckoArmorBodySkinningContext.openFrame(
                              entity,
                              armature,
                              this.skeleton,
-                             poseStack)) {
+                             poseStack,
+                             attachmentPose)) {
             GeckoAttachmentBridge.syncAndRenderLayers(
                     entity,
                     entitypatch,

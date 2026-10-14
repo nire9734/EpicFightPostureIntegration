@@ -13,7 +13,10 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import software.bernie.geckolib.cache.object.GeoBone;
 
-/** Records which source Gecko bone initiated the current armor callback. */
+/**
+ * Gives torso armor callbacks a temporary source-pose matrix while leaving every
+ * other ItemArmorGeoLayer callback on EFPI's exact attachment-matrix path.
+ */
 @Pseudo
 @Mixin(targets = "software.bernie.geckolib.renderer.layer.ItemArmorGeoLayer", remap = false)
 public abstract class GeckoItemArmorLayerContextMixin {
@@ -34,7 +37,7 @@ public abstract class GeckoItemArmorLayerContextMixin {
             int packedLight,
             int packedOverlay,
             CallbackInfo ci) {
-        GeckoArmorBodySkinningContext.beginArmorBone(bone);
+        GeckoArmorBodySkinningContext.beginArmorBone(poseStack, animatable, bone);
     }
 
     @Inject(
@@ -54,6 +57,6 @@ public abstract class GeckoItemArmorLayerContextMixin {
             int packedLight,
             int packedOverlay,
             CallbackInfo ci) {
-        GeckoArmorBodySkinningContext.endArmorBone();
+        GeckoArmorBodySkinningContext.endArmorBone(poseStack);
     }
 }
