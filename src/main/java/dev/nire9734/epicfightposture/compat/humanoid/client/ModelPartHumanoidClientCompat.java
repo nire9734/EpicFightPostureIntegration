@@ -15,12 +15,15 @@ import yesman.epicfight.api.asset.SelfAccessor;
 import yesman.epicfight.api.client.forgeevent.PatchedRenderersEvent;
 import yesman.epicfight.api.client.model.SkinnedMesh;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 
 /** Generic Minecraft HierarchicalModel/ModelPart humanoid backend. */
 public final class ModelPartHumanoidClientCompat implements HumanoidRenderBackend {
     public static final ModelPartHumanoidClientCompat INSTANCE = new ModelPartHumanoidClientCompat();
     private static final Logger LOGGER = LogUtils.getLogger();
+    private static final Map<EntityType<?>, ModelPartAttachmentPlan> ATTACHMENTS = new HashMap<>();
 
     @Override
     public String id() {
@@ -28,7 +31,9 @@ public final class ModelPartHumanoidClientCompat implements HumanoidRenderBacken
     }
 
     @Override
-    public Inspection inspect(EntityType<?> entityType, EntityRenderer<?> renderer) {
+    public synchronized Inspection inspect(EntityType<?> entityType, EntityRenderer<?> renderer) {
+        ATTACHMENTS.remove(entityType);
+
         if (!(renderer instanceof LivingEntityRenderer<?, ?> livingRenderer)
                 || !(livingRenderer.getModel() instanceof HierarchicalModel<?> hierarchicalModel)) {
             return Inspection.unmatched();
@@ -54,9 +59,10 @@ public final class ModelPartHumanoidClientCompat implements HumanoidRenderBacken
                     "runtime_modelpart/" + entityId.getNamespace() + "/" + entityId.getPath()
             );
             AssetAccessor<SkinnedMesh> mesh = SelfAccessor.create(runtimeMeshId, result.mesh());
+            ATTACHMENTS.put(entityType, result.attachments());
 
             LOGGER.debug(
-                    "EFPI ModelPart humanoid accepted {}: height={}, shoulderWidth={}, armL={}/{}, armR={}/{}, virtualJoints={}, confidence={}",
+                    "EFPI ModelPart humanoid accepted {}: height={}, shoulderWidth={}, armL={}/{}, armR={}/{}, virtualJoints={}, confidence={}, attachmentParts={}",
                     entityId,
                     descriptor.metrics().totalHeight(),
                     descriptor.metrics().shoulderWidth(),
@@ -65,7 +71,8 @@ public final class ModelPartHumanoidClientCompat implements HumanoidRenderBacken
                     descriptor.metrics().upperArmRight(),
                     descriptor.metrics().lowerArmRight(),
                     descriptor.quality().virtualJointCount(),
-                    descriptor.quality().overallConfidence()
+                    descriptor.quality().overallConfidence(),
+                    result.attachments().entries().size()
             );
 
             return Inspection.supported(new PreparedHumanoidModel(
@@ -82,12 +89,13 @@ public final class ModelPartHumanoidClientCompat implements HumanoidRenderBacken
     }
 
     @Override
-    public void addPatchedRenderer(PatchedRenderersEvent.Add event, PreparedHumanoidModel prepared) {
+    public synchronized void addPatchedRenderer(PatchedRenderersEvent.Add event, PreparedHumanoidModel prepared) {
         // Forge RenderLivingEvent.Pre occurs before LivingEntityRenderer.scale(),
-        // so the same special-state renderer contract used by Lionfish applies here.
+        // so the same special-state renderer contract used by Lionfish applies.
+        ModelPartAttachmentPlan attachments = ATTACHMENTS.get(prepared.entityType());
         event.addPatchedEntityRenderer(
                 prepared.entityType(),
-                type -> new SpecialStateLionfishRenderer(prepared.mesh(), event.getContext())
+                type -> new SpecialStateLionfishRenderer(prepared.mesh(), event.getContext(), attachments)
         );
     }
 
