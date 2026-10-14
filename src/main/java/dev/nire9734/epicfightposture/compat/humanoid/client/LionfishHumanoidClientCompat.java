@@ -2,7 +2,7 @@ package dev.nire9734.epicfightposture.compat.humanoid.client;
 
 import com.github.L_Ender.lionfishapi.client.model.tools.AdvancedEntityModel;
 import com.mojang.logging.LogUtils;
-import dev.nire9734.epicfightposture.compat.humanoid.VanillaHumanoidCompat;
+import dev.nire9734.epicfightposture.EpicFightPostureIntegration;
 import dev.nire9734.epicfightposture.compat.humanoid.skeleton.HumanoidSkeletonDescriptor;
 import dev.nire9734.epicfightposture.compat.humanoid.skeleton.SkeletonKey;
 import net.minecraft.client.renderer.entity.EntityRenderer;
@@ -10,66 +10,52 @@ import net.minecraft.client.renderer.entity.LivingEntityRenderer;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.EntityType;
 import org.slf4j.Logger;
+import yesman.epicfight.api.asset.AssetAccessor;
+import yesman.epicfight.api.asset.SelfAccessor;
+import yesman.epicfight.api.client.forgeevent.PatchedRenderersEvent;
 import yesman.epicfight.api.client.model.SkinnedMesh;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.Optional;
 
-/**
- * Experimental Lionfish/Citadel-style humanoid discovery and mesh preparation.
- *
- * <p>This remains shadow-only: successful descriptors and meshes are cached for
- * validation, but no entity patch or renderer is registered yet.</p>
- */
-public final class LionfishHumanoidClientCompat {
+/** Lionfish/Citadel-style humanoid backend. */
+public final class LionfishHumanoidClientCompat implements HumanoidRenderBackend {
+    public static final LionfishHumanoidClientCompat INSTANCE = new LionfishHumanoidClientCompat();
     private static final Logger LOGGER = LogUtils.getLogger();
-    private static final Map<EntityType<?>, HumanoidSkeletonDescriptor> RUNTIME_SKELETONS = new HashMap<>();
-    private static final Map<EntityType<?>, SkinnedMesh> RUNTIME_MESHES = new HashMap<>();
 
-    public static void shadowScan(Map<EntityType<?>, EntityRenderer<?>> renderers) {
-        RUNTIME_SKELETONS.clear();
-        RUNTIME_MESHES.clear();
-        int inspected = 0;
-        int resolved = 0;
-        int meshed = 0;
-        List<ResourceLocation> ready = new ArrayList<>();
+    @Override
+    public String id() {
+        return "lionfish";
+    }
 
-        for (Map.Entry<EntityType<?>, EntityRenderer<?>> entry : renderers.entrySet()) {
-            EntityType<?> entityType = entry.getKey();
-            EntityRenderer<?> renderer = entry.getValue();
-            if (entityType == null || entityType == EntityType.PLAYER
-                    || !(renderer instanceof LivingEntityRenderer<?, ?> livingRenderer)
-                    || !(livingRenderer.getModel() instanceof AdvancedEntityModel<?> advancedModel)) {
-                continue;
-            }
+    @Override
+    public Inspection inspect(EntityType<?> entityType, EntityRenderer<?> renderer) {
+        if (!(renderer instanceof LivingEntityRenderer<?, ?> livingRenderer)
+                || !(livingRenderer.getModel() instanceof AdvancedEntityModel<?> advancedModel)) {
+            return Inspection.unmatched();
+        }
 
-            ResourceLocation entityId = EntityType.getKey(entityType);
-            if (entityId == null || VanillaHumanoidCompat.isExternallyPatched(entityId)) {
-                continue;
-            }
-            inspected++;
+        ResourceLocation entityId = EntityType.getKey(entityType);
+        if (entityId == null) {
+            return Inspection.rejected();
+        }
 
+        try {
             SkeletonKey key = new SkeletonKey(entityId, advancedModel.getClass().getName());
             LionfishHumanoidMeshAdapter.Result result = LionfishHumanoidMeshAdapter.analyseAndBake(advancedModel, key);
-            if (!result.supported() || result.descriptor() == null) {
-                LOGGER.debug("EFPI Lionfish shadow resolver rejected {}: {}", entityId, result.reason());
-                continue;
+            if (!result.supported() || result.descriptor() == null || result.mesh() == null) {
+                LOGGER.debug("EFPI Lionfish humanoid resolver rejected {}: {}", entityId, result.reason());
+                return Inspection.rejected();
             }
 
             HumanoidSkeletonDescriptor descriptor = result.descriptor();
-            RUNTIME_SKELETONS.put(entityType, descriptor);
-            resolved++;
-
-            if (result.mesh() != null) {
-                RUNTIME_MESHES.put(entityType, result.mesh());
-                meshed++;
-                ready.add(entityId);
-            }
+            ResourceLocation runtimeMeshId = new ResourceLocation(
+                    EpicFightPostureIntegration.MODID,
+                    "runtime_lionfish/" + entityId.getNamespace() + "/" + entityId.getPath()
+            );
+            AssetAccessor<SkinnedMesh> mesh = SelfAccessor.create(runtimeMeshId, result.mesh());
 
             LOGGER.debug(
-                    "EFPI Lionfish shadow accepted {}: height={}, shoulderWidth={}, armL={}/{}, armR={}/{}, virtualJoints={}, confidence={}, mesh={}",
+                    "EFPI Lionfish humanoid accepted {}: height={}, shoulderWidth={}, armL={}/{}, armR={}/{}, virtualJoints={}, confidence={}",
                     entityId,
                     descriptor.metrics().totalHeight(),
                     descriptor.metrics().shoulderWidth(),
@@ -78,27 +64,31 @@ public final class LionfishHumanoidClientCompat {
                     descriptor.metrics().upperArmRight(),
                     descriptor.metrics().lowerArmRight(),
                     descriptor.quality().virtualJointCount(),
-                    descriptor.quality().overallConfidence(),
-                    result.mesh() != null
+                    descriptor.quality().overallConfidence()
             );
-        }
 
-        LOGGER.info(
-                "EFPI Lionfish humanoid shadow scan: {} inspected, {} resolved, {} mesh-ready; ready targets: {}",
-                inspected,
-                resolved,
-                meshed,
-                ready
+            return Inspection.supported(new PreparedHumanoidModel(
+                    id(),
+                    entityType,
+                    entityId,
+                    mesh,
+                    Optional.of(descriptor)
+            ));
+        } catch (Throwable throwable) {
+            LOGGER.warn("EFPI could not inspect Lionfish humanoid model for {}; skipping automatic compatibility",
+                    entityId, throwable);
+            return Inspection.rejected();
+        }
+    }
+
+    @Override
+    public void addPatchedRenderer(PatchedRenderersEvent.Add event, PreparedHumanoidModel prepared) {
+        event.addPatchedEntityRenderer(
+                prepared.entityType(),
+                type -> new SpecialStateLionfishRenderer(prepared.mesh(), event.getContext())
         );
     }
 
-    static HumanoidSkeletonDescriptor runtimeSkeleton(EntityType<?> entityType) {
-        return RUNTIME_SKELETONS.get(entityType);
+    private LionfishHumanoidClientCompat() {
     }
-
-    static SkinnedMesh runtimeMesh(EntityType<?> entityType) {
-        return RUNTIME_MESHES.get(entityType);
-    }
-
-    private LionfishHumanoidClientCompat() {}
 }

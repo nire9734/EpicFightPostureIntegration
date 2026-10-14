@@ -43,20 +43,12 @@ public final class VanillaHumanoidClientCompat {
             return state != null && state.broken;
         });
 
-        boolean geckoLoaded = ModList.get().isLoaded("geckolib");
-        if (geckoLoaded) {
-            GeckoHumanoidClientCompat.installDiscovery();
-        } else {
-            HumanoidClientDiscovery.installAdditionalScanner(null);
+        HumanoidBackendRegistry.clear();
+        if (ModList.get().isLoaded("geckolib")) {
+            HumanoidBackendRegistry.register(GeckoHumanoidClientCompat.INSTANCE);
         }
-
-        boolean lionfishLoaded = ModList.get().isLoaded("lionfishapi");
-        if (lionfishLoaded) {
-            // Lionfish is intentionally shadow-only at this stage: classify and
-            // measure candidate humanoids without registering patches/renderers.
-            LionfishHumanoidClientCompat.shadowScan(
-                    event.getContext().getEntityRenderDispatcher().renderers
-            );
+        if (ModList.get().isLoaded("lionfishapi")) {
+            HumanoidBackendRegistry.register(LionfishHumanoidClientCompat.INSTANCE);
         }
 
         HumanoidClientDiscovery.ScanSnapshot scan = HumanoidClientDiscovery.scan(
@@ -66,37 +58,37 @@ public final class VanillaHumanoidClientCompat {
         Set<EntityType<?>> alreadyPatched = new HashSet<>(EntityPatchProvider.getPatchedEntities());
         Set<EntityType<?>> verifiedVanilla = registerVanillaHumanoids(event, scan, alreadyPatched);
         Set<EntityType<?>> verifiedSpider = registerVanillaSpiders(event, scan, alreadyPatched);
-        Set<EntityType<?>> verifiedGecko = geckoLoaded
-                ? GeckoHumanoidClientCompat.registerRenderers(event, scan.externalHumanoidTypes())
-                : Set.of();
+        Set<EntityType<?>> verifiedLibraryHumanoids = HumanoidBackendRegistry.registerRenderers(
+                event,
+                scan.externalHumanoidTypes()
+        );
 
         Set<ResourceLocation> verifiedVanillaIds = idsOf(verifiedVanilla);
-        Set<ResourceLocation> verifiedGeckoIds = idsOf(verifiedGecko);
+        Set<ResourceLocation> verifiedLibraryIds = idsOf(verifiedLibraryHumanoids);
         Set<ResourceLocation> verifiedSpiderIds = idsOf(verifiedSpider);
 
-        // Only persist/report renderer targets whose special-state rendering was
-        // actually prepared successfully. This keeps the automatic compatibility
-        // path fail-closed instead of registering a patch with no usable renderer.
+        // The dedicated-server protocol still uses the legacy GeckoLib field name for
+        // the model-library humanoid bucket. Its semantics are now backend-neutral.
         VanillaHumanoidCompat.replaceDetectedCache(
                 verifiedVanillaIds,
-                verifiedGeckoIds,
+                verifiedLibraryIds,
                 verifiedSpiderIds
         );
         HumanoidClientDiscovery.updateServerReportSnapshot(new HumanoidClientDiscovery.ScanSnapshot(
                 scan.inspected(),
                 verifiedVanillaIds,
-                verifiedGeckoIds,
+                verifiedLibraryIds,
                 verifiedSpiderIds,
                 verifiedVanilla,
-                verifiedGecko,
+                verifiedLibraryHumanoids,
                 verifiedSpider
         ));
 
         LOGGER.info(
-                "EFPI auto-detected {} renderer compatibility target(s): {} vanilla humanoid, {} GeckoLib humanoid, {} vanilla SpiderModel",
-                verifiedVanillaIds.size() + verifiedGeckoIds.size() + verifiedSpiderIds.size(),
+                "EFPI auto-detected {} renderer compatibility target(s): {} vanilla humanoid, {} model-library humanoid, {} vanilla SpiderModel",
+                verifiedVanillaIds.size() + verifiedLibraryIds.size() + verifiedSpiderIds.size(),
                 verifiedVanilla.size(),
-                verifiedGecko.size(),
+                verifiedLibraryHumanoids.size(),
                 verifiedSpider.size()
         );
     }

@@ -19,17 +19,7 @@ import java.util.UUID;
 
 /** Client-only renderer inspection used by local auto-compat and dedicated-server reports. */
 public final class HumanoidClientDiscovery {
-    @FunctionalInterface
-    public interface AdditionalScanner {
-        ScanSnapshot scan(Map<EntityType<?>, EntityRenderer<?>> renderers);
-    }
-
-    private static volatile AdditionalScanner additionalScanner = renderers -> ScanSnapshot.empty();
     private static volatile ScanSnapshot serverReportSnapshot = ScanSnapshot.empty();
-
-    public static void installAdditionalScanner(AdditionalScanner scanner) {
-        additionalScanner = scanner == null ? renderers -> ScanSnapshot.empty() : scanner;
-    }
 
     public static ScanSnapshot scanCurrent() {
         return scan(Minecraft.getInstance().getEntityRenderDispatcher().renderers);
@@ -66,18 +56,10 @@ public final class HumanoidClientDiscovery {
             }
         }
 
-        ScanSnapshot extra;
-        try {
-            extra = additionalScanner.scan(renderers);
-        } catch (Throwable ignored) {
-            extra = ScanSnapshot.empty();
-        }
-
-        inspected.addAll(extra.inspected());
-        vanillaHumanoid.addAll(extra.vanillaHumanoid());
-        vanillaSpider.addAll(extra.vanillaSpider());
-        Set<ResourceLocation> geckoHumanoid = new HashSet<>(extra.geckoLibHumanoid());
-        Set<EntityType<?>> externalHumanoidTypes = new HashSet<>(extra.externalHumanoidTypes());
+        HumanoidBackendRegistry.ScanResult libraryScan = HumanoidBackendRegistry.scan(renderers);
+        inspected.addAll(libraryScan.inspected());
+        Set<ResourceLocation> libraryHumanoid = new HashSet<>(libraryScan.compatible());
+        Set<EntityType<?>> libraryHumanoidTypes = new HashSet<>(libraryScan.compatibleTypes());
 
         // Native Epic Fight patches and patches supplied by other mods already own
         // their armature/renderer contract. They are not automatic-compat targets
@@ -87,33 +69,33 @@ public final class HumanoidClientDiscovery {
         if (!externallyPatched.isEmpty()) {
             inspected.removeAll(externallyPatched);
             vanillaHumanoid.removeAll(externallyPatched);
-            geckoHumanoid.removeAll(externallyPatched);
+            libraryHumanoid.removeAll(externallyPatched);
             vanillaSpider.removeAll(externallyPatched);
             vanillaHumanoidTypes.removeIf(type -> externallyPatched.contains(EntityType.getKey(type)));
-            externalHumanoidTypes.removeIf(type -> externallyPatched.contains(EntityType.getKey(type)));
+            libraryHumanoidTypes.removeIf(type -> externallyPatched.contains(EntityType.getKey(type)));
             vanillaSpiderTypes.removeIf(type -> externallyPatched.contains(EntityType.getKey(type)));
         }
 
         Set<ResourceLocation> ambiguous = new HashSet<>();
-        collectOverlap(ambiguous, vanillaHumanoid, geckoHumanoid);
+        collectOverlap(ambiguous, vanillaHumanoid, libraryHumanoid);
         collectOverlap(ambiguous, vanillaHumanoid, vanillaSpider);
-        collectOverlap(ambiguous, geckoHumanoid, vanillaSpider);
+        collectOverlap(ambiguous, libraryHumanoid, vanillaSpider);
         if (!ambiguous.isEmpty()) {
             vanillaHumanoid.removeAll(ambiguous);
-            geckoHumanoid.removeAll(ambiguous);
+            libraryHumanoid.removeAll(ambiguous);
             vanillaSpider.removeAll(ambiguous);
             vanillaHumanoidTypes.removeIf(type -> ambiguous.contains(EntityType.getKey(type)));
-            externalHumanoidTypes.removeIf(type -> ambiguous.contains(EntityType.getKey(type)));
+            libraryHumanoidTypes.removeIf(type -> ambiguous.contains(EntityType.getKey(type)));
             vanillaSpiderTypes.removeIf(type -> ambiguous.contains(EntityType.getKey(type)));
         }
 
         return new ScanSnapshot(
                 Set.copyOf(inspected),
                 Set.copyOf(vanillaHumanoid),
-                Set.copyOf(geckoHumanoid),
+                Set.copyOf(libraryHumanoid),
                 Set.copyOf(vanillaSpider),
                 Set.copyOf(vanillaHumanoidTypes),
-                Set.copyOf(externalHumanoidTypes),
+                Set.copyOf(libraryHumanoidTypes),
                 Set.copyOf(vanillaSpiderTypes)
         );
     }
@@ -149,6 +131,11 @@ public final class HumanoidClientDiscovery {
         target.addAll(overlap);
     }
 
+    /**
+     * geckoLibHumanoid/externalHumanoidTypes retain their legacy wire names for the
+     * dedicated-server cache protocol, but now represent every registered model-library
+     * humanoid backend (GeckoLib, Lionfish and future AzureLib-style adapters).
+     */
     public record ScanSnapshot(
             Set<ResourceLocation> inspected,
             Set<ResourceLocation> vanillaHumanoid,
