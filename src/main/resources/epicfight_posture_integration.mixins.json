@@ -13,7 +13,9 @@
   "client": [
     "client.BridgeHealthBarMixin",
     "client.IronsHumanoidRendererCapeMixin",
+    "client.LionfishAdvancedModelBoxLayerPoseMixin",
     "client.LivingEntityRendererScaleInvoker",
-    "client.LivingEntityRendererLayersAccessor"
+    "client.LivingEntityRendererLayersAccessor",
+    "client.ModelPartLayerPoseMixin"
   ]
 }

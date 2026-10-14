@@ -22,10 +22,11 @@ import java.util.List;
  * the retargeted body mesh.
  *
  * <p>Many modded mobs put translucent body passes, emissive details, held items,
- * riders, and other presentation-only geometry in RenderLayer rather than in the
- * base model pass. Cancelling the source renderer without replaying these layers
- * therefore makes those details disappear. This bridge deliberately keeps layer
- * replay separate from skeleton/mesh analysis.</p>
+ * shields, riders, and other presentation geometry in RenderLayer rather than in
+ * the base model pass. Cancelling the source renderer without replaying these
+ * layers therefore loses those details. During replay, LayerPoseOverrideContext
+ * projects supported source model parts onto the same Epic Fight pose used by the
+ * runtime mesh. Unsupported layers retain the historical Root-only fallback.</p>
  */
 @SuppressWarnings({"rawtypes", "unchecked"})
 public final class LivingRenderLayerBridge {
@@ -70,31 +71,37 @@ public final class LivingRenderLayerBridge {
             float headPitch = Mth.lerp(partialTicks, entity.xRotO, entity.getXRot());
             float ageInTicks = entity.tickCount + partialTicks;
 
-            // Match Epic Fight's generic RenderOriginalModelLayer fallback:
-            // unknown source layers follow the animated Root as a whole, while
-            // the layer itself keeps its framework/model-specific rendering.
+            // Keep the old generic fallback basis. Exact per-part overrides are
+            // expressed underneath it; if a source model cannot be normalized,
+            // its layer behaves exactly as it did before this bridge extension.
             poseStack.pushPose();
-            MathUtils.mulStack(poseStack, armature.getPoseMatrices()[armature.rootJoint.getId()]);
-            poseStack.scale(-1.0F, -1.0F, 1.0F);
+            try {
+                MathUtils.mulStack(poseStack, armature.getPoseMatrices()[armature.rootJoint.getId()]);
+                poseStack.scale(-1.0F, -1.0F, 1.0F);
 
-            for (RenderLayer layer : layers) {
-                if (layer == null) {
-                    continue;
+                for (RenderLayer layer : layers) {
+                    if (layer == null) {
+                        continue;
+                    }
+                    try (LayerPoseOverrideContext.Scope ignored =
+                                 LayerPoseOverrideContext.open(entity, model, layer, armature)) {
+                        layer.render(
+                                poseStack,
+                                buffer,
+                                packedLight,
+                                entity,
+                                limbSwing,
+                                limbSwingAmount,
+                                partialTicks,
+                                ageInTicks,
+                                netHeadYaw,
+                                headPitch
+                        );
+                    }
                 }
-                layer.render(
-                        poseStack,
-                        buffer,
-                        packedLight,
-                        entity,
-                        limbSwing,
-                        limbSwingAmount,
-                        partialTicks,
-                        ageInTicks,
-                        netHeadYaw,
-                        headPitch
-                );
+            } finally {
+                poseStack.popPose();
             }
-            poseStack.popPose();
         } finally {
             restoreModelParts(savedParts);
         }

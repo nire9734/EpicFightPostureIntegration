@@ -16,10 +16,11 @@ import java.util.Objects;
 /**
  * Maps framework-neutral source geometry to Epic Fight BIPED skin weights.
  *
- * <p>Explicit semantic source joints are rigidly assigned to the corresponding
- * BIPED deformation joint. If an arm or leg has no explicit elbow/knee source
- * node, geometry on that one-bone limb is smoothly blended across the inferred
- * semantic joint instead of physically splitting the source mesh.</p>
+ * <p>Explicit semantic source joints are assigned to the corresponding BIPED
+ * deformation chain. One-bone limbs are smoothly blended across their inferred
+ * elbow/knee. The torso is also split per vertex across the inferred spine so a
+ * single source {@code body}/{@code torso} node can still participate in Epic
+ * Fight's independent lower-body (Root) and upper-body (Chest) motion.</p>
  */
 public final class HumanoidSkinWeightResolver {
     private static final float EPSILON = 1.0E-6F;
@@ -85,13 +86,23 @@ public final class HumanoidSkinWeightResolver {
         }
 
         return switch (owner) {
-            case ROOT, SPINE -> SkinWeights.rigid(ROOT);
-            case CHEST -> SkinWeights.rigid(CHEST);
+            // Do not make the torso split depend on source-node boundaries. A
+            // large number of Gecko/Blockbench models put the complete abdomen
+            // and chest in one source bone. Vertex-space weighting preserves the
+            // BIPED Root/Chest separation for those rigs without model-specific
+            // names or hard-coded dimensions.
+            case ROOT, SPINE, CHEST -> chainBlend(
+                    position,
+                    HumanoidJoint.ROOT,
+                    HumanoidJoint.SPINE,
+                    HumanoidJoint.CHEST,
+                    ROOT,
+                    CHEST);
             case NECK, HEAD -> SkinWeights.rigid(HEAD);
 
             case SHOULDER_RIGHT -> explicitRightElbow
                     ? SkinWeights.rigid(ARM_RIGHT)
-                    : limbBlend(
+                    : chainBlend(
                             position,
                             HumanoidJoint.SHOULDER_RIGHT,
                             HumanoidJoint.ELBOW_RIGHT,
@@ -102,7 +113,7 @@ public final class HumanoidSkinWeightResolver {
 
             case SHOULDER_LEFT -> explicitLeftElbow
                     ? SkinWeights.rigid(ARM_LEFT)
-                    : limbBlend(
+                    : chainBlend(
                             position,
                             HumanoidJoint.SHOULDER_LEFT,
                             HumanoidJoint.ELBOW_LEFT,
@@ -113,7 +124,7 @@ public final class HumanoidSkinWeightResolver {
 
             case HIP_RIGHT -> explicitRightKnee
                     ? SkinWeights.rigid(THIGH_RIGHT)
-                    : limbBlend(
+                    : chainBlend(
                             position,
                             HumanoidJoint.HIP_RIGHT,
                             HumanoidJoint.KNEE_RIGHT,
@@ -124,7 +135,7 @@ public final class HumanoidSkinWeightResolver {
 
             case HIP_LEFT -> explicitLeftKnee
                     ? SkinWeights.rigid(THIGH_LEFT)
-                    : limbBlend(
+                    : chainBlend(
                             position,
                             HumanoidJoint.HIP_LEFT,
                             HumanoidJoint.KNEE_LEFT,
@@ -149,46 +160,70 @@ public final class HumanoidSkinWeightResolver {
         }
     }
 
-    private SkinWeights limbBlend(
+    private SkinWeights chainBlend(
             SkeletonVec3 position,
             HumanoidJoint startJoint,
             HumanoidJoint bendJoint,
             HumanoidJoint endJoint,
-            int upperJointId,
-            int lowerJointId) {
+            int proximalJointId,
+            int distalJointId) {
         SkeletonVec3 start = descriptor.bindModelPosition(startJoint);
         SkeletonVec3 bend = descriptor.bindModelPosition(bendJoint);
         SkeletonVec3 end = descriptor.bindModelPosition(endJoint);
+        float distalWeight = distalBlendWeight(position, start, bend, end);
+
+        if (distalWeight <= EPSILON) {
+            return SkinWeights.rigid(proximalJointId);
+        }
+        if (distalWeight >= 1.0F - EPSILON) {
+            return SkinWeights.rigid(distalJointId);
+        }
+        return SkinWeights.blend(
+                proximalJointId,
+                distalJointId,
+                1.0F - distalWeight,
+                distalWeight
+        );
+    }
+
+    /**
+     * Returns the distal-joint weight for a point projected onto a three-point
+     * chain. Package-private so scale/proportion invariants can be regression
+     * tested independently of a concrete Minecraft model implementation.
+     */
+    static float distalBlendWeight(
+            SkeletonVec3 position,
+            SkeletonVec3 start,
+            SkeletonVec3 bend,
+            SkeletonVec3 end) {
         SkeletonVec3 axis = end.subtract(start);
         float denominator = axis.lengthSquared();
         if (denominator <= EPSILON) {
-            return SkinWeights.rigid(upperJointId);
+            return 0.0F;
         }
 
         float t = dot(position.subtract(start), axis) / denominator;
         float bendT = clamp01(dot(bend.subtract(start), axis) / denominator);
         if (!Float.isFinite(t) || !Float.isFinite(bendT)) {
-            return SkinWeights.rigid(upperJointId);
+            return 0.0F;
         }
 
         float transitionHalfWidth = transitionHalfWidth(start, bend, end);
         float lowerEdge = bendT - transitionHalfWidth;
         float upperEdge = bendT + transitionHalfWidth;
         if (t <= lowerEdge) {
-            return SkinWeights.rigid(upperJointId);
+            return 0.0F;
         }
         if (t >= upperEdge) {
-            return SkinWeights.rigid(lowerJointId);
+            return 1.0F;
         }
-
-        float lowerWeight = clamp01((t - lowerEdge) / Math.max(EPSILON, upperEdge - lowerEdge));
-        return SkinWeights.blend(upperJointId, lowerJointId, 1.0F - lowerWeight, lowerWeight);
+        return clamp01((t - lowerEdge) / Math.max(EPSILON, upperEdge - lowerEdge));
     }
 
     /**
-     * Blend width is expressed in normalized limb coordinates. The old constant
+     * Blend width is expressed in normalized chain coordinates. The old constant
      * 0.08 was already scale invariant; this preserves that property while making
-     * the transition narrower for strongly uneven upper/lower limb proportions.
+     * the transition narrower for strongly uneven adjacent segment proportions.
      */
     static float transitionHalfWidth(SkeletonVec3 start, SkeletonVec3 bend, SkeletonVec3 end) {
         float upperLength = start.distanceTo(bend);
