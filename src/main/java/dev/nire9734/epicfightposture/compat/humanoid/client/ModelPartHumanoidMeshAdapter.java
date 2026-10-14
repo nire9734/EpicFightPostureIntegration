@@ -62,10 +62,13 @@ public final class ModelPartHumanoidMeshAdapter {
         List<SingleGroupVertexBuilder> vertices = new ArrayList<>();
         Map<MeshPartDefinition, IntList> indices = new LinkedHashMap<>();
 
+        // Attachment classification is analysis-only. Weapons, chains, anchors,
+        // trails, etc. must not influence body proportions, but their authored
+        // geometry still belongs to the rendered model. HumanoidSkinWeightResolver
+        // walks to the nearest semantic ancestor so these cubes follow the hand,
+        // chest, head, or other body joint that owns their attachment branch.
         for (ModelPartSourceRigAdapter.CubeEntry entry : capture.cubes()) {
-            if (!entry.attachment()) {
-                bakeCube(entry, weights, vertices, indices);
-            }
+            bakeCube(entry, weights, vertices, indices);
         }
 
         return vertices.isEmpty()
