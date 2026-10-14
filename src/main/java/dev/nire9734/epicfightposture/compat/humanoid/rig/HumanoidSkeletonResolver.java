@@ -148,11 +148,9 @@ public final class HumanoidSkeletonResolver {
 
     /**
      * Blockbench-style humanoids commonly keep the torso bone pivot at the pelvis
-     * while the torso cubes extend upward. The semantic CHEST is still reliable,
-     * but using that pivot literally makes ROOT -> CHEST zero length once ROOT is
-     * inferred from the paired hip pivots. Recover CHEST from the torso bone's own
-     * geometry only; using subtree geometry here would let the head/arms skew the
-     * torso center.
+     * while the torso cubes extend upward. Prefer the torso node's own geometry so
+     * head/arm branches cannot skew the chest center, but fall back to the torso
+     * subtree when the semantic torso is only a pivot/helper with no cubes itself.
      */
     private static void recoverCollapsedTorso(
             SourceRigSnapshot snapshot,
@@ -175,6 +173,9 @@ public final class HumanoidSkeletonResolver {
 
         String sourceId = chest.sourceNodeId().orElseThrow();
         Optional<BodyBounds> bounds = snapshot.node(sourceId).geometryBounds();
+        if (bounds.isEmpty()) {
+            bounds = subtreeBounds(snapshot, sourceId);
+        }
         if (bounds.isEmpty()) {
             return;
         }
@@ -203,6 +204,12 @@ public final class HumanoidSkeletonResolver {
         ));
     }
 
+    /**
+     * Recovers a collapsed wrist/ankle from bind geometry. Explicit hand/foot
+     * helpers are often empty pivot nodes, so first try their subtree and then the
+     * whole proximal limb branch. This keeps the rule independent of framework,
+     * mod and bone naming beyond the already-resolved semantic joints.
+     */
     private static void recoverCollapsedTerminal(
             SourceRigSnapshot snapshot,
             EnumMap<HumanoidJoint, SemanticJointCandidate> joints,
@@ -211,26 +218,36 @@ public final class HumanoidSkeletonResolver {
         SemanticJointCandidate proximal = joints.get(proximalJoint);
         SemanticJointCandidate terminal = joints.get(terminalJoint);
         if (proximal == null || terminal == null
-                || proximal.bindModelPosition().distanceTo(terminal.bindModelPosition()) > MIN_RECOVERABLE_LIMB_SPAN
-                || terminal.sourceNodeId().isEmpty()) {
+                || proximal.bindModelPosition().distanceTo(terminal.bindModelPosition()) > MIN_RECOVERABLE_LIMB_SPAN) {
             return;
         }
 
-        String sourceId = terminal.sourceNodeId().orElseThrow();
-        Optional<BodyBounds> bounds = subtreeBounds(snapshot, sourceId);
-        if (bounds.isEmpty()) {
+        SkeletonVec3 anchor = proximal.bindModelPosition();
+        Optional<BodyBounds> bounds = terminal.sourceNodeId()
+                .flatMap(sourceId -> subtreeBounds(snapshot, sourceId));
+        SkeletonVec3 recovered = bounds
+                .map(value -> farthestCorner(value, anchor))
+                .orElse(anchor);
+
+        if (recovered.distanceTo(anchor) <= MIN_RECOVERABLE_LIMB_SPAN) {
+            bounds = proximal.sourceNodeId()
+                    .flatMap(sourceId -> subtreeBounds(snapshot, sourceId));
+            recovered = bounds
+                    .map(value -> farthestCorner(value, anchor))
+                    .orElse(anchor);
+        }
+
+        if (recovered.distanceTo(anchor) <= MIN_RECOVERABLE_LIMB_SPAN) {
             return;
         }
 
-        SkeletonVec3 recovered = farthestCorner(bounds.orElseThrow(), proximal.bindModelPosition());
-        if (recovered.distanceTo(proximal.bindModelPosition()) <= MIN_RECOVERABLE_LIMB_SPAN) {
-            return;
-        }
-
+        Optional<String> recoveredSource = terminal.sourceNodeId().isPresent()
+                ? terminal.sourceNodeId()
+                : proximal.sourceNodeId();
         joints.put(terminalJoint, new SemanticJointCandidate(
                 terminalJoint,
                 recovered,
-                Optional.of(sourceId),
+                recoveredSource,
                 JointOrigin.INFERRED_FROM_GEOMETRY,
                 Math.min(terminal.confidence(), GEOMETRY_RECOVERY_CONFIDENCE)
         ));
@@ -280,16 +297,10 @@ public final class HumanoidSkeletonResolver {
 
     private static void completeVirtualJoints(
             EnumMap<HumanoidJoint, SemanticJointCandidate> joints) {
-        // Core centers can be derived from paired anchors.
         inferBetween(joints, HumanoidJoint.ROOT, HumanoidJoint.HIP_LEFT, HumanoidJoint.HIP_RIGHT, 0.5F);
         inferBetween(joints, HumanoidJoint.CHEST, HumanoidJoint.SHOULDER_LEFT, HumanoidJoint.SHOULDER_RIGHT, 0.5F);
-
-        // Interior torso chain.
         inferBetween(joints, HumanoidJoint.SPINE, HumanoidJoint.ROOT, HumanoidJoint.CHEST, 0.5F);
         inferBetween(joints, HumanoidJoint.NECK, HumanoidJoint.CHEST, HumanoidJoint.HEAD, 0.5F);
-
-        // Interior limb joints. Terminal wrists/ankles must be supplied by the analyzer,
-        // possibly as geometry-inferred candidates when the source has no explicit bone.
         inferBetween(joints, HumanoidJoint.ELBOW_LEFT,
                 HumanoidJoint.SHOULDER_LEFT, HumanoidJoint.WRIST_LEFT, 0.5F);
         inferBetween(joints, HumanoidJoint.ELBOW_RIGHT,
@@ -300,11 +311,6 @@ public final class HumanoidSkeletonResolver {
                 HumanoidJoint.HIP_RIGHT, HumanoidJoint.ANKLE_RIGHT, 0.5F);
     }
 
-    /**
-     * Final framework-neutral safety pass. A bend helper can survive semantic
-     * analysis yet still collapse onto one endpoint after terminal geometry
-     * recovery. Rebuild only that interior joint from the final limb endpoints.
-     */
     private static void repairCollapsedInteriorJoints(
             EnumMap<HumanoidJoint, SemanticJointCandidate> joints) {
         repairCollapsedInterior(joints,
@@ -385,12 +391,10 @@ public final class HumanoidSkeletonResolver {
 
         requireSegment(joints, HumanoidJoint.ROOT, HumanoidJoint.CHEST);
         requireSegment(joints, HumanoidJoint.CHEST, HumanoidJoint.HEAD);
-
         requireSegment(joints, HumanoidJoint.SHOULDER_LEFT, HumanoidJoint.ELBOW_LEFT);
         requireSegment(joints, HumanoidJoint.ELBOW_LEFT, HumanoidJoint.WRIST_LEFT);
         requireSegment(joints, HumanoidJoint.SHOULDER_RIGHT, HumanoidJoint.ELBOW_RIGHT);
         requireSegment(joints, HumanoidJoint.ELBOW_RIGHT, HumanoidJoint.WRIST_RIGHT);
-
         requireSegment(joints, HumanoidJoint.HIP_LEFT, HumanoidJoint.KNEE_LEFT);
         requireSegment(joints, HumanoidJoint.KNEE_LEFT, HumanoidJoint.ANKLE_LEFT);
         requireSegment(joints, HumanoidJoint.HIP_RIGHT, HumanoidJoint.KNEE_RIGHT);
@@ -407,12 +411,6 @@ public final class HumanoidSkeletonResolver {
         if (left.distanceTo(right) <= EPSILON) {
             throw new IllegalArgumentException("Humanoid " + label + " collapse to the same pivot");
         }
-
-        // Do not require one fixed X handedness here. Minecraft ModelPart rigs are
-        // canonicalized with an X mirror before analysis, while Gecko/Azure-style
-        // authored geometry can expose the opposite bind-space handedness. The
-        // semantic labels already tell us which branch is left/right; requiring a
-        // framework-specific X sign here rejected otherwise valid Gecko humanoids.
     }
 
     private static void requireSegment(
