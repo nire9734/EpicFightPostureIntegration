@@ -46,34 +46,67 @@ public final class ModelPartHumanoidMeshAdapter {
             HumanoidSemanticAnalysis analysis = ConservativeHumanoidSemanticAnalyzer.INSTANCE.analyze(capture.snapshot());
             HumanoidSkeletonDescriptor descriptor = HumanoidSkeletonResolver.resolve(capture.snapshot(), analysis);
             HumanoidSkinWeightResolver weights = new HumanoidSkinWeightResolver(capture.snapshot(), analysis, descriptor);
-            SkinnedMesh mesh = bake(capture, weights);
+            SkinnedMesh mesh = bakeBody(capture, weights);
+            ModelPartAttachmentPlan attachments = bakeAttachments(capture, weights);
             return mesh == null
                     ? Result.unsupported("mesh bake produced no body vertices")
-                    : Result.supported(descriptor, mesh);
+                    : Result.supported(descriptor, mesh, attachments);
         } catch (Throwable throwable) {
             return Result.unsupported("ModelPart humanoid mesh bake failed: " + throwable.getClass().getSimpleName()
                     + (throwable.getMessage() == null ? "" : " (" + throwable.getMessage() + ")"));
         }
     }
 
-    private static SkinnedMesh bake(
+    private static SkinnedMesh bakeBody(
             ModelPartSourceRigAdapter.Capture capture,
             HumanoidSkinWeightResolver weights) throws ReflectiveOperationException {
         List<SingleGroupVertexBuilder> vertices = new ArrayList<>();
         Map<MeshPartDefinition, IntList> indices = new LinkedHashMap<>();
 
-        // Attachment classification is analysis-only. Weapons, chains, anchors,
-        // trails, etc. must not influence body proportions, but their authored
-        // geometry still belongs to the rendered model. HumanoidSkinWeightResolver
-        // walks to the nearest semantic ancestor so these cubes follow the hand,
-        // chest, head, or other body joint that owns their attachment branch.
+        // Attachment geometry is intentionally absent from the always-visible
+        // body mesh. It is baked into per-source-node meshes below so source
+        // visibility (weapon switching, optional trails, etc.) remains dynamic.
         for (ModelPartSourceRigAdapter.CubeEntry entry : capture.cubes()) {
-            bakeCube(entry, weights, vertices, indices);
+            if (!entry.attachment()) {
+                bakeCube(entry, weights, vertices, indices);
+            }
         }
 
         return vertices.isEmpty()
                 ? null
                 : SingleGroupVertexBuilder.loadVertexInformation(vertices, indices);
+    }
+
+    private static ModelPartAttachmentPlan bakeAttachments(
+            ModelPartSourceRigAdapter.Capture capture,
+            HumanoidSkinWeightResolver weights) throws ReflectiveOperationException {
+        Map<String, List<ModelPartSourceRigAdapter.CubeEntry>> byNode = new LinkedHashMap<>();
+        for (ModelPartSourceRigAdapter.CubeEntry entry : capture.cubes()) {
+            if (entry.attachment()) {
+                byNode.computeIfAbsent(entry.nodeId(), ignored -> new ArrayList<>()).add(entry);
+            }
+        }
+
+        List<ModelPartAttachmentPlan.Entry> attachments = new ArrayList<>();
+        for (List<ModelPartSourceRigAdapter.CubeEntry> nodeEntries : byNode.values()) {
+            if (nodeEntries.isEmpty()) {
+                continue;
+            }
+            List<SingleGroupVertexBuilder> vertices = new ArrayList<>();
+            Map<MeshPartDefinition, IntList> indices = new LinkedHashMap<>();
+            for (ModelPartSourceRigAdapter.CubeEntry entry : nodeEntries) {
+                bakeCube(entry, weights, vertices, indices);
+            }
+            if (vertices.isEmpty()) {
+                continue;
+            }
+            SkinnedMesh attachmentMesh = SingleGroupVertexBuilder.loadVertexInformation(vertices, indices);
+            attachments.add(new ModelPartAttachmentPlan.Entry(
+                    nodeEntries.get(0).path(),
+                    attachmentMesh
+            ));
+        }
+        return new ModelPartAttachmentPlan(attachments);
     }
 
     private static void bakeCube(
@@ -256,13 +289,17 @@ public final class ModelPartHumanoidMeshAdapter {
             boolean supported,
             HumanoidSkeletonDescriptor descriptor,
             SkinnedMesh mesh,
+            ModelPartAttachmentPlan attachments,
             String reason) {
-        static Result supported(HumanoidSkeletonDescriptor descriptor, SkinnedMesh mesh) {
-            return new Result(true, descriptor, mesh, "ok");
+        static Result supported(
+                HumanoidSkeletonDescriptor descriptor,
+                SkinnedMesh mesh,
+                ModelPartAttachmentPlan attachments) {
+            return new Result(true, descriptor, mesh, attachments, "ok");
         }
 
         static Result unsupported(String reason) {
-            return new Result(false, null, null, reason);
+            return new Result(false, null, null, new ModelPartAttachmentPlan(List.of()), reason);
         }
     }
 
