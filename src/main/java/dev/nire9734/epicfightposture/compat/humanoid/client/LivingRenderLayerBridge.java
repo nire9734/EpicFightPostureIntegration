@@ -11,6 +11,8 @@ import net.minecraft.client.renderer.entity.LivingEntityRenderer;
 import net.minecraft.client.renderer.entity.layers.RenderLayer;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.LivingEntity;
+import yesman.epicfight.api.model.Armature;
+import yesman.epicfight.api.utils.math.MathUtils;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -33,9 +35,11 @@ public final class LivingRenderLayerBridge {
             MultiBufferSource buffer,
             PoseStack poseStack,
             int packedLight,
-            float partialTicks) {
+            float partialTicks,
+            Armature armature) {
         if (!(renderer instanceof LivingEntityRenderer livingRenderer)
-                || !(livingRenderer instanceof LivingEntityRendererLayersAccessor accessor)) {
+                || !(livingRenderer instanceof LivingEntityRendererLayersAccessor accessor)
+                || armature == null) {
             return;
         }
 
@@ -66,6 +70,13 @@ public final class LivingRenderLayerBridge {
             float headPitch = Mth.lerp(partialTicks, entity.xRotO, entity.getXRot());
             float ageInTicks = entity.tickCount + partialTicks;
 
+            // Match Epic Fight's generic RenderOriginalModelLayer fallback:
+            // unknown source layers follow the animated Root as a whole, while
+            // the layer itself keeps its framework/model-specific rendering.
+            poseStack.pushPose();
+            MathUtils.mulStack(poseStack, armature.getPoseMatrices()[armature.rootJoint.getId()]);
+            poseStack.scale(-1.0F, -1.0F, 1.0F);
+
             for (RenderLayer layer : layers) {
                 if (layer == null) {
                     continue;
@@ -83,6 +94,7 @@ public final class LivingRenderLayerBridge {
                         headPitch
                 );
             }
+            poseStack.popPose();
         } finally {
             restoreModelParts(savedParts);
         }
