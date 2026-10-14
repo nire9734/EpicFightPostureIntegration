@@ -112,7 +112,7 @@ public abstract class GeckoItemArmorLayerContextMixin {
                 animatable,
                 armorModel
         );
-        if (armorPart == null || armorPart.cubes.isEmpty() || bone.getCubes() == null || bone.getCubes().isEmpty()) {
+        if (armorPart == null || bone.getCubes() == null || bone.getCubes().isEmpty()) {
             return;
         }
 
@@ -121,7 +121,8 @@ public abstract class GeckoItemArmorLayerContextMixin {
          * bone. Baking that live rotation would double-apply animation once EF
          * skins the armor, so run the exact fitting routine against the source
          * bone's initial rotation. This also preserves custom overrides of
-         * getReferenceCubeForModel().
+         * getReferenceCubeForModel(). Any ModelPart without reference cubes is
+         * rejected by prepModelPartForRender and falls back to Gecko unchanged.
          */
         PoseStack fitStack = new PoseStack();
         float rotX = bone.getRotX();
