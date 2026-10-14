@@ -1,38 +1,27 @@
 package dev.nire9734.epicfightposture.compat.humanoid.skeleton;
 
-/** Immutable quaternion used by skeleton descriptors. */
+/** Immutable normalized quaternion used by skeleton descriptors. */
 public record SkeletonQuat(float x, float y, float z, float w) {
     private static final float EPSILON = 1.0E-8F;
-    public static final SkeletonQuat IDENTITY = new SkeletonQuat(0.0F, 0.0F, 0.0F, 1.0F, false);
+    public static final SkeletonQuat IDENTITY = new SkeletonQuat(0.0F, 0.0F, 0.0F, 1.0F);
 
-    public SkeletonQuat(float x, float y, float z, float w) {
-        this(x, y, z, w, true);
-    }
-
-    private SkeletonQuat(float x, float y, float z, float w, boolean normalize) {
+    public SkeletonQuat {
         if (!Float.isFinite(x) || !Float.isFinite(y) || !Float.isFinite(z) || !Float.isFinite(w)) {
             throw new IllegalArgumentException("Skeleton quaternion components must be finite");
         }
 
-        if (normalize) {
-            float lengthSquared = x * x + y * y + z * z + w * w;
-            if (lengthSquared <= EPSILON) {
-                this.x = 0.0F;
-                this.y = 0.0F;
-                this.z = 0.0F;
-                this.w = 1.0F;
-                return;
-            }
-            float inverseLength = 1.0F / (float) Math.sqrt(lengthSquared);
-            this.x = x * inverseLength;
-            this.y = y * inverseLength;
-            this.z = z * inverseLength;
-            this.w = w * inverseLength;
+        float lengthSquared = x * x + y * y + z * z + w * w;
+        if (lengthSquared <= EPSILON) {
+            x = 0.0F;
+            y = 0.0F;
+            z = 0.0F;
+            w = 1.0F;
         } else {
-            this.x = x;
-            this.y = y;
-            this.z = z;
-            this.w = w;
+            float inverseLength = 1.0F / (float) Math.sqrt(lengthSquared);
+            x *= inverseLength;
+            y *= inverseLength;
+            z *= inverseLength;
+            w *= inverseLength;
         }
     }
 
@@ -47,7 +36,7 @@ public record SkeletonQuat(float x, float y, float z, float w) {
     }
 
     public SkeletonQuat inverse() {
-        return new SkeletonQuat(-x, -y, -z, w, false);
+        return new SkeletonQuat(-x, -y, -z, w);
     }
 
     /** Rotates a vector by this normalized quaternion. */
