@@ -13,7 +13,9 @@ import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.loading.FMLEnvironment;
 import net.minecraftforge.registries.ForgeRegistries;
 import org.slf4j.Logger;
+import yesman.epicfight.api.asset.AssetAccessor;
 import yesman.epicfight.api.forgeevent.EntityPatchRegistryEvent;
+import yesman.epicfight.api.model.Armature;
 import yesman.epicfight.gameasset.Armatures;
 import yesman.epicfight.world.capabilities.provider.EntityPatchProvider;
 
@@ -123,6 +125,19 @@ public final class VanillaHumanoidCompat {
     public static synchronized boolean registerDiscoveredAtRuntime(
             EntityType<?> entityType,
             CompatibilityKind kind) {
+        return registerDiscoveredAtRuntime(entityType, kind, null);
+    }
+
+    /**
+     * Installs a client/runtime automatic-compatibility patch with an optional
+     * model-specific armature. Dedicated-server registry bootstrap intentionally
+     * keeps using the canonical BIPED/SPIDER armatures until body-profile data is
+     * part of the trusted discovery protocol.
+     */
+    public static synchronized boolean registerDiscoveredAtRuntime(
+            EntityType<?> entityType,
+            CompatibilityKind kind,
+            AssetAccessor<? extends Armature> armatureOverride) {
         if (entityType == null || entityType == EntityType.PLAYER || kind == null) {
             return false;
         }
@@ -136,7 +151,7 @@ public final class VanillaHumanoidCompat {
         }
 
         try {
-            registerRuntime(entityType, kind);
+            registerRuntime(entityType, kind, armatureOverride);
             registeredByEfpi.put(id, kind);
 
             Map<ResourceLocation, CompatibilityKind> updated = new HashMap<>(cachedDetected);
@@ -217,10 +232,16 @@ public final class VanillaHumanoidCompat {
         }
     }
 
-    private static void registerRuntime(EntityType<?> entityType, CompatibilityKind kind) {
+    private static void registerRuntime(
+            EntityType<?> entityType,
+            CompatibilityKind kind,
+            AssetAccessor<? extends Armature> armatureOverride) {
         switch (kind) {
             case VANILLA_HUMANOID, GECKOLIB_HUMANOID -> {
-                Armatures.registerEntityTypeArmature(entityType, Armatures.BIPED);
+                Armatures.registerEntityTypeArmature(
+                        entityType,
+                        armatureOverride != null ? armatureOverride : Armatures.BIPED
+                );
                 EntityPatchProvider.putCustomEntityPatch(entityType, ignored -> LightweightHumanoidPatch::new);
             }
             case VANILLA_SPIDER -> {
