@@ -3,6 +3,9 @@ package dev.nire9734.epicfightposture.compat.humanoid.client;
 import com.mojang.logging.LogUtils;
 import dev.nire9734.epicfightposture.EpicFightPostureIntegration;
 import dev.nire9734.epicfightposture.compat.humanoid.VanillaHumanoidCompat;
+import dev.nire9734.epicfightposture.compat.humanoid.rig.ConservativeHumanoidSemanticAnalyzer;
+import dev.nire9734.epicfightposture.compat.humanoid.skeleton.HumanoidSkeletonDescriptor;
+import dev.nire9734.epicfightposture.compat.humanoid.skeleton.SkeletonKey;
 import net.minecraft.client.renderer.entity.EntityRenderer;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.EntityType;
@@ -26,6 +29,7 @@ import java.util.Set;
 public final class GeckoHumanoidClientCompat {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final Map<EntityType<?>, AssetAccessor<SkinnedMesh>> RUNTIME_MESHES = new HashMap<>();
+    private static final Map<EntityType<?>, HumanoidSkeletonDescriptor> RUNTIME_SKELETONS = new HashMap<>();
 
     public static void installDiscovery() {
         HumanoidClientDiscovery.installAdditionalScanner(GeckoHumanoidClientCompat::scan);
@@ -36,6 +40,8 @@ public final class GeckoHumanoidClientCompat {
         Set<ResourceLocation> compatible = new HashSet<>();
         Set<EntityType<?>> compatibleTypes = new HashSet<>();
         RUNTIME_MESHES.clear();
+        RUNTIME_SKELETONS.clear();
+        int retargetReady = 0;
 
         for (Map.Entry<EntityType<?>, EntityRenderer<?>> entry : renderers.entrySet()) {
             EntityType<?> entityType = entry.getKey();
@@ -53,6 +59,29 @@ public final class GeckoHumanoidClientCompat {
                 GeoModel geoModel = geoRenderer.getGeoModel();
                 ResourceLocation modelLocation = geoModel.getModelResource(null);
                 BakedGeoModel bakedModel = geoModel.getBakedModel(modelLocation);
+
+                // Shadow the 2.0.0 detector through the new framework-neutral rig
+                // pipeline. The result is cached for later retargeting work but is
+                // deliberately not authoritative yet; legacy detection/baking below
+                // still decides whether an entity is automatic-compatible.
+                HumanoidSkeletonDescriptor shadowDescriptor = null;
+                try {
+                    SkeletonKey key = new SkeletonKey(
+                            entityId,
+                            geoModel.getClass().getName() + "|" + String.valueOf(modelLocation)
+                    );
+                    shadowDescriptor = GeckoSourceRigAdapter.resolve(
+                            bakedModel,
+                            key,
+                            ConservativeHumanoidSemanticAnalyzer.INSTANCE
+                    ).descriptor();
+                } catch (Throwable shadowFailure) {
+                    LOGGER.debug(
+                            "EFPI new humanoid rig resolver rejected Gecko model {} while running in shadow mode: {}",
+                            entityId,
+                            shadowFailure.getMessage()
+                    );
+                }
 
                 GeckoHumanoidModelAdapter.ProbeResult probe = GeckoHumanoidModelAdapter.probe(bakedModel);
                 if (!probe.supported()) {
@@ -90,12 +119,28 @@ public final class GeckoHumanoidClientCompat {
                         "runtime_gecko/" + entityId.getNamespace() + "/" + entityId.getPath()
                 );
                 RUNTIME_MESHES.put(entityType, SelfAccessor.create(runtimeMeshId, result.mesh()));
+                if (shadowDescriptor != null) {
+                    RUNTIME_SKELETONS.put(entityType, shadowDescriptor);
+                    retargetReady++;
+                } else {
+                    LOGGER.debug(
+                            "EFPI legacy Gecko compatibility accepted {} but the new humanoid rig resolver did not; "
+                                    + "keeping the legacy path for this entity",
+                            entityId
+                    );
+                }
                 compatible.add(entityId);
                 compatibleTypes.add(entityType);
             } catch (Throwable throwable) {
                 LOGGER.warn("EFPI could not inspect GeckoLib model for {}; skipping automatic compatibility", entityId, throwable);
             }
         }
+
+        LOGGER.debug(
+                "EFPI Gecko shadow retarget resolver prepared descriptors for {}/{} legacy-compatible entity type(s)",
+                retargetReady,
+                compatibleTypes.size()
+        );
 
         return new HumanoidClientDiscovery.ScanSnapshot(
                 Set.copyOf(inspected),
@@ -157,6 +202,10 @@ public final class GeckoHumanoidClientCompat {
                 entityTypes.size(), patched, rendered, verified.size()
         );
         return Set.copyOf(verified);
+    }
+
+    static HumanoidSkeletonDescriptor runtimeSkeleton(EntityType<?> entityType) {
+        return RUNTIME_SKELETONS.get(entityType);
     }
 
     private GeckoHumanoidClientCompat() {
