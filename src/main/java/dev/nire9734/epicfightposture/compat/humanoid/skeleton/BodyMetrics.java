@@ -68,6 +68,6 @@ public record BodyMetrics(
         if (descriptor == null) {
             throw new IllegalArgumentException("Missing semantic joint " + joint);
         }
-        return descriptor.bindModelTransform().position();
+        return descriptor.bindModelPosition();
     }
 }

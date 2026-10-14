@@ -7,7 +7,7 @@ import java.util.Objects;
 /**
  * Completed, library-independent humanoid bind skeleton.
  *
- * <p>All joint transforms are expressed in EFPI model space: +X entity-right,
+ * <p>All joint positions are expressed in EFPI model space: +X entity-right,
  * +Y up, +Z entity-forward, with one unit equal to one Minecraft block. ROOT is
  * the skeletal pelvis/hip-center root, not the renderer/model origin. Source
  * adapters must remove runtime animation and bake source bind scale before
@@ -61,15 +61,9 @@ public final class HumanoidSkeletonDescriptor {
         return descriptor;
     }
 
-    public RigidTransform bindModelTransform(HumanoidJoint joint) {
-        return joint(joint).bindModelTransform();
-    }
-
-    /** Derives parent-local bind transform from the authoritative model-space bind pose. */
-    public RigidTransform bindLocalTransform(HumanoidJoint joint) {
-        HumanoidJoint parent = HumanoidTopology.parentOf(joint);
-        RigidTransform model = bindModelTransform(joint);
-        return parent == null ? model : model.relativeTo(bindModelTransform(parent));
+    /** Authoritative model-space pivot position for the semantic joint. */
+    public SkeletonVec3 bindModelPosition(HumanoidJoint joint) {
+        return joint(joint).bindModelPosition();
     }
 
     public BodyMetrics metrics() {

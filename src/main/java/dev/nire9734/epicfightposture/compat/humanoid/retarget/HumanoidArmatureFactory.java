@@ -198,7 +198,7 @@ public final class HumanoidArmatureFactory {
     private static SkeletonVec3 position(
             HumanoidSkeletonDescriptor descriptor,
             HumanoidJoint joint) {
-        return descriptor.bindModelTransform(joint).position();
+        return descriptor.bindModelPosition(joint);
     }
 
     private static SkeletonVec3 fromMatrix(OpenMatrix4f matrix) {
