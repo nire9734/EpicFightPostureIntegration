@@ -5,6 +5,7 @@ import dev.nire9734.epicfightposture.compat.humanoid.rig.HumanoidSemanticAnalysi
 import dev.nire9734.epicfightposture.compat.humanoid.rig.HumanoidSemanticAnalyzer;
 import dev.nire9734.epicfightposture.compat.humanoid.rig.HumanoidSkeletonResolver;
 import dev.nire9734.epicfightposture.compat.humanoid.rig.SemanticJointCandidate;
+import dev.nire9734.epicfightposture.compat.humanoid.rig.SourceNodeHeuristics;
 import dev.nire9734.epicfightposture.compat.humanoid.rig.SourceNodeSnapshot;
 import dev.nire9734.epicfightposture.compat.humanoid.rig.SourceRigSnapshot;
 import dev.nire9734.epicfightposture.compat.humanoid.skeleton.BodyBounds;
@@ -26,8 +27,10 @@ import software.bernie.geckolib.cache.object.GeoVertex;
 import software.bernie.geckolib.core.state.BoneSnapshot;
 import software.bernie.geckolib.util.RenderUtils;
 
+import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -61,6 +64,8 @@ public final class GeckoSourceRigAdapter {
                     root,
                     null,
                     "r" + rootIndex,
+                    List.of(root.getName()),
+                    false,
                     stack,
                     nodes,
                     sourceNodes,
@@ -107,6 +112,8 @@ public final class GeckoSourceRigAdapter {
             GeoBone bone,
             String parentId,
             String nodeId,
+            List<String> path,
+            boolean inheritedAttachment,
             PoseStack stack,
             Map<String, SourceNodeSnapshot> nodes,
             Map<String, GeoBone> sourceNodes,
@@ -117,9 +124,12 @@ public final class GeckoSourceRigAdapter {
             return;
         }
 
+        boolean attachment = inheritedAttachment || SourceNodeHeuristics.pathHasAttachment(path);
         Matrix4f parentPose = new Matrix4f(stack.last().pose());
         SkeletonVec3 pivot = transformedBonePivot(parentPose, bone);
-        globalPivotBounds.include(pivot);
+        if (!attachment) {
+            globalPivotBounds.include(pivot);
+        }
 
         float scaleX = bone.getScaleX();
         float scaleY = bone.getScaleY();
@@ -147,7 +157,7 @@ public final class GeckoSourceRigAdapter {
 
         BoundsAccumulator ownGeometry = new BoundsAccumulator();
         boolean renderable = false;
-        if (bone.getCubes() != null) {
+        if (!attachment && bone.getCubes() != null) {
             for (GeoCube cube : bone.getCubes()) {
                 CubeCapture cubeCapture = captureCube(stack, cube);
                 cubeCapture.bounds().ifPresent(bounds -> {
@@ -172,10 +182,14 @@ public final class GeckoSourceRigAdapter {
         if (bone.getChildBones() != null) {
             int childIndex = 0;
             for (GeoBone child : bone.getChildBones()) {
+                List<String> childPath = new ArrayList<>(path);
+                childPath.add(child.getName());
                 captureBone(
                         child,
                         nodeId,
                         nodeId + "/" + childIndex,
+                        List.copyOf(childPath),
+                        attachment,
                         stack,
                         nodes,
                         sourceNodes,
@@ -190,11 +204,7 @@ public final class GeckoSourceRigAdapter {
         stack.popPose();
     }
 
-    /**
-     * Gecko's render transform is T(position) * T(pivot) * R * S * T(-pivot).
-     * The pivot is therefore invariant under the local R/S and can be captured
-     * from the parent pose before applying this bone's local rotation and scale.
-     */
+    /** Gecko's pivot remains invariant under the local rotation/scale. */
     private static SkeletonVec3 transformedBonePivot(Matrix4f parentPose, GeoBone bone) {
         Vector4f pivot = new Vector4f(
                 (bone.getPivotX() - bone.getPosX()) / 16.0F,
