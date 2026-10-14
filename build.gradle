@@ -51,7 +51,7 @@ dependencies {
 
     // Optional client compatibility. These libraries are not required at runtime;
     // their classes are only loaded when the corresponding mod is actually present.
-    compileOnly fg.deobf("curse.maven:geckolib-388172:5675221")
+    compileOnly fg.deobf("curse.maven:geckolib-388172:8285794")
     compileOnly fg.deobf("curse.maven:lionfish-api-1001614:8095554")
     compileOnly fg.deobf("curse.maven:azurelib-817423:4812417")
 
