@@ -79,12 +79,12 @@ public final class LivingRenderLayerBridge {
                 MathUtils.mulStack(poseStack, armature.getPoseMatrices()[armature.rootJoint.getId()]);
                 poseStack.scale(-1.0F, -1.0F, 1.0F);
 
-                for (RenderLayer layer : layers) {
-                    if (layer == null) {
-                        continue;
-                    }
-                    try (LayerPoseOverrideContext.Scope ignored =
-                                 LayerPoseOverrideContext.open(entity, model, layer, armature)) {
+                try (LayerPoseOverrideContext.Scope ignored =
+                             LayerPoseOverrideContext.open(entity, model, layers, armature)) {
+                    for (RenderLayer layer : layers) {
+                        if (layer == null) {
+                            continue;
+                        }
                         layer.render(
                                 poseStack,
                                 buffer,

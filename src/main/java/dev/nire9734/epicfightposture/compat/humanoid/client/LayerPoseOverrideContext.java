@@ -4,11 +4,10 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import dev.nire9734.epicfightposture.compat.humanoid.retarget.HumanoidSkinWeightResolver;
 import dev.nire9734.epicfightposture.compat.humanoid.rig.ConservativeHumanoidSemanticAnalyzer;
 import dev.nire9734.epicfightposture.compat.humanoid.rig.HumanoidSemanticAnalysis;
-import dev.nire9734.epicfightposture.compat.humanoid.rig.SemanticJointCandidate;
+import dev.nire9734.epicfightposture.compat.humanoid.rig.HumanoidSkeletonResolver;
 import dev.nire9734.epicfightposture.compat.humanoid.rig.SourceNodeSnapshot;
 import dev.nire9734.epicfightposture.compat.humanoid.rig.SourceRigSnapshot;
-import dev.nire9734.epicfightposture.compat.humanoid.skeleton.HumanoidJoint;
-import dev.nire9734.epicfightposture.compat.humanoid.skeleton.JointOrigin;
+import dev.nire9734.epicfightposture.compat.humanoid.skeleton.HumanoidSkeletonDescriptor;
 import dev.nire9734.epicfightposture.compat.humanoid.skeleton.SkeletonKey;
 import net.minecraft.client.model.EntityModel;
 import net.minecraft.client.model.HierarchicalModel;
@@ -24,6 +23,7 @@ import yesman.epicfight.api.animation.Joint;
 import yesman.epicfight.api.model.Armature;
 import yesman.epicfight.api.utils.math.OpenMatrix4f;
 
+import java.lang.ref.WeakReference;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -31,10 +31,11 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
-import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.WeakHashMap;
+import java.util.IdentityHashMap;
 
 /**
  * Supplies Epic Fight transforms while EFPI replays source {@code RenderLayer}s.
@@ -46,9 +47,10 @@ import java.util.Set;
  * every source part through the same framework-neutral humanoid analysis used by
  * the runtime mesh and replaces only the part transform at render time.</p>
  *
- * <p>No entity id, mod id, renderer class, or mob name is special-cased. Optional
- * Lionfish support is reached reflectively so the compatibility library remains
- * optional at runtime.</p>
+ * <p>Static source-model analysis is cached per model instance. During each
+ * replay frame only the current Epic Fight skin matrices are combined with the
+ * cached bind transforms. No entity id, mod id, renderer class, or mob name is
+ * special-cased.</p>
  */
 public final class LayerPoseOverrideContext {
     private static final float MATRIX_EPSILON = 1.0E-8F;
@@ -58,18 +60,24 @@ public final class LayerPoseOverrideContext {
             "dev.nire9734.epicfightposture.compat.humanoid.client.LionfishSourceRigAdapter";
 
     private static final ThreadLocal<Context> ACTIVE = new ThreadLocal<>();
+    private static final Map<Object, ModelPlan> MODEL_PLANS =
+            Collections.synchronizedMap(new WeakHashMap<>());
 
     public static Scope open(
             LivingEntity entity,
             EntityModel<?> parentModel,
-            Object layer,
+            Iterable<?> layers,
             Armature armature) {
         Context previous = ACTIVE.get();
         Context current;
         try {
             current = new Context(entity, armature);
             current.registerModel(parentModel);
-            current.registerLayerModels(layer);
+            if (layers != null) {
+                for (Object layer : layers) {
+                    current.registerLayerModels(layer);
+                }
+            }
         } catch (Throwable ignored) {
             current = null;
         }
@@ -194,23 +202,105 @@ public final class LayerPoseOverrideContext {
                 return;
             }
             try {
-                if (model instanceof HierarchicalModel<?> hierarchicalModel) {
-                    ModelPartSourceRigAdapter.Capture capture = ModelPartSourceRigAdapter.capture(
-                            hierarchicalModel,
-                            keyFor(model)
-                    );
-                    HumanoidSemanticAnalysis analysis = ConservativeHumanoidSemanticAnalyzer.INSTANCE
-                            .analyze(capture.snapshot());
-                    registerCapture(capture.snapshot(), analysis, capture.sourceNodes());
-                    return;
-                }
-
-                if (isLionfishModel(model)) {
-                    registerLionfishModel(model);
-                }
+                installPlan(modelPlan(model));
             } catch (Throwable ignored) {
                 // Secondary layer models are optional. The outer Root fallback
                 // remains active when a model cannot be normalized safely.
+            }
+        }
+
+        private ModelPlan modelPlan(Object model) throws Exception {
+            ModelPlan cached;
+            synchronized (MODEL_PLANS) {
+                cached = MODEL_PLANS.get(model);
+            }
+            if (cached != null) {
+                return cached;
+            }
+
+            ModelPlan built = buildModelPlan(model, keyFor(model));
+            synchronized (MODEL_PLANS) {
+                ModelPlan raced = MODEL_PLANS.get(model);
+                if (raced != null) {
+                    return raced;
+                }
+                MODEL_PLANS.put(model, built);
+            }
+            return built;
+        }
+
+        private ModelPlan buildModelPlan(Object model, SkeletonKey key) throws Exception {
+            if (model instanceof HierarchicalModel<?> hierarchicalModel) {
+                ModelPartSourceRigAdapter.Capture capture = ModelPartSourceRigAdapter.capture(
+                        hierarchicalModel,
+                        key
+                );
+                HumanoidSemanticAnalysis analysis = ConservativeHumanoidSemanticAnalyzer.INSTANCE
+                        .analyze(capture.snapshot());
+                return buildPlan(capture.snapshot(), analysis, capture.sourceNodes());
+            }
+
+            if (isLionfishModel(model)) {
+                return buildLionfishPlan(model, key);
+            }
+            return ModelPlan.EMPTY;
+        }
+
+        @SuppressWarnings("unchecked")
+        private ModelPlan buildLionfishPlan(Object model, SkeletonKey key) throws Exception {
+            Class<?> adapterType = Class.forName(
+                    LIONFISH_ADAPTER_CLASS,
+                    true,
+                    LayerPoseOverrideContext.class.getClassLoader()
+            );
+            Method captureMethod = null;
+            for (Method method : adapterType.getDeclaredMethods()) {
+                if (method.getName().equals("capture") && method.getParameterCount() == 2) {
+                    captureMethod = method;
+                    break;
+                }
+            }
+            if (captureMethod == null) {
+                return ModelPlan.EMPTY;
+            }
+            if (!captureMethod.canAccess(null)) {
+                captureMethod.setAccessible(true);
+            }
+
+            Object capture = captureMethod.invoke(null, model, key);
+            Method snapshotAccessor = capture.getClass().getMethod("snapshot");
+            Method sourceNodesAccessor = capture.getClass().getMethod("sourceNodes");
+            SourceRigSnapshot snapshot = (SourceRigSnapshot) snapshotAccessor.invoke(capture);
+            Map<String, ?> sourceNodes = (Map<String, ?>) sourceNodesAccessor.invoke(capture);
+            HumanoidSemanticAnalysis analysis = ConservativeHumanoidSemanticAnalyzer.INSTANCE.analyze(snapshot);
+            return buildPlan(snapshot, analysis, sourceNodes);
+        }
+
+        private void installPlan(ModelPlan plan) {
+            if (plan == null || plan.parts().isEmpty()) {
+                return;
+            }
+
+            Map<String, Matrix4f> desiredAbsolute = new HashMap<>();
+            for (PlannedPart planned : plan.parts()) {
+                Matrix4f targetAbsolute = new Matrix4f(skinMatrix(planned.jointId()))
+                        .mul(planned.bindAbsolute());
+                Matrix4f sourceAbsolute = new Matrix4f(inverseExternalTransform).mul(targetAbsolute);
+                desiredAbsolute.put(planned.nodeId(), sourceAbsolute);
+
+                Object sourcePart = planned.sourcePart().get();
+                if (sourcePart == null) {
+                    continue;
+                }
+
+                Matrix4f local = new Matrix4f(sourceAbsolute);
+                if (planned.parentId() != null) {
+                    Matrix4f parentAbsolute = desiredAbsolute.get(planned.parentId());
+                    if (parentAbsolute != null) {
+                        local = new Matrix4f(parentAbsolute).invert().mul(sourceAbsolute);
+                    }
+                }
+                localOverrides.put(sourcePart, local);
             }
         }
 
@@ -233,92 +323,6 @@ public final class LayerPoseOverrideContext {
                 // Minecraft ModelPart has no model back-reference.
             }
             return localOverrides.get(sourcePart);
-        }
-
-        @SuppressWarnings("unchecked")
-        private void registerLionfishModel(Object model) throws Exception {
-            Class<?> adapterType = Class.forName(
-                    LIONFISH_ADAPTER_CLASS,
-                    true,
-                    LayerPoseOverrideContext.class.getClassLoader()
-            );
-            Method captureMethod = null;
-            for (Method method : adapterType.getDeclaredMethods()) {
-                if (method.getName().equals("capture") && method.getParameterCount() == 2) {
-                    captureMethod = method;
-                    break;
-                }
-            }
-            if (captureMethod == null) {
-                return;
-            }
-            if (!captureMethod.canAccess(null)) {
-                captureMethod.setAccessible(true);
-            }
-
-            Object capture = captureMethod.invoke(null, model, keyFor(model));
-            Method snapshotAccessor = capture.getClass().getMethod("snapshot");
-            Method sourceNodesAccessor = capture.getClass().getMethod("sourceNodes");
-            SourceRigSnapshot snapshot = (SourceRigSnapshot) snapshotAccessor.invoke(capture);
-            Map<String, ?> sourceNodes = (Map<String, ?>) sourceNodesAccessor.invoke(capture);
-            HumanoidSemanticAnalysis analysis = ConservativeHumanoidSemanticAnalyzer.INSTANCE.analyze(snapshot);
-            registerCapture(snapshot, analysis, sourceNodes);
-        }
-
-        private void registerCapture(
-                SourceRigSnapshot snapshot,
-                HumanoidSemanticAnalysis analysis,
-                Map<String, ?> sourceNodes) {
-            Map<String, HumanoidJoint> directOwners = directOwners(analysis);
-            Map<String, Matrix4f> bindAbsolute = buildFullBindMatrices(snapshot, sourceNodes);
-            Map<String, Matrix4f> desiredAbsolute = new HashMap<>();
-
-            List<SourceNodeSnapshot> ordered = orderedNodes(snapshot);
-            for (SourceNodeSnapshot node : ordered) {
-                Object sourcePart = sourceNodes.get(node.id());
-                Matrix4f bind = bindAbsolute.get(node.id());
-                if (sourcePart == null || bind == null) {
-                    continue;
-                }
-
-                HumanoidJoint owner = nearestOwner(snapshot, directOwners, node.id());
-                Matrix4f targetAbsolute = new Matrix4f(skinMatrix(deformationJointId(owner))).mul(bind);
-                Matrix4f sourceAbsolute = new Matrix4f(inverseExternalTransform).mul(targetAbsolute);
-                desiredAbsolute.put(node.id(), sourceAbsolute);
-
-                Matrix4f local = new Matrix4f(sourceAbsolute);
-                if (node.parentId().isPresent()) {
-                    Matrix4f parentAbsolute = desiredAbsolute.get(node.parentId().orElseThrow());
-                    if (parentAbsolute != null) {
-                        local = new Matrix4f(parentAbsolute).invert().mul(sourceAbsolute);
-                    }
-                }
-                localOverrides.put(sourcePart, local);
-            }
-        }
-
-        /** Rebuilds the same full bind matrices used by the framework adapters. */
-        private Map<String, Matrix4f> buildFullBindMatrices(
-                SourceRigSnapshot snapshot,
-                Map<String, ?> sourceNodes) {
-            Map<String, Matrix4f> result = new HashMap<>();
-            for (SourceNodeSnapshot node : orderedNodes(snapshot)) {
-                Object sourcePart = sourceNodes.get(node.id());
-                if (sourcePart == null) {
-                    continue;
-                }
-
-                Matrix4f parent = node.parentId()
-                        .map(result::get)
-                        .map(Matrix4f::new)
-                        .orElseGet(LayerPoseOverrideContext::canonicalModelMatrix);
-                Matrix4f local = sourceBindLocalMatrix(sourcePart);
-                if (local == null) {
-                    continue;
-                }
-                result.put(node.id(), parent.mul(local));
-            }
-            return result;
         }
 
         private Matrix4f skinMatrix(int requestedJointId) {
@@ -344,57 +348,73 @@ public final class LayerPoseOverrideContext {
         }
     }
 
+    private static ModelPlan buildPlan(
+            SourceRigSnapshot snapshot,
+            HumanoidSemanticAnalysis analysis,
+            Map<String, ?> sourceNodes) {
+        HumanoidSkeletonDescriptor descriptor = HumanoidSkeletonResolver.resolve(snapshot, analysis);
+        HumanoidSkinWeightResolver weights = new HumanoidSkinWeightResolver(snapshot, analysis, descriptor);
+        Map<String, Matrix4f> bindAbsolute = buildFullBindMatrices(snapshot, sourceNodes);
+        List<PlannedPart> planned = new ArrayList<>();
+
+        for (SourceNodeSnapshot node : orderedNodes(snapshot)) {
+            Object sourcePart = sourceNodes.get(node.id());
+            Matrix4f bind = bindAbsolute.get(node.id());
+            if (sourcePart == null || bind == null) {
+                continue;
+            }
+
+            HumanoidSkinWeightResolver.SkinWeights skin = weights.weights(
+                    node.id(),
+                    node.bindTransform().position()
+            );
+            int jointId = dominantJoint(skin);
+            planned.add(new PlannedPart(
+                    new WeakReference<>(sourcePart),
+                    node.id(),
+                    node.parentId().orElse(null),
+                    new Matrix4f(bind),
+                    jointId
+            ));
+        }
+        return planned.isEmpty() ? ModelPlan.EMPTY : new ModelPlan(List.copyOf(planned));
+    }
+
+    private static int dominantJoint(HumanoidSkinWeightResolver.SkinWeights weights) {
+        if (weights.count() == 1 || weights.firstWeight() >= weights.secondWeight()) {
+            return weights.firstJoint();
+        }
+        return weights.secondJoint();
+    }
+
+    /** Rebuilds the same full bind matrices used by the framework adapters. */
+    private static Map<String, Matrix4f> buildFullBindMatrices(
+            SourceRigSnapshot snapshot,
+            Map<String, ?> sourceNodes) {
+        Map<String, Matrix4f> result = new HashMap<>();
+        for (SourceNodeSnapshot node : orderedNodes(snapshot)) {
+            Object sourcePart = sourceNodes.get(node.id());
+            if (sourcePart == null) {
+                continue;
+            }
+
+            Matrix4f parent = node.parentId()
+                    .map(result::get)
+                    .map(Matrix4f::new)
+                    .orElseGet(LayerPoseOverrideContext::canonicalModelMatrix);
+            Matrix4f local = sourceBindLocalMatrix(sourcePart);
+            if (local == null) {
+                continue;
+            }
+            result.put(node.id(), parent.mul(local));
+        }
+        return result;
+    }
+
     private static List<SourceNodeSnapshot> orderedNodes(SourceRigSnapshot snapshot) {
         List<SourceNodeSnapshot> ordered = new ArrayList<>(snapshot.nodes().values());
         ordered.sort(Comparator.comparingInt(node -> snapshot.depth(node.id())));
         return ordered;
-    }
-
-    private static Map<String, HumanoidJoint> directOwners(HumanoidSemanticAnalysis analysis) {
-        Map<String, HumanoidJoint> owners = new HashMap<>();
-        for (SemanticJointCandidate candidate : analysis.candidates().values()) {
-            if (candidate.origin() != JointOrigin.SOURCE) {
-                continue;
-            }
-            candidate.sourceNodeId().ifPresent(sourceId -> owners.putIfAbsent(sourceId, candidate.joint()));
-        }
-        return owners;
-    }
-
-    private static HumanoidJoint nearestOwner(
-            SourceRigSnapshot snapshot,
-            Map<String, HumanoidJoint> directOwners,
-            String sourceNodeId) {
-        SourceNodeSnapshot cursor = snapshot.node(sourceNodeId);
-        while (true) {
-            HumanoidJoint owner = directOwners.get(cursor.id());
-            if (owner != null) {
-                return owner;
-            }
-            if (cursor.parentId().isEmpty()) {
-                return null;
-            }
-            cursor = snapshot.node(cursor.parentId().orElseThrow());
-        }
-    }
-
-    private static int deformationJointId(HumanoidJoint joint) {
-        if (joint == null) {
-            return HumanoidSkinWeightResolver.ROOT;
-        }
-        return switch (joint) {
-            case ROOT, SPINE -> HumanoidSkinWeightResolver.ROOT;
-            case CHEST -> HumanoidSkinWeightResolver.CHEST;
-            case NECK, HEAD -> HumanoidSkinWeightResolver.HEAD;
-            case SHOULDER_RIGHT -> HumanoidSkinWeightResolver.ARM_RIGHT;
-            case ELBOW_RIGHT, WRIST_RIGHT -> HumanoidSkinWeightResolver.HAND_RIGHT;
-            case SHOULDER_LEFT -> HumanoidSkinWeightResolver.ARM_LEFT;
-            case ELBOW_LEFT, WRIST_LEFT -> HumanoidSkinWeightResolver.HAND_LEFT;
-            case HIP_RIGHT -> HumanoidSkinWeightResolver.THIGH_RIGHT;
-            case KNEE_RIGHT, ANKLE_RIGHT -> HumanoidSkinWeightResolver.LEG_RIGHT;
-            case HIP_LEFT -> HumanoidSkinWeightResolver.THIGH_LEFT;
-            case KNEE_LEFT, ANKLE_LEFT -> HumanoidSkinWeightResolver.LEG_LEFT;
-        };
     }
 
     private static Matrix4f sourceBindLocalMatrix(Object sourcePart) {
@@ -463,6 +483,18 @@ public final class LayerPoseOverrideContext {
             type = type.getSuperclass();
         }
         return false;
+    }
+
+    private record PlannedPart(
+            WeakReference<Object> sourcePart,
+            String nodeId,
+            String parentId,
+            Matrix4f bindAbsolute,
+            int jointId) {
+    }
+
+    private record ModelPlan(List<PlannedPart> parts) {
+        private static final ModelPlan EMPTY = new ModelPlan(List.of());
     }
 
     private LayerPoseOverrideContext() {
