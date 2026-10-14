@@ -91,13 +91,7 @@ public final class HumanoidSkinWeightResolver {
             // and chest in one source bone. Vertex-space weighting preserves the
             // BIPED Root/Chest separation for those rigs without model-specific
             // names or hard-coded dimensions.
-            case ROOT, SPINE, CHEST -> chainBlend(
-                    position,
-                    HumanoidJoint.ROOT,
-                    HumanoidJoint.SPINE,
-                    HumanoidJoint.CHEST,
-                    ROOT,
-                    CHEST);
+            case ROOT, SPINE, CHEST -> torsoWeights(descriptor, position);
             case NECK, HEAD -> SkinWeights.rigid(HEAD);
 
             case SHOULDER_RIGHT -> explicitRightElbow
@@ -144,6 +138,32 @@ public final class HumanoidSkinWeightResolver {
                             LEG_LEFT);
             case KNEE_LEFT, ANKLE_LEFT -> SkinWeights.rigid(LEG_LEFT);
         };
+    }
+
+    /**
+     * Applies the canonical humanoid Root/Spine/Chest split to arbitrary torso
+     * geometry already expressed in EFPI model space. Attachment renderers use
+     * this to skin long coats/robes with exactly the same transition as the body
+     * mesh instead of inventing a second waist heuristic.
+     */
+    public static SkinWeights torsoWeights(
+            HumanoidSkeletonDescriptor descriptor,
+            SkeletonVec3 position) {
+        Objects.requireNonNull(descriptor, "descriptor");
+        Objects.requireNonNull(position, "position");
+
+        SkeletonVec3 start = descriptor.bindModelPosition(HumanoidJoint.ROOT);
+        SkeletonVec3 bend = descriptor.bindModelPosition(HumanoidJoint.SPINE);
+        SkeletonVec3 end = descriptor.bindModelPosition(HumanoidJoint.CHEST);
+        float distalWeight = distalBlendWeight(position, start, bend, end);
+
+        if (distalWeight <= EPSILON) {
+            return SkinWeights.rigid(ROOT);
+        }
+        if (distalWeight >= 1.0F - EPSILON) {
+            return SkinWeights.rigid(CHEST);
+        }
+        return SkinWeights.blend(ROOT, CHEST, 1.0F - distalWeight, distalWeight);
     }
 
     private HumanoidJoint nearestSemanticOwner(String sourceNodeId) {

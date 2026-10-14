@@ -12,6 +12,8 @@
   ],
   "client": [
     "client.BridgeHealthBarMixin",
+    "client.GeckoArmorRendererBodySkinningMixin",
+    "client.GeckoItemArmorLayerContextMixin",
     "client.IronsHumanoidRendererCapeMixin",
     "client.LionfishAdvancedModelBoxLayerPoseMixin",
     "client.LivingEntityRendererScaleInvoker",

@@ -93,7 +93,11 @@ public final class GeckoHumanoidClientCompat implements HumanoidRenderBackend {
     public void addPatchedRenderer(PatchedRenderersEvent.Add event, PreparedHumanoidModel prepared) {
         event.addPatchedEntityRenderer(
                 prepared.entityType(),
-                type -> new SpecialStateGeckoRenderer(prepared.mesh(), event.getContext())
+                type -> new SpecialStateGeckoRenderer(
+                        prepared.mesh(),
+                        prepared.skeleton().orElse(null),
+                        event.getContext()
+                )
         );
     }
 

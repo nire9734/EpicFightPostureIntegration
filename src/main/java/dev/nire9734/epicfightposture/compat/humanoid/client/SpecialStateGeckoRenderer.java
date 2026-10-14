@@ -1,6 +1,7 @@
 package dev.nire9734.epicfightposture.compat.humanoid.client;
 
 import com.mojang.blaze3d.vertex.PoseStack;
+import dev.nire9734.epicfightposture.compat.humanoid.skeleton.HumanoidSkeletonDescriptor;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
@@ -33,11 +34,14 @@ public final class SpecialStateGeckoRenderer extends PatchedEntityRenderer<
         SkinnedMesh> {
 
     private final AssetAccessor<SkinnedMesh> mesh;
+    private final HumanoidSkeletonDescriptor skeleton;
 
     public SpecialStateGeckoRenderer(
             AssetAccessor<SkinnedMesh> mesh,
+            HumanoidSkeletonDescriptor skeleton,
             EntityRendererProvider.Context context) {
         this.mesh = mesh;
+        this.skeleton = skeleton;
     }
 
     @Override
@@ -108,16 +112,27 @@ public final class SpecialStateGeckoRenderer extends PatchedEntityRenderer<
         // otherwise never run. Keep the body mesh above fully EF-owned, but
         // synchronize attachment bones to the same EF pose and replay only the
         // per-bone layer callbacks (items, armor, bone attachments, etc.).
-        GeckoAttachmentBridge.syncAndRenderLayers(
-                entity,
-                entitypatch,
-                renderer,
-                buffer,
-                poseStack,
-                packedLight,
-                overlay,
-                partialTicks
-        );
+        //
+        // The frame scope does not change that proven path. It only gives the
+        // optional GeoArmorRenderer mixins enough context to split body-only
+        // armor geometry across Root/Chest on a per-vertex basis.
+        try (GeckoArmorBodySkinningContext.FrameScope ignored =
+                     GeckoArmorBodySkinningContext.openFrame(
+                             entity,
+                             armature,
+                             this.skeleton,
+                             poseStack)) {
+            GeckoAttachmentBridge.syncAndRenderLayers(
+                    entity,
+                    entitypatch,
+                    renderer,
+                    buffer,
+                    poseStack,
+                    packedLight,
+                    overlay,
+                    partialTicks
+            );
+        }
 
         // Some Gecko renderers draw attachments after their super.render()
         // returns instead of using GeoRenderLayer. Queue the exact Chest skin
