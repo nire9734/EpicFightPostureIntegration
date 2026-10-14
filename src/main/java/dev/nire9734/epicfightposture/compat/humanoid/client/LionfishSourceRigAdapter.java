@@ -35,15 +35,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 
-/**
- * Converts Lionfish/Citadel-style {@link AdvancedEntityModel} bind rigs into
- * EFPI's framework-neutral source-rig representation.
- *
- * <p>Lionfish models inherit Minecraft model coordinates: anatomical right is
- * negative X and up is negative Y. LivingEntityRenderer applies the corresponding
- * (-X, -Y, +Z) model-space conversion, so this adapter seeds the same conversion
- * before recording EFPI model-space pivots and geometry.</p>
- */
+/** Converts Lionfish/Citadel-style bind rigs into EFPI's framework-neutral source rig. */
 public final class LionfishSourceRigAdapter {
     private static final float SCALE_EPSILON = 1.0E-5F;
     private static final float GEOMETRY_EPSILON = 1.0E-5F;
@@ -53,28 +45,13 @@ public final class LionfishSourceRigAdapter {
         Objects.requireNonNull(key, "key");
 
         List<AdvancedModelBox> allParts = new ArrayList<>();
-        for (AdvancedModelBox part : model.getAllParts()) {
-            if (part != null) {
-                allParts.add(part);
-            }
-        }
-        if (allParts.isEmpty()) {
-            throw new IllegalArgumentException("Lionfish model exposes no AdvancedModelBox parts");
-        }
+        for (AdvancedModelBox part : model.getAllParts()) if (part != null) allParts.add(part);
+        if (allParts.isEmpty()) throw new IllegalArgumentException("Lionfish model exposes no AdvancedModelBox parts");
 
-        List<AdvancedModelBox> roots = allParts.stream()
-                .filter(part -> part.getParent() == null)
-                .toList();
-        if (roots.isEmpty()) {
-            throw new IllegalArgumentException("Lionfish model exposes no root AdvancedModelBox");
-        }
+        List<AdvancedModelBox> roots = allParts.stream().filter(part -> part.getParent() == null).toList();
+        if (roots.isEmpty()) throw new IllegalArgumentException("Lionfish model exposes no root AdvancedModelBox");
 
-        // A large number of Cataclysm/Lionfish 1.20.1 models construct boxes with
-        // AdvancedModelBox(this) rather than AdvancedModelBox(this, "name"), leaving
-        // boxName empty. The Java model fields still preserve semantic names such as
-        // left_arm_joint/right_leg, so recover those names by object identity.
         Map<AdvancedModelBox, String> reflectedNames = reflectedPartNames(model);
-
         LinkedHashMap<String, SourceNodeSnapshot> nodes = new LinkedHashMap<>();
         LinkedHashMap<String, AdvancedModelBox> sourceNodes = new LinkedHashMap<>();
         BoundsAccumulator geometryBounds = new BoundsAccumulator();
@@ -82,35 +59,15 @@ public final class LionfishSourceRigAdapter {
         Set<AdvancedModelBox> visited = java.util.Collections.newSetFromMap(new IdentityHashMap<>());
         boolean[] nonUniformScale = {false};
 
-        PoseStack stack = new PoseStack();
-        // Minecraft/Lionfish authored model coordinates -> EFPI model space.
-        stack.scale(-1.0F, -1.0F, 1.0F);
-
-        for (int rootIndex = 0; rootIndex < roots.size(); rootIndex++) {
-            capturePart(
-                    roots.get(rootIndex),
-                    null,
-                    "r" + rootIndex,
-                    stack,
-                    reflectedNames,
-                    nodes,
-                    sourceNodes,
-                    geometryBounds,
-                    pivotBounds,
-                    nonUniformScale,
-                    visited
-            );
+        PoseStack stack = canonicalModelStack();
+        for (int i = 0; i < roots.size(); i++) {
+            capturePart(roots.get(i), null, "r" + i, stack, reflectedNames, nodes, sourceNodes,
+                    geometryBounds, pivotBounds, nonUniformScale, visited);
         }
 
-        BodyBounds bounds = geometryBounds.toBounds()
-                .or(() -> pivotBounds.toBounds())
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "Lionfish model produced no finite bind-space bounds"));
-
-        return new Capture(
-                new SourceRigSnapshot(key, nodes, bounds, nonUniformScale[0]),
-                Map.copyOf(sourceNodes)
-        );
+        BodyBounds bounds = geometryBounds.toBounds().or(() -> pivotBounds.toBounds())
+                .orElseThrow(() -> new IllegalArgumentException("Lionfish model produced no finite bind-space bounds"));
+        return new Capture(new SourceRigSnapshot(key, nodes, bounds, nonUniformScale[0]), Map.copyOf(sourceNodes));
     }
 
     public static HumanoidModelResolution<AdvancedModelBox> resolve(
@@ -120,20 +77,34 @@ public final class LionfishSourceRigAdapter {
         Capture capture = capture(model, key);
         HumanoidSemanticAnalysis analysis = analyzer.analyze(capture.snapshot());
         var descriptor = HumanoidSkeletonResolver.resolve(capture.snapshot(), analysis);
-
         EnumMap<HumanoidJoint, AdvancedModelBox> semanticSources = new EnumMap<>(HumanoidJoint.class);
         for (Map.Entry<HumanoidJoint, SemanticJointCandidate> entry : analysis.candidates().entrySet()) {
-            entry.getValue().sourceNodeId().ifPresent(sourceId -> {
-                AdvancedModelBox source = capture.sourceNodes().get(sourceId);
-                if (source != null) {
-                    semanticSources.put(entry.getKey(), source);
-                }
+            entry.getValue().sourceNodeId().ifPresent(id -> {
+                AdvancedModelBox source = capture.sourceNodes().get(id);
+                if (source != null) semanticSources.put(entry.getKey(), source);
             });
         }
-
-        HumanoidSourceBinding<AdvancedModelBox> binding =
-                joint -> Optional.ofNullable(semanticSources.get(joint));
+        HumanoidSourceBinding<AdvancedModelBox> binding = joint -> Optional.ofNullable(semanticSources.get(joint));
         return new HumanoidModelResolution<>(descriptor, binding);
+    }
+
+    /** Matches Epic Fight's vanilla model baker: Y180 * X180 * translate(0,-24px,0). */
+    static PoseStack canonicalModelStack() {
+        PoseStack stack = new PoseStack();
+        stack.scale(-1.0F, -1.0F, 1.0F);
+        stack.translate(0.0F, -1.5F, 0.0F);
+        return stack;
+    }
+
+    static BindValues bindValues(AdvancedModelBox part) {
+        boolean stored = part.defaultscaleX != 0.0F || part.defaultscaleY != 0.0F || part.defaultscaleZ != 0.0F;
+        return stored
+                ? new BindValues(part.defaultPositionX, part.defaultPositionY, part.defaultPositionZ,
+                        part.defaultRotationX, part.defaultRotationY, part.defaultRotationZ,
+                        part.defaultscaleX, part.defaultscaleY, part.defaultscaleZ)
+                : new BindValues(part.rotationPointX, part.rotationPointY, part.rotationPointZ,
+                        part.rotateAngleX, part.rotateAngleY, part.rotateAngleZ,
+                        part.xScale, part.yScale, part.zScale);
     }
 
     private static void capturePart(
@@ -144,113 +115,60 @@ public final class LionfishSourceRigAdapter {
             Map<AdvancedModelBox, String> reflectedNames,
             Map<String, SourceNodeSnapshot> nodes,
             Map<String, AdvancedModelBox> sourceNodes,
-            BoundsAccumulator globalGeometryBounds,
-            BoundsAccumulator globalPivotBounds,
+            BoundsAccumulator globalGeometry,
+            BoundsAccumulator globalPivots,
             boolean[] nonUniformScale,
             Set<AdvancedModelBox> visited) {
-        if (part == null || !visited.add(part)) {
-            return;
-        }
+        if (part == null || !visited.add(part)) return;
 
         BindValues bind = bindValues(part);
         Matrix4f parentPose = new Matrix4f(stack.last().pose());
-        SkeletonVec3 pivot = transformPoint(
-                parentPose,
-                bind.positionX() / 16.0F,
-                bind.positionY() / 16.0F,
-                bind.positionZ() / 16.0F
-        );
-        globalPivotBounds.include(pivot);
+        SkeletonVec3 pivot = transformPoint(parentPose,
+                bind.positionX / 16.0F, bind.positionY / 16.0F, bind.positionZ / 16.0F);
+        globalPivots.include(pivot);
 
-        if (Math.abs(bind.scaleX() - bind.scaleY()) > SCALE_EPSILON
-                || Math.abs(bind.scaleX() - bind.scaleZ()) > SCALE_EPSILON
-                || Math.abs(bind.scaleY() - bind.scaleZ()) > SCALE_EPSILON) {
-            nonUniformScale[0] = true;
-        }
+        if (Math.abs(bind.scaleX - bind.scaleY) > SCALE_EPSILON
+                || Math.abs(bind.scaleX - bind.scaleZ) > SCALE_EPSILON
+                || Math.abs(bind.scaleY - bind.scaleZ) > SCALE_EPSILON) nonUniformScale[0] = true;
 
         stack.pushPose();
-        stack.translate(
-                bind.positionX() / 16.0F,
-                bind.positionY() / 16.0F,
-                bind.positionZ() / 16.0F
-        );
-        stack.mulPose(new Quaternionf().rotationZYX(
-                bind.rotationZ(),
-                bind.rotationY(),
-                bind.rotationX()
-        ));
-        stack.scale(bind.scaleX(), bind.scaleY(), bind.scaleZ());
+        stack.translate(bind.positionX / 16.0F, bind.positionY / 16.0F, bind.positionZ / 16.0F);
+        stack.mulPose(new Quaternionf().rotationZYX(bind.rotationZ, bind.rotationY, bind.rotationX));
+        stack.scale(bind.scaleX, bind.scaleY, bind.scaleZ);
 
-        Quaternionf sourceRotation = new Matrix4f(stack.last().pose())
-                .getUnnormalizedRotation(new Quaternionf());
-        RigidTransform bindTransform = new RigidTransform(
-                pivot,
-                new SkeletonQuat(
-                        sourceRotation.x(), sourceRotation.y(),
-                        sourceRotation.z(), sourceRotation.w()
-                )
-        );
+        Quaternionf q = new Matrix4f(stack.last().pose()).getUnnormalizedRotation(new Quaternionf());
+        RigidTransform transform = new RigidTransform(pivot, new SkeletonQuat(q.x(), q.y(), q.z(), q.w()));
 
-        BoundsAccumulator ownGeometry = new BoundsAccumulator();
+        BoundsAccumulator own = new BoundsAccumulator();
         if (part.cubeList != null) {
             for (LionfishModelRenderUtils.ModelBox cube : part.cubeList) {
                 BodyBounds cubeBounds = captureCubeBounds(stack.last().pose(), cube);
-                if (cubeBounds != null) {
-                    ownGeometry.include(cubeBounds);
-                    globalGeometryBounds.include(cubeBounds);
-                }
+                if (cubeBounds != null) { own.include(cubeBounds); globalGeometry.include(cubeBounds); }
             }
         }
+        Optional<BodyBounds> ownBounds = own.toBounds();
+        boolean renderable = ownBounds.map(b -> b.width() > GEOMETRY_EPSILON
+                || b.height() > GEOMETRY_EPSILON || b.depth() > GEOMETRY_EPSILON).orElse(false);
 
-        Optional<BodyBounds> ownBounds = ownGeometry.toBounds();
-        boolean renderable = ownBounds
-                .map(value -> value.width() > GEOMETRY_EPSILON
-                        || value.height() > GEOMETRY_EPSILON
-                        || value.depth() > GEOMETRY_EPSILON)
-                .orElse(false);
-
-        nodes.put(nodeId, new SourceNodeSnapshot(
-                nodeId,
-                semanticName(part, reflectedNames),
-                Optional.ofNullable(parentId),
-                bindTransform,
-                ownBounds,
-                renderable
-        ));
+        nodes.put(nodeId, new SourceNodeSnapshot(nodeId, semanticName(part, reflectedNames),
+                Optional.ofNullable(parentId), transform, ownBounds, renderable));
         sourceNodes.put(nodeId, part);
 
         if (part.childModels != null) {
             int childIndex = 0;
             for (BasicModelPart child : part.childModels) {
-                if (child instanceof AdvancedModelBox advancedChild) {
-                    capturePart(
-                            advancedChild,
-                            nodeId,
-                            nodeId + "/" + childIndex,
-                            stack,
-                            reflectedNames,
-                            nodes,
-                            sourceNodes,
-                            globalGeometryBounds,
-                            globalPivotBounds,
-                            nonUniformScale,
-                            visited
-                    );
-                    childIndex++;
+                if (child instanceof AdvancedModelBox box) {
+                    capturePart(box, nodeId, nodeId + "/" + childIndex++, stack, reflectedNames,
+                            nodes, sourceNodes, globalGeometry, globalPivots, nonUniformScale, visited);
                 }
             }
         }
-
         stack.popPose();
     }
 
-    private static String semanticName(
-            AdvancedModelBox part,
-            Map<AdvancedModelBox, String> reflectedNames) {
-        if (part.boxName != null && !part.boxName.isBlank()) {
-            return part.boxName;
-        }
-        return reflectedNames.getOrDefault(part, "");
+    private static String semanticName(AdvancedModelBox part, Map<AdvancedModelBox, String> reflectedNames) {
+        return part.boxName != null && !part.boxName.isBlank()
+                ? part.boxName : reflectedNames.getOrDefault(part, "");
     }
 
     private static Map<AdvancedModelBox, String> reflectedPartNames(AdvancedEntityModel<?> model) {
@@ -258,120 +176,56 @@ public final class LionfishSourceRigAdapter {
         Class<?> type = model.getClass();
         while (type != null && AdvancedEntityModel.class.isAssignableFrom(type)) {
             for (Field field : type.getDeclaredFields()) {
-                if (Modifier.isStatic(field.getModifiers())
-                        || !AdvancedModelBox.class.isAssignableFrom(field.getType())) {
-                    continue;
-                }
+                if (Modifier.isStatic(field.getModifiers()) || !AdvancedModelBox.class.isAssignableFrom(field.getType())) continue;
                 try {
-                    if (!field.canAccess(model)) {
-                        field.setAccessible(true);
-                    }
+                    if (!field.canAccess(model)) field.setAccessible(true);
                     Object value = field.get(model);
-                    if (value instanceof AdvancedModelBox box) {
-                        names.putIfAbsent(box, field.getName());
-                    }
-                } catch (Throwable ignored) {
-                    // Reflection is only a semantic-name fallback. Explicit
-                    // AdvancedModelBox names remain usable when a field is inaccessible.
-                }
+                    if (value instanceof AdvancedModelBox box) names.putIfAbsent(box, field.getName());
+                } catch (Throwable ignored) {}
             }
             type = type.getSuperclass();
         }
         return names;
     }
 
-    private static BindValues bindValues(AdvancedModelBox part) {
-        boolean hasStoredDefault = part.defaultscaleX != 0.0F
-                || part.defaultscaleY != 0.0F
-                || part.defaultscaleZ != 0.0F;
-        if (hasStoredDefault) {
-            return new BindValues(
-                    part.defaultPositionX, part.defaultPositionY, part.defaultPositionZ,
-                    part.defaultRotationX, part.defaultRotationY, part.defaultRotationZ,
-                    part.defaultscaleX, part.defaultscaleY, part.defaultscaleZ
-            );
-        }
-        return new BindValues(
-                part.rotationPointX, part.rotationPointY, part.rotationPointZ,
-                part.rotateAngleX, part.rotateAngleY, part.rotateAngleZ,
-                part.xScale, part.yScale, part.zScale
-        );
-    }
-
     private static BodyBounds captureCubeBounds(Matrix4f pose, LionfishModelRenderUtils.ModelBox cube) {
-        if (cube == null) {
-            return null;
-        }
+        if (cube == null) return null;
         BoundsAccumulator bounds = new BoundsAccumulator();
         float[] xs = {cube.posX1 / 16.0F, cube.posX2 / 16.0F};
         float[] ys = {cube.posY1 / 16.0F, cube.posY2 / 16.0F};
         float[] zs = {cube.posZ1 / 16.0F, cube.posZ2 / 16.0F};
-        for (float x : xs) {
-            for (float y : ys) {
-                for (float z : zs) {
-                    bounds.include(transformPoint(pose, x, y, z));
-                }
-            }
-        }
+        for (float x : xs) for (float y : ys) for (float z : zs) bounds.include(transformPoint(pose, x, y, z));
         return bounds.toBounds().orElse(null);
     }
 
     private static SkeletonVec3 transformPoint(Matrix4f pose, float x, float y, float z) {
-        Vector4f transformed = new Vector4f(x, y, z, 1.0F);
-        transformed.mul(pose);
-        return new SkeletonVec3(transformed.x(), transformed.y(), transformed.z());
+        Vector4f vector = new Vector4f(x, y, z, 1.0F);
+        vector.mul(pose);
+        return new SkeletonVec3(vector.x(), vector.y(), vector.z());
     }
 
-    public record Capture(
-            SourceRigSnapshot snapshot,
-            Map<String, AdvancedModelBox> sourceNodes) {
-        public Capture {
-            Objects.requireNonNull(snapshot, "snapshot");
-            sourceNodes = sourceNodes == null ? Map.of() : Map.copyOf(sourceNodes);
-        }
+    public record Capture(SourceRigSnapshot snapshot, Map<String, AdvancedModelBox> sourceNodes) {
+        public Capture { Objects.requireNonNull(snapshot, "snapshot"); sourceNodes = Map.copyOf(sourceNodes); }
     }
 
-    private record BindValues(
+    static record BindValues(
             float positionX, float positionY, float positionZ,
             float rotationX, float rotationY, float rotationZ,
-            float scaleX, float scaleY, float scaleZ) {
-    }
+            float scaleX, float scaleY, float scaleZ) {}
 
     private static final class BoundsAccumulator {
-        private float minX = Float.POSITIVE_INFINITY;
-        private float minY = Float.POSITIVE_INFINITY;
-        private float minZ = Float.POSITIVE_INFINITY;
-        private float maxX = Float.NEGATIVE_INFINITY;
-        private float maxY = Float.NEGATIVE_INFINITY;
-        private float maxZ = Float.NEGATIVE_INFINITY;
-        private boolean any;
-
-        void include(SkeletonVec3 point) {
-            any = true;
-            minX = Math.min(minX, point.x());
-            minY = Math.min(minY, point.y());
-            minZ = Math.min(minZ, point.z());
-            maxX = Math.max(maxX, point.x());
-            maxY = Math.max(maxY, point.y());
-            maxZ = Math.max(maxZ, point.z());
+        float minX = Float.POSITIVE_INFINITY, minY = Float.POSITIVE_INFINITY, minZ = Float.POSITIVE_INFINITY;
+        float maxX = Float.NEGATIVE_INFINITY, maxY = Float.NEGATIVE_INFINITY, maxZ = Float.NEGATIVE_INFINITY;
+        boolean any;
+        void include(SkeletonVec3 p) {
+            any = true; minX = Math.min(minX,p.x()); minY = Math.min(minY,p.y()); minZ = Math.min(minZ,p.z());
+            maxX = Math.max(maxX,p.x()); maxY = Math.max(maxY,p.y()); maxZ = Math.max(maxZ,p.z());
         }
-
-        void include(BodyBounds bounds) {
-            include(bounds.min());
-            include(bounds.max());
-        }
-
+        void include(BodyBounds b) { include(b.min()); include(b.max()); }
         Optional<BodyBounds> toBounds() {
-            if (!any) {
-                return Optional.empty();
-            }
-            return Optional.of(new BodyBounds(
-                    new SkeletonVec3(minX, minY, minZ),
-                    new SkeletonVec3(maxX, maxY, maxZ)
-            ));
+            return any ? Optional.of(new BodyBounds(new SkeletonVec3(minX,minY,minZ), new SkeletonVec3(maxX,maxY,maxZ))) : Optional.empty();
         }
     }
 
-    private LionfishSourceRigAdapter() {
-    }
+    private LionfishSourceRigAdapter() {}
 }
