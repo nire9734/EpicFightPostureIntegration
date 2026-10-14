@@ -11,6 +11,7 @@ import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntList;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.model.HumanoidModel;
+import net.minecraft.client.model.geom.ModelPart;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.resources.ResourceLocation;
@@ -41,7 +42,6 @@ import yesman.epicfight.api.utils.math.Vec3f;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
@@ -54,19 +54,20 @@ import java.util.WeakHashMap;
 import java.util.function.Supplier;
 
 /**
- * Converts GeckoLib armor bind geometry to an Epic Fight {@link SkinnedMesh}.
+ * Converts one GeckoLib armor body-part callback to an Epic Fight skinned mesh.
  *
- * <p>The entity body already uses EF skinning, so replaying ItemArmorGeoLayer's
- * original GeoBone/HumanoidModel path cannot stay perfectly aligned during poses
- * that separate Chest/Root or Arm/Hand. This bridge bakes the currently visible
- * armor slot once, assigns the same semantic deformation chains as the body, and
- * then draws it with the entity's existing EF armature and pose matrices.</p>
+ * <p>ItemArmorGeoLayer does two jobs before GeoArmorRenderer draws: it chooses a
+ * source entity bone/ModelPart pair and fits that ModelPart to the source bone's
+ * pivot/cube dimensions. The previous bridge skipped that fit and baked an entire
+ * equipment slot at once. That made player-space armor bind geometry drift from
+ * non-player mobs and also broke renderers such as Iron's that issue separate
+ * body/right-sleeve/left-sleeve callbacks for one chest item.</p>
  *
- * <p>The implementation is framework-level: slot visibility is delegated back to
- * the actual GeoArmorRenderer (including subclass overrides), semantic anchor
- * bones come from GeoArmorRenderer's public getters, and no mod/entity/item id is
- * inspected. Unsupported or ambiguous armor falls back to GeckoLib's original
- * layer path instead of being partially rendered.</p>
+ * <p>This bridge therefore keeps ItemArmorGeoLayer's callback granularity. The
+ * mixin first runs GeckoLib's own prepModelPartForRender against the source bone's
+ * bind rotation. We then let the concrete GeoArmorRenderer apply that fitted
+ * ModelPart to its GeoBones, preserve applyBoneVisibilityByPart(), bake only the
+ * selected semantic region, and skin it with the entity's existing EF armature.</p>
  */
 @SuppressWarnings({"rawtypes", "unchecked"})
 public final class GeckoArmorSkinnedMeshBridge {
@@ -78,7 +79,7 @@ public final class GeckoArmorSkinnedMeshBridge {
     private static final MeshPartDefinition PART = new RuntimeArmorPart("gecko_armor");
     private static final ThreadLocal<Frame> ACTIVE = new ThreadLocal<>();
 
-    /** Weak model keys naturally invalidate the cache when Gecko reloads baked models. */
+    /** Weak baked-model keys naturally invalidate after Gecko resource reloads. */
     private static final Map<BakedGeoModel, Map<MeshCacheKey, BakedArmor>> CACHE =
             Collections.synchronizedMap(new WeakHashMap<>());
 
@@ -102,15 +103,15 @@ public final class GeckoArmorSkinnedMeshBridge {
         return new FrameScope(previous, true);
     }
 
-    /**
-     * Called from ItemArmorGeoLayer at the beginning of one source-bone callback.
-     * Returns true when the original Gecko armor callback should be cancelled.
-     */
+    /** Returns true when the original ItemArmorGeoLayer callback should be cancelled. */
     public static boolean renderIfSupported(
             LivingEntity entity,
+            GeoBone sourceBone,
             ItemStack armorStack,
             EquipmentSlot reportedSlot,
             HumanoidModel<?> armorModel,
+            ModelPart armorPart,
+            Vector3f fitScale,
             MultiBufferSource bufferSource,
             int packedLight,
             int packedOverlay,
@@ -118,15 +119,21 @@ public final class GeckoArmorSkinnedMeshBridge {
         Frame frame = ACTIVE.get();
         if (frame == null
                 || frame.entity != entity
+                || sourceBone == null
                 || armorStack == null
                 || armorStack.isEmpty()
                 || !(armorModel instanceof GeoArmorRenderer<?> armorRenderer)
-                || bufferSource == null) {
+                || armorPart == null
+                || fitScale == null
+                || bufferSource == null
+                || !finitePositive(fitScale.x)
+                || !finitePositive(fitScale.y)
+                || !finitePositive(fitScale.z)) {
             return false;
         }
 
-        // Armor render layers may have their own dynamic passes/colours. Preserve
-        // them through Gecko's original path until they can be converted safely.
+        // Custom armor render layers may add passes that cannot yet be represented
+        // by a single EF mesh. Leave those on Gecko's original rendering path.
         if (armorRenderer.getRenderLayers() != null && !armorRenderer.getRenderLayers().isEmpty()) {
             return false;
         }
@@ -136,8 +143,18 @@ public final class GeckoArmorSkinnedMeshBridge {
             return false;
         }
 
-        RenderKey renderKey = new RenderKey(armorRenderer, armorStack.getItem(), actualSlot);
-        if (frame.rendered.contains(renderKey)) {
+        ArmorRegion selectedRegion = regionForModelPart(armorModel, armorPart);
+        if (selectedRegion == null) {
+            return false;
+        }
+
+        RenderKey renderKey = new RenderKey(
+                armorRenderer,
+                armorStack.getItem(),
+                sourceBone,
+                selectedRegion
+        );
+        if (!frame.rendered.add(renderKey)) {
             return true;
         }
 
@@ -145,35 +162,46 @@ public final class GeckoArmorSkinnedMeshBridge {
                 armorRenderer,
                 entity,
                 armorStack,
-                actualSlot,
+                reportedSlot,
+                armorModel,
+                armorPart,
                 bufferSource,
                 partialTick
         );
         if (prepared == null) {
+            frame.rendered.remove(renderKey);
             return false;
         }
 
+        PartTransformKey partTransform = PartTransformKey.of(armorPart, fitScale);
+        MeshCacheKey cacheKey = new MeshCacheKey(
+                frame.skeleton.key(),
+                actualSlot,
+                reportedSlot,
+                armorRenderer.getClass(),
+                sourceBone.getName(),
+                selectedRegion,
+                partTransform
+        );
         BakedArmor bakedArmor = cachedArmor(
                 prepared.bakedModel,
+                cacheKey,
                 armorRenderer,
-                actualSlot,
-                frame.skeleton
+                selectedRegion,
+                frame.skeleton,
+                fitScale
         );
         if (bakedArmor == null || bakedArmor.mesh == null) {
+            frame.rendered.remove(renderKey);
             return false;
         }
-
-        frame.rendered.add(renderKey);
 
         PoseStack armorPose = new PoseStack();
         armorPose.last().pose().set(frame.basePose);
         armorPose.last().normal().set(frame.baseNormal);
 
-        float alpha = 1.0F;
         Minecraft mc = Minecraft.getInstance();
-        if (mc.player != null && entity.isInvisibleTo(mc.player)) {
-            alpha = 0.15F;
-        }
+        float alpha = mc.player != null && entity.isInvisibleTo(mc.player) ? 0.15F : 1.0F;
 
         bakedArmor.mesh.draw(
                 armorPose,
@@ -228,12 +256,14 @@ public final class GeckoArmorSkinnedMeshBridge {
             GeoArmorRenderer<?> armorRenderer,
             LivingEntity entity,
             ItemStack stack,
-            EquipmentSlot actualSlot,
+            EquipmentSlot reportedSlot,
+            HumanoidModel<?> armorModel,
+            ModelPart armorPart,
             MultiBufferSource bufferSource,
             float partialTick) {
         try {
             GeoArmorRenderer rawRenderer = (GeoArmorRenderer)armorRenderer;
-            rawRenderer.prepForRender(entity, stack, actualSlot, armorRenderer);
+            rawRenderer.prepForRender(entity, stack, reportedSlot, armorModel);
 
             GeoAnimatable armorAnimatable = (GeoAnimatable)rawRenderer.getAnimatable();
             GeoModel rawModel = (GeoModel)rawRenderer.getGeoModel();
@@ -249,10 +279,18 @@ public final class GeckoArmorSkinnedMeshBridge {
                 return null;
             }
 
-            // Let the concrete renderer decide which bones belong to this slot.
-            // Subclass overrides (for example extra robe/skirt bones) are retained.
+            // Remove any item animation left on the shared baked model, then
+            // reproduce GeoArmorRenderer.preRender's base-model fitting without
+            // running the armor's own animation controller.
+            GeckoBindPoseTransforms.resetToInitial(bakedModel);
+            invoker.efpi$applyBaseModel(armorModel);
             invoker.efpi$grabRelevantBones(bakedModel);
-            invoker.efpi$applyBoneVisibilityBySlot(actualSlot);
+            invoker.efpi$applyBaseTransformations(armorModel);
+
+            // This is the important distinction from the previous slot-wide
+            // attempt: preserve the concrete ItemArmorGeoLayer callback's exact
+            // ModelPart selection. Subclass visibility overrides remain active.
+            armorRenderer.applyBoneVisibilityByPart(reportedSlot, armorPart, armorModel);
 
             ResourceLocation texture = rawGeoRenderer.getTextureLocation(armorAnimatable);
             RenderType renderType = rawGeoRenderer.getRenderType(
@@ -273,20 +311,27 @@ public final class GeckoArmorSkinnedMeshBridge {
 
     private static BakedArmor cachedArmor(
             BakedGeoModel model,
+            MeshCacheKey key,
             GeoArmorRenderer<?> renderer,
-            EquipmentSlot slot,
-            HumanoidSkeletonDescriptor skeleton) {
-        MeshCacheKey key = new MeshCacheKey(skeleton.key(), slot, renderer.getClass());
+            ArmorRegion selectedRegion,
+            HumanoidSkeletonDescriptor skeleton,
+            Vector3f fitScale) {
         synchronized (CACHE) {
-            Map<MeshCacheKey, BakedArmor> bySkeleton =
+            Map<MeshCacheKey, BakedArmor> meshes =
                     CACHE.computeIfAbsent(model, ignored -> new HashMap<>());
-            BakedArmor cached = bySkeleton.get(key);
+            BakedArmor cached = meshes.get(key);
             if (cached != null) {
                 return cached.supported ? cached : null;
             }
 
-            BakedArmor baked = bakeArmor(model, renderer, skeleton);
-            bySkeleton.put(key, baked);
+            BakedArmor baked = bakeArmor(
+                    model,
+                    renderer,
+                    selectedRegion,
+                    skeleton,
+                    fitScale
+            );
+            meshes.put(key, baked);
             return baked.supported ? baked : null;
         }
     }
@@ -294,10 +339,10 @@ public final class GeckoArmorSkinnedMeshBridge {
     private static BakedArmor bakeArmor(
             BakedGeoModel model,
             GeoArmorRenderer<?> renderer,
-            HumanoidSkeletonDescriptor skeleton) {
+            ArmorRegion selectedRegion,
+            HumanoidSkeletonDescriptor skeleton,
+            Vector3f fitScale) {
         try {
-            GeckoBindPoseTransforms.resetToInitial(model);
-
             IdentityHashMap<GeoBone, ArmorRegion> explicitRegions = new IdentityHashMap<>();
             putRegion(explicitRegions, renderer.getHeadBone(), ArmorRegion.HEAD);
             putRegion(explicitRegions, renderer.getBodyBone(), ArmorRegion.BODY);
@@ -312,11 +357,13 @@ public final class GeckoArmorSkinnedMeshBridge {
             Map<MeshPartDefinition, IntList> indices = new LinkedHashMap<>();
             BakeState state = new BakeState();
             PoseStack stack = new PoseStack();
+            stack.scale(fitScale.x, fitScale.y, fitScale.z);
 
             for (GeoBone root : model.topLevelBones()) {
                 bakeBone(
                         root,
                         null,
+                        selectedRegion,
                         stack,
                         explicitRegions,
                         skeleton,
@@ -326,7 +373,7 @@ public final class GeckoArmorSkinnedMeshBridge {
                 );
             }
 
-            if (state.unclassifiedVisibleGeometry || vertices.isEmpty()) {
+            if (state.selectedUnclassifiedGeometry || vertices.isEmpty()) {
                 return BakedArmor.unsupported();
             }
 
@@ -340,6 +387,7 @@ public final class GeckoArmorSkinnedMeshBridge {
     private static void bakeBone(
             GeoBone bone,
             ArmorRegion inheritedRegion,
+            ArmorRegion selectedRegion,
             PoseStack stack,
             IdentityHashMap<GeoBone, ArmorRegion> explicitRegions,
             HumanoidSkeletonDescriptor skeleton,
@@ -359,8 +407,8 @@ public final class GeckoArmorSkinnedMeshBridge {
 
         if (!bone.isHidden() && bone.getCubes() != null && !bone.getCubes().isEmpty()) {
             if (region == null) {
-                state.unclassifiedVisibleGeometry = true;
-            } else {
+                state.selectedUnclassifiedGeometry = true;
+            } else if (region == selectedRegion) {
                 for (GeoCube cube : bone.getCubes()) {
                     bakeCube(cube, region, stack, skeleton, vertices, indices);
                 }
@@ -372,6 +420,7 @@ public final class GeckoArmorSkinnedMeshBridge {
                 bakeBone(
                         child,
                         region,
+                        selectedRegion,
                         stack,
                         explicitRegions,
                         skeleton,
@@ -484,7 +533,6 @@ public final class GeckoArmorSkinnedMeshBridge {
         };
     }
 
-    /** Mirrors the body's normalized three-point chain weighting for armor. */
     private static HumanoidSkinWeightResolver.SkinWeights chainWeights(
             HumanoidSkeletonDescriptor skeleton,
             SkeletonVec3 position,
@@ -546,6 +594,28 @@ public final class GeckoArmorSkinnedMeshBridge {
         );
     }
 
+    private static ArmorRegion regionForModelPart(HumanoidModel<?> model, ModelPart part) {
+        if (part == model.head || part == model.hat) {
+            return ArmorRegion.HEAD;
+        }
+        if (part == model.body) {
+            return ArmorRegion.BODY;
+        }
+        if (part == model.rightArm) {
+            return ArmorRegion.RIGHT_ARM;
+        }
+        if (part == model.leftArm) {
+            return ArmorRegion.LEFT_ARM;
+        }
+        if (part == model.rightLeg) {
+            return ArmorRegion.RIGHT_LEG;
+        }
+        if (part == model.leftLeg) {
+            return ArmorRegion.LEFT_LEG;
+        }
+        return null;
+    }
+
     private static ArmorRegion inferRegion(String rawName, ArmorRegion inherited) {
         String name = normalize(rawName);
         if (name.isEmpty()) {
@@ -576,7 +646,6 @@ public final class GeckoArmorSkinnedMeshBridge {
                 "shirt", "cape", "cloak", "mantle", "back", "waist", "belt")) {
             return ArmorRegion.BODY;
         }
-
         return inherited;
     }
 
@@ -655,6 +724,10 @@ public final class GeckoArmorSkinnedMeshBridge {
         return Math.max(min, Math.min(max, value));
     }
 
+    private static boolean finitePositive(float value) {
+        return Float.isFinite(value) && value > EPSILON;
+    }
+
     private static boolean isRight(String name) {
         return name.contains("right")
                 || name.startsWith("rarm")
@@ -724,7 +797,7 @@ public final class GeckoArmorSkinnedMeshBridge {
     }
 
     private static final class BakeState {
-        private boolean unclassifiedVisibleGeometry;
+        private boolean selectedUnclassifiedGeometry;
     }
 
     private static final class Frame {
@@ -757,25 +830,47 @@ public final class GeckoArmorSkinnedMeshBridge {
 
     private record MeshCacheKey(
             SkeletonKey skeletonKey,
-            EquipmentSlot slot,
-            Class<?> rendererType) {
+            EquipmentSlot actualSlot,
+            EquipmentSlot reportedSlot,
+            Class<?> rendererClass,
+            String sourceBoneName,
+            ArmorRegion region,
+            PartTransformKey partTransform) {
+    }
+
+    private record PartTransformKey(
+            int x,
+            int y,
+            int z,
+            int xRot,
+            int yRot,
+            int zRot,
+            int scaleX,
+            int scaleY,
+            int scaleZ) {
+        private static PartTransformKey of(ModelPart part, Vector3f fitScale) {
+            return new PartTransformKey(
+                    Float.floatToIntBits(part.x),
+                    Float.floatToIntBits(part.y),
+                    Float.floatToIntBits(part.z),
+                    Float.floatToIntBits(part.xRot),
+                    Float.floatToIntBits(part.yRot),
+                    Float.floatToIntBits(part.zRot),
+                    Float.floatToIntBits(fitScale.x),
+                    Float.floatToIntBits(fitScale.y),
+                    Float.floatToIntBits(fitScale.z)
+            );
+        }
     }
 
     private record RenderKey(
             GeoArmorRenderer<?> renderer,
             Item item,
-            EquipmentSlot slot) {
+            GeoBone sourceBone,
+            ArmorRegion region) {
     }
 
-    private static final class BakedArmor {
-        private final boolean supported;
-        private final SkinnedMesh mesh;
-
-        private BakedArmor(boolean supported, SkinnedMesh mesh) {
-            this.supported = supported;
-            this.mesh = mesh;
-        }
-
+    private record BakedArmor(boolean supported, SkinnedMesh mesh) {
         private static BakedArmor supported(SkinnedMesh mesh) {
             return new BakedArmor(true, mesh);
         }

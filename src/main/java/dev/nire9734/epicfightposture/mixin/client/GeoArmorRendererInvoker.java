@@ -1,5 +1,6 @@
 package dev.nire9734.epicfightposture.mixin.client;
 
+import net.minecraft.client.model.HumanoidModel;
 import net.minecraft.world.entity.EquipmentSlot;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Pseudo;
@@ -15,4 +16,10 @@ public interface GeoArmorRendererInvoker {
 
     @Invoker("applyBoneVisibilityBySlot")
     void efpi$applyBoneVisibilityBySlot(EquipmentSlot slot);
+
+    @Invoker("applyBaseModel")
+    void efpi$applyBaseModel(HumanoidModel<?> baseModel);
+
+    @Invoker("applyBaseTransformations")
+    void efpi$applyBaseTransformations(HumanoidModel<?> baseModel);
 }
