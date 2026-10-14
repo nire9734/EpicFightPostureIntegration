@@ -26,6 +26,7 @@ import java.util.Optional;
  */
 public final class HumanoidSkeletonResolver {
     private static final float EPSILON = 1.0E-5F;
+    private static final float MIN_RECOVERABLE_LIMB_SPAN = EPSILON * 4.0F;
     private static final float VIRTUAL_CONFIDENCE_FACTOR = 0.85F;
     private static final float GEOMETRY_RECOVERY_CONFIDENCE = 0.72F;
     private static final float ASYMMETRY_THRESHOLD = 0.20F;
@@ -39,6 +40,7 @@ public final class HumanoidSkeletonResolver {
         validateSourceReferences(snapshot, resolved);
         recoverCollapsedSourceJoints(snapshot, resolved);
         completeVirtualJoints(resolved);
+        repairCollapsedInteriorJoints(resolved);
 
         List<HumanoidJoint> missing = HumanoidTopology.ORDER.stream()
                 .filter(joint -> !resolved.containsKey(joint))
@@ -209,7 +211,7 @@ public final class HumanoidSkeletonResolver {
         SemanticJointCandidate proximal = joints.get(proximalJoint);
         SemanticJointCandidate terminal = joints.get(terminalJoint);
         if (proximal == null || terminal == null
-                || proximal.bindModelPosition().distanceTo(terminal.bindModelPosition()) > EPSILON
+                || proximal.bindModelPosition().distanceTo(terminal.bindModelPosition()) > MIN_RECOVERABLE_LIMB_SPAN
                 || terminal.sourceNodeId().isEmpty()) {
             return;
         }
@@ -221,7 +223,7 @@ public final class HumanoidSkeletonResolver {
         }
 
         SkeletonVec3 recovered = farthestCorner(bounds.orElseThrow(), proximal.bindModelPosition());
-        if (recovered.distanceTo(proximal.bindModelPosition()) <= EPSILON) {
+        if (recovered.distanceTo(proximal.bindModelPosition()) <= MIN_RECOVERABLE_LIMB_SPAN) {
             return;
         }
 
@@ -236,18 +238,22 @@ public final class HumanoidSkeletonResolver {
 
     private static Optional<BodyBounds> subtreeBounds(SourceRigSnapshot snapshot, String nodeId) {
         BoundsAccumulator bounds = new BoundsAccumulator();
-        collectSubtreeBounds(snapshot, nodeId, bounds);
+        collectSubtreeBounds(snapshot, nodeId, bounds, true);
         return bounds.toBounds();
     }
 
     private static void collectSubtreeBounds(
             SourceRigSnapshot snapshot,
             String nodeId,
-            BoundsAccumulator bounds) {
+            BoundsAccumulator bounds,
+            boolean root) {
         SourceNodeSnapshot node = snapshot.node(nodeId);
+        if (!root && SourceNodeHeuristics.likelyAttachment(node.name())) {
+            return;
+        }
         node.geometryBounds().ifPresent(bounds::include);
         for (SourceNodeSnapshot child : snapshot.childrenOf(nodeId)) {
-            collectSubtreeBounds(snapshot, child.id(), bounds);
+            collectSubtreeBounds(snapshot, child.id(), bounds, false);
         }
     }
 
@@ -292,6 +298,56 @@ public final class HumanoidSkeletonResolver {
                 HumanoidJoint.HIP_LEFT, HumanoidJoint.ANKLE_LEFT, 0.5F);
         inferBetween(joints, HumanoidJoint.KNEE_RIGHT,
                 HumanoidJoint.HIP_RIGHT, HumanoidJoint.ANKLE_RIGHT, 0.5F);
+    }
+
+    /**
+     * Final framework-neutral safety pass. A bend helper can survive semantic
+     * analysis yet still collapse onto one endpoint after terminal geometry
+     * recovery. Rebuild only that interior joint from the final limb endpoints.
+     */
+    private static void repairCollapsedInteriorJoints(
+            EnumMap<HumanoidJoint, SemanticJointCandidate> joints) {
+        repairCollapsedInterior(joints,
+                HumanoidJoint.ELBOW_LEFT, HumanoidJoint.SHOULDER_LEFT, HumanoidJoint.WRIST_LEFT);
+        repairCollapsedInterior(joints,
+                HumanoidJoint.ELBOW_RIGHT, HumanoidJoint.SHOULDER_RIGHT, HumanoidJoint.WRIST_RIGHT);
+        repairCollapsedInterior(joints,
+                HumanoidJoint.KNEE_LEFT, HumanoidJoint.HIP_LEFT, HumanoidJoint.ANKLE_LEFT);
+        repairCollapsedInterior(joints,
+                HumanoidJoint.KNEE_RIGHT, HumanoidJoint.HIP_RIGHT, HumanoidJoint.ANKLE_RIGHT);
+    }
+
+    private static void repairCollapsedInterior(
+            EnumMap<HumanoidJoint, SemanticJointCandidate> joints,
+            HumanoidJoint interiorJoint,
+            HumanoidJoint proximalJoint,
+            HumanoidJoint terminalJoint) {
+        SemanticJointCandidate interior = joints.get(interiorJoint);
+        SemanticJointCandidate proximal = joints.get(proximalJoint);
+        SemanticJointCandidate terminal = joints.get(terminalJoint);
+        if (interior == null || proximal == null || terminal == null) {
+            return;
+        }
+
+        SkeletonVec3 proximalPosition = proximal.bindModelPosition();
+        SkeletonVec3 terminalPosition = terminal.bindModelPosition();
+        if (proximalPosition.distanceTo(terminalPosition) <= EPSILON * 2.0F) {
+            return;
+        }
+
+        SkeletonVec3 interiorPosition = interior.bindModelPosition();
+        if (interiorPosition.distanceTo(proximalPosition) > EPSILON
+                && interiorPosition.distanceTo(terminalPosition) > EPSILON) {
+            return;
+        }
+
+        float confidence = Math.min(proximal.confidence(), terminal.confidence())
+                * VIRTUAL_CONFIDENCE_FACTOR;
+        joints.put(interiorJoint, SemanticJointCandidate.virtual(
+                interiorJoint,
+                SkeletonVec3.lerp(proximalPosition, terminalPosition, 0.5F),
+                confidence
+        ));
     }
 
     private static void inferBetween(
@@ -363,8 +419,16 @@ public final class HumanoidSkeletonResolver {
             Map<HumanoidJoint, SemanticJointCandidate> joints,
             HumanoidJoint first,
             HumanoidJoint second) {
-        if (position(joints, first).distanceTo(position(joints, second)) <= EPSILON) {
-            throw new IllegalArgumentException("Humanoid segment has zero length: " + first + " -> " + second);
+        SemanticJointCandidate a = joints.get(first);
+        SemanticJointCandidate b = joints.get(second);
+        if (a == null || b == null) {
+            throw new IllegalArgumentException("Missing semantic segment endpoint: " + first + " -> " + second);
+        }
+        if (a.bindModelPosition().distanceTo(b.bindModelPosition()) <= EPSILON) {
+            throw new IllegalArgumentException(
+                    "Humanoid segment has zero length: " + first + " -> " + second
+                            + " [" + a.bindModelPosition() + ", " + a.origin()
+                            + " -> " + b.bindModelPosition() + ", " + b.origin() + "]");
         }
     }
 
