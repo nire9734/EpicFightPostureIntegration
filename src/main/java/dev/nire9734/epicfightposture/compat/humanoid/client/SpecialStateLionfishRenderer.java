@@ -26,9 +26,18 @@ public final class SpecialStateLionfishRenderer extends PatchedEntityRenderer<
         SkinnedMesh> {
 
     private final AssetAccessor<SkinnedMesh> mesh;
+    private final ModelPartAttachmentPlan modelPartAttachments;
 
     public SpecialStateLionfishRenderer(AssetAccessor<SkinnedMesh> mesh, EntityRendererProvider.Context context) {
+        this(mesh, context, null);
+    }
+
+    public SpecialStateLionfishRenderer(
+            AssetAccessor<SkinnedMesh> mesh,
+            EntityRendererProvider.Context context,
+            ModelPartAttachmentPlan modelPartAttachments) {
         this.mesh = mesh;
+        this.modelPartAttachments = modelPartAttachments;
     }
 
     @Override
@@ -85,6 +94,21 @@ public final class SpecialStateLionfishRenderer extends PatchedEntityRenderer<
                     armature.getPoseMatrices()
             );
         }
+
+        // ModelPart weapons/anchors/chains are kept out of the static body mesh
+        // so source runtime visibility can select the active weapon each frame.
+        ModelPartDynamicAttachmentRenderer.render(
+                this.modelPartAttachments,
+                entity,
+                renderer,
+                buffer,
+                poseStack,
+                packedLight,
+                overlay,
+                partialTicks,
+                texture,
+                armature
+        );
 
         // The source render is cancelled while Epic Fight overrideRender() is
         // active. Preserve renderer-owned translucent/emissive/held-item/rider
