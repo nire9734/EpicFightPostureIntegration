@@ -50,12 +50,9 @@ public final class LionfishHumanoidMeshAdapter {
             HumanoidSkeletonDescriptor descriptor = HumanoidSkeletonResolver.resolve(capture.snapshot(), analysis);
             HumanoidSkinWeightResolver weights = new HumanoidSkinWeightResolver(capture.snapshot(), analysis, descriptor);
             SkinnedMesh mesh = bake(model, capture, weights);
-            return mesh == null
-                    ? Result.unsupported("mesh bake produced no vertices")
-                    : Result.supported(descriptor, mesh);
+            return mesh == null ? Result.unsupported("mesh bake produced no vertices") : Result.supported(descriptor, mesh);
         } catch (Throwable throwable) {
-            return Result.unsupported("Lionfish humanoid mesh bake failed: "
-                    + throwable.getClass().getSimpleName()
+            return Result.unsupported("Lionfish humanoid mesh bake failed: " + throwable.getClass().getSimpleName()
                     + (throwable.getMessage() == null ? "" : " (" + throwable.getMessage() + ")"));
         }
     }
@@ -66,16 +63,12 @@ public final class LionfishHumanoidMeshAdapter {
             HumanoidSkinWeightResolver weights) throws ReflectiveOperationException {
         IdentityHashMap<AdvancedModelBox, String> nodeIds = new IdentityHashMap<>();
         capture.sourceNodes().forEach((id, node) -> nodeIds.put(node, id));
-
         List<SingleGroupVertexBuilder> vertices = new ArrayList<>();
         Map<MeshPartDefinition, IntList> indices = new LinkedHashMap<>();
-        PoseStack stack = new PoseStack();
-        stack.scale(-1.0F, -1.0F, 1.0F);
+        PoseStack stack = LionfishSourceRigAdapter.canonicalModelStack();
 
         for (AdvancedModelBox part : model.getAllParts()) {
-            if (part != null && part.getParent() == null) {
-                bakePart(part, stack, nodeIds, weights, vertices, indices);
-            }
+            if (part != null && part.getParent() == null) bakePart(part, stack, nodeIds, weights, vertices, indices);
         }
         return vertices.isEmpty() ? null : SingleGroupVertexBuilder.loadVertexInformation(vertices, indices);
     }
@@ -91,11 +84,11 @@ public final class LionfishHumanoidMeshAdapter {
         String sourceNodeId = nodeIds.get(part);
         if (sourceNodeId == null) return;
 
-        BindValues bind = bindValues(part);
+        LionfishSourceRigAdapter.BindValues bind = LionfishSourceRigAdapter.bindValues(part);
         stack.pushPose();
-        stack.translate(bind.positionX / 16.0F, bind.positionY / 16.0F, bind.positionZ / 16.0F);
-        stack.mulPose(new Quaternionf().rotationZYX(bind.rotationZ, bind.rotationY, bind.rotationX));
-        stack.scale(bind.scaleX, bind.scaleY, bind.scaleZ);
+        stack.translate(bind.positionX() / 16.0F, bind.positionY() / 16.0F, bind.positionZ() / 16.0F);
+        stack.mulPose(new Quaternionf().rotationZYX(bind.rotationZ(), bind.rotationY(), bind.rotationX()));
+        stack.scale(bind.scaleX(), bind.scaleY(), bind.scaleZ());
 
         if (!part.isHidden() && part.cubeList != null) {
             for (LionfishModelRenderUtils.ModelBox cube : part.cubeList) {
@@ -104,9 +97,7 @@ public final class LionfishHumanoidMeshAdapter {
         }
         if (part.childModels != null) {
             for (BasicModelPart child : part.childModels) {
-                if (child instanceof AdvancedModelBox advancedChild) {
-                    bakePart(advancedChild, stack, nodeIds, weights, vertices, indices);
-                }
+                if (child instanceof AdvancedModelBox box) bakePart(box, stack, nodeIds, weights, vertices, indices);
             }
         }
         stack.popPose();
@@ -129,9 +120,9 @@ public final class LionfishHumanoidMeshAdapter {
             if (quad == null) continue;
             QuadFields qf = access.quadFields(quad.getClass());
             Object sourceVertices = qf.vertices.get(quad);
-            Object sourceNormalValue = qf.normal.get(quad);
+            Object normalValue = qf.normal.get(quad);
             if (sourceVertices == null || Array.getLength(sourceVertices) != 4
-                    || !(sourceNormalValue instanceof Vector3f sourceNormal)) continue;
+                    || !(normalValue instanceof Vector3f sourceNormal)) continue;
 
             Vector3f normal = new Vector3f(sourceNormal);
             normal.mul(stack.last().normal());
@@ -139,23 +130,18 @@ public final class LionfishHumanoidMeshAdapter {
 
             int first = vertices.size();
             List<SingleGroupVertexBuilder> built = new ArrayList<>(4);
-            boolean complete = true;
             for (int v = 0; v < 4; v++) {
                 Object sourceVertex = Array.get(sourceVertices, v);
-                if (sourceVertex == null) { complete = false; break; }
+                if (sourceVertex == null) { built.clear(); break; }
                 VertexFields vf = access.vertexFields(sourceVertex.getClass());
-                Object sourcePositionValue = vf.position.get(sourceVertex);
-                if (!(sourcePositionValue instanceof Vector3f sourcePosition)) { complete = false; break; }
+                Object positionValue = vf.position.get(sourceVertex);
+                if (!(positionValue instanceof Vector3f sourcePosition)) { built.clear(); break; }
 
-                Vector4f transformed = new Vector4f(
-                        sourcePosition.x() / 16.0F,
-                        sourcePosition.y() / 16.0F,
-                        sourcePosition.z() / 16.0F,
-                        1.0F);
-                transformed.mul(stack.last().pose());
-                SkeletonVec3 position = new SkeletonVec3(transformed.x(), transformed.y(), transformed.z());
+                Vector4f p = new Vector4f(sourcePosition.x() / 16.0F, sourcePosition.y() / 16.0F,
+                        sourcePosition.z() / 16.0F, 1.0F);
+                p.mul(stack.last().pose());
+                SkeletonVec3 position = new SkeletonVec3(p.x(), p.y(), p.z());
                 HumanoidSkinWeightResolver.SkinWeights skin = weights.weights(sourceNodeId, position);
-
                 built.add(new SingleGroupVertexBuilder()
                         .setPosition(new Vec3f(position.x(), position.y(), position.z()))
                         .setNormal(new Vec3f(normal.x(), normal.y(), normal.z()))
@@ -164,7 +150,7 @@ public final class LionfishHumanoidMeshAdapter {
                         .setEffectiveJointWeights(new Vec3f(skin.firstWeight(), skin.secondWeight(), 0.0F))
                         .setEffectiveJointNumber(skin.count()));
             }
-            if (!complete || built.size() != 4) continue;
+            if (built.size() != 4) continue;
             vertices.addAll(built);
             triangulateQuad(indices, first);
         }
@@ -172,95 +158,59 @@ public final class LionfishHumanoidMeshAdapter {
 
     private static void triangulateQuad(Map<MeshPartDefinition, IntList> indices, int first) {
         IntList list = indices.computeIfAbsent(PART, ignored -> new IntArrayList());
-        addIndexTriplet(list, first);
-        addIndexTriplet(list, first + 1);
-        addIndexTriplet(list, first + 3);
-        addIndexTriplet(list, first + 3);
-        addIndexTriplet(list, first + 1);
-        addIndexTriplet(list, first + 2);
+        add3(list, first); add3(list, first + 1); add3(list, first + 3);
+        add3(list, first + 3); add3(list, first + 1); add3(list, first + 2);
     }
 
-    private static void addIndexTriplet(IntList list, int index) {
-        list.add(index); list.add(index); list.add(index);
-    }
-
-    private static BindValues bindValues(AdvancedModelBox part) {
-        boolean stored = part.defaultscaleX != 0.0F || part.defaultscaleY != 0.0F || part.defaultscaleZ != 0.0F;
-        return stored
-                ? new BindValues(part.defaultPositionX, part.defaultPositionY, part.defaultPositionZ,
-                        part.defaultRotationX, part.defaultRotationY, part.defaultRotationZ,
-                        part.defaultscaleX, part.defaultscaleY, part.defaultscaleZ)
-                : new BindValues(part.rotationPointX, part.rotationPointY, part.rotationPointZ,
-                        part.rotateAngleX, part.rotateAngleY, part.rotateAngleZ,
-                        part.xScale, part.yScale, part.zScale);
-    }
+    private static void add3(IntList list, int value) { list.add(value); list.add(value); list.add(value); }
 
     private static ReflectionAccess reflection() throws ReflectiveOperationException {
-        ReflectionAccess cached = reflectionAccess;
-        if (cached != null) return cached;
+        if (reflectionAccess != null) return reflectionAccess;
         synchronized (LionfishHumanoidMeshAdapter.class) {
             if (reflectionAccess == null) {
-                Field quads = LionfishModelRenderUtils.ModelBox.class.getDeclaredField("quads");
-                quads.setAccessible(true);
-                reflectionAccess = new ReflectionAccess(quads);
+                Field field = LionfishModelRenderUtils.ModelBox.class.getDeclaredField("quads");
+                field.setAccessible(true);
+                reflectionAccess = new ReflectionAccess(field);
             }
             return reflectionAccess;
         }
     }
 
     public record Result(boolean supported, HumanoidSkeletonDescriptor descriptor, SkinnedMesh mesh, String reason) {
-        public static Result supported(HumanoidSkeletonDescriptor descriptor, SkinnedMesh mesh) {
+        static Result supported(HumanoidSkeletonDescriptor descriptor, SkinnedMesh mesh) {
             return new Result(true, descriptor, mesh, "ok");
         }
-        public static Result unsupported(String reason) {
-            return new Result(false, null, null, reason);
-        }
+        static Result unsupported(String reason) { return new Result(false, null, null, reason); }
     }
 
-    private record BindValues(
-            float positionX, float positionY, float positionZ,
-            float rotationX, float rotationY, float rotationZ,
-            float scaleX, float scaleY, float scaleZ) {}
-
     private static final class ReflectionAccess {
-        private final Field quadsField;
-        private final Map<Class<?>, QuadFields> quads = new HashMap<>();
-        private final Map<Class<?>, VertexFields> vertices = new HashMap<>();
-        private ReflectionAccess(Field quadsField) { this.quadsField = quadsField; }
-
+        final Field quadsField;
+        final Map<Class<?>, QuadFields> quads = new HashMap<>();
+        final Map<Class<?>, VertexFields> vertices = new HashMap<>();
+        ReflectionAccess(Field field) { quadsField = field; }
         synchronized QuadFields quadFields(Class<?> type) throws ReflectiveOperationException {
-            QuadFields fields = quads.get(type);
-            if (fields == null) {
-                Field vertexPositions = type.getDeclaredField("vertexPositions");
-                Field normal = type.getDeclaredField("normal");
-                vertexPositions.setAccessible(true); normal.setAccessible(true);
-                fields = new QuadFields(vertexPositions, normal);
-                quads.put(type, fields);
+            QuadFields f = quads.get(type);
+            if (f == null) {
+                Field vs = type.getDeclaredField("vertexPositions"), n = type.getDeclaredField("normal");
+                vs.setAccessible(true); n.setAccessible(true); f = new QuadFields(vs, n); quads.put(type, f);
             }
-            return fields;
+            return f;
         }
-
         synchronized VertexFields vertexFields(Class<?> type) throws ReflectiveOperationException {
-            VertexFields fields = vertices.get(type);
-            if (fields == null) {
-                Field position = type.getDeclaredField("position");
-                Field textureU = type.getDeclaredField("textureU");
-                Field textureV = type.getDeclaredField("textureV");
-                position.setAccessible(true); textureU.setAccessible(true); textureV.setAccessible(true);
-                fields = new VertexFields(position, textureU, textureV);
-                vertices.put(type, fields);
+            VertexFields f = vertices.get(type);
+            if (f == null) {
+                Field p = type.getDeclaredField("position"), u = type.getDeclaredField("textureU"), v = type.getDeclaredField("textureV");
+                p.setAccessible(true); u.setAccessible(true); v.setAccessible(true); f = new VertexFields(p, u, v); vertices.put(type, f);
             }
-            return fields;
+            return f;
         }
     }
 
     private record QuadFields(Field vertices, Field normal) {}
     private record VertexFields(Field position, Field textureU, Field textureV) {}
-
     private record RuntimeLionfishPart(String partName) implements MeshPartDefinition {
         @Override public Mesh.RenderProperties renderProperties() { return null; }
         @Override public Supplier<OpenMatrix4f> getModelPartAnimationProvider() { return () -> null; }
     }
-
     private LionfishHumanoidMeshAdapter() {}
 }
