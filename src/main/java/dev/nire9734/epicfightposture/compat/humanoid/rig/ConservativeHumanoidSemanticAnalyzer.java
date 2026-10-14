@@ -32,9 +32,12 @@ public final class ConservativeHumanoidSemanticAnalyzer implements HumanoidSeman
     private static final int MAX_LEG_DISTANCE_FROM_BODY = 4;
     private static final int MAX_PAIR_DEPTH_DELTA = 2;
     private static final float GEOMETRY_CONFIDENCE = 0.72F;
+    private static final float TORSO_ROOT_COLLAPSE_EPSILON = 1.0E-4F;
 
     private static final Set<String> BODY = aliases(
             "body", "torso", "chest", "upperbody", "upper_body", "trunk");
+    private static final Set<String> PREFERRED_UPPER_TORSO = aliases(
+            "torso", "chest", "upperbody", "upper_body", "trunk");
     private static final Set<String> HEAD = aliases("head", "skull");
     private static final Set<String> RIGHT_ARM = aliases(
             "rightarm", "right_arm", "armright", "arm_right", "rarm", "armr",
@@ -79,12 +82,20 @@ public final class ConservativeHumanoidSemanticAnalyzer implements HumanoidSeman
     public HumanoidSemanticAnalysis analyze(SourceRigSnapshot snapshot) {
         List<NodeCandidate> nodes = candidates(snapshot);
 
-        SourceNodeSnapshot body = findBestBody(nodes);
         SourceNodeSnapshot head = findBest(nodes, HEAD);
         SourceNodeSnapshot rightArm = findBest(nodes, RIGHT_ARM);
         SourceNodeSnapshot leftArm = findBest(nodes, LEFT_ARM);
         SourceNodeSnapshot rightLeg = findBest(nodes, RIGHT_LEG);
         SourceNodeSnapshot leftLeg = findBest(nodes, LEFT_LEG);
+        SourceNodeSnapshot body = findBestBody(
+                snapshot,
+                nodes,
+                head,
+                rightArm,
+                leftArm,
+                rightLeg,
+                leftLeg
+        );
 
         requireDistinct(body, head, rightArm, leftArm, rightLeg, leftLeg);
         requireSharedRoot(snapshot, body, head, rightArm, leftArm, rightLeg, leftLeg);
@@ -208,6 +219,9 @@ public final class ConservativeHumanoidSemanticAnalyzer implements HumanoidSeman
     }
 
     private static void collectBounds(SourceRigSnapshot snapshot, String nodeId, BoundsAccumulator bounds) {
+        if (isAttachmentBranch(snapshot, nodeId)) {
+            return;
+        }
         SourceNodeSnapshot node = snapshot.node(nodeId);
         node.geometryBounds().ifPresent(bounds::include);
         for (SourceNodeSnapshot child : snapshot.childrenOf(nodeId)) {
@@ -244,24 +258,104 @@ public final class ConservativeHumanoidSemanticAnalyzer implements HumanoidSeman
         return result;
     }
 
-    private static SourceNodeSnapshot findBestBody(List<NodeCandidate> nodes) {
+    private static SourceNodeSnapshot findBestBody(
+            SourceRigSnapshot snapshot,
+            List<NodeCandidate> nodes,
+            SourceNodeSnapshot head,
+            SourceNodeSnapshot rightArm,
+            SourceNodeSnapshot leftArm,
+            SourceNodeSnapshot rightLeg,
+            SourceNodeSnapshot leftLeg) {
         NodeCandidate best = null;
-        int bestScore = 0;
+        int bestScore = Integer.MIN_VALUE;
         boolean tied = false;
+
+        SkeletonVec3 hipMidpoint = null;
+        if (rightLeg != null && leftLeg != null) {
+            hipMidpoint = SkeletonVec3.lerp(
+                    rightLeg.bindModelTransform().position(),
+                    leftLeg.bindModelTransform().position(),
+                    0.5F
+            );
+        }
+
         for (NodeCandidate candidate : nodes) {
-            int score = score(candidate.normalizedName(), BODY) - candidate.depth();
-            if (candidate.node().geometryBounds().isPresent()) {
-                score += 20;
+            int lexical = score(candidate.normalizedName(), BODY);
+            if (lexical <= 0) {
+                continue;
             }
-            if (score > bestScore) {
-                bestScore = score;
+
+            int candidateScore = lexical - candidate.depth();
+            if (candidate.node().geometryBounds().isPresent()) {
+                // Geometry is useful evidence, but it must not outweigh a more
+                // anatomically meaningful upper-torso pivot.
+                candidateScore += 6;
+            }
+            if (PREFERRED_UPPER_TORSO.contains(candidate.normalizedName())) {
+                candidateScore += 8;
+            }
+
+            candidateScore += torsoBranchScore(snapshot, candidate.node(), head);
+            candidateScore += torsoBranchScore(snapshot, candidate.node(), rightArm);
+            candidateScore += torsoBranchScore(snapshot, candidate.node(), leftArm);
+
+            if (hipMidpoint != null
+                    && candidate.node().bindModelTransform().position().distanceTo(hipMidpoint)
+                    <= TORSO_ROOT_COLLAPSE_EPSILON) {
+                // Blockbench rigs often place a lower "body" pivot exactly at
+                // the thigh roots while exposing a child "chest" pivot above it.
+                // Choosing the lower pivot would collapse EFPI ROOT->CHEST.
+                candidateScore -= 80;
+            }
+
+            // A torso candidate should remain reasonably close to the leg roots.
+            candidateScore += lowerBodyReachabilityScore(snapshot, candidate.node(), rightLeg);
+            candidateScore += lowerBodyReachabilityScore(snapshot, candidate.node(), leftLeg);
+
+            if (candidateScore > bestScore) {
+                bestScore = candidateScore;
                 best = candidate;
                 tied = false;
-            } else if (score > 0 && score == bestScore) {
+            } else if (candidateScore == bestScore) {
                 tied = true;
             }
         }
+
         return bestScore >= 70 && !tied && best != null ? best.node() : null;
+    }
+
+    private static int torsoBranchScore(
+            SourceRigSnapshot snapshot,
+            SourceNodeSnapshot torso,
+            SourceNodeSnapshot branch) {
+        if (torso == null || branch == null) {
+            return 0;
+        }
+        int distance = graphDistance(snapshot, torso.id(), branch.id());
+        if (distance < 0) {
+            return -20;
+        }
+
+        // Head and upper arms are normally direct children of the chest or one
+        // helper joint away. Prefer that structure over a lower "body" node.
+        if (snapshot.isAncestor(torso.id(), branch.id())) {
+            return Math.max(0, 30 - distance * 6);
+        }
+        return Math.max(-8, 8 - distance * 3);
+    }
+
+    private static int lowerBodyReachabilityScore(
+            SourceRigSnapshot snapshot,
+            SourceNodeSnapshot torso,
+            SourceNodeSnapshot leg) {
+        if (torso == null || leg == null) {
+            return 0;
+        }
+        int distance = graphDistance(snapshot, torso.id(), leg.id());
+        if (distance < 0) {
+            return -20;
+        }
+        return distance <= MAX_LEG_DISTANCE_FROM_BODY ? 4 : -12;
     }
 
     private static SourceNodeSnapshot findBest(List<NodeCandidate> nodes, Set<String> names) {
@@ -410,6 +504,9 @@ public final class ConservativeHumanoidSemanticAnalyzer implements HumanoidSeman
     }
 
     private static boolean hasRenderableGeometry(SourceRigSnapshot snapshot, String nodeId) {
+        if (isAttachmentBranch(snapshot, nodeId)) {
+            return false;
+        }
         SourceNodeSnapshot node = snapshot.node(nodeId);
         if (node.renderable()) {
             return true;
@@ -420,6 +517,19 @@ public final class ConservativeHumanoidSemanticAnalyzer implements HumanoidSeman
             }
         }
         return false;
+    }
+
+    private static boolean isAttachmentBranch(SourceRigSnapshot snapshot, String nodeId) {
+        SourceNodeSnapshot cursor = snapshot.node(nodeId);
+        while (true) {
+            if (SourceNodeHeuristics.likelyAttachment(cursor.name())) {
+                return true;
+            }
+            if (cursor.parentId().isEmpty()) {
+                return false;
+            }
+            cursor = snapshot.node(cursor.parentId().orElseThrow());
+        }
     }
 
     private static int graphDistance(SourceRigSnapshot snapshot, String firstId, String secondId) {
