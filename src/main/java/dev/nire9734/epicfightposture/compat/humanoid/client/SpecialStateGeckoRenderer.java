@@ -57,16 +57,14 @@ public final class SpecialStateGeckoRenderer extends PatchedEntityRenderer<
         int overlay = OverlayTexture.pack(0, OverlayTexture.v(entity.hurtTime > 5));
 
         poseStack.pushPose();
+
+        // Epic Fight's GeckoLib compatibility invokes patched rendering from
+        // GeoRenderEvent.Entity.Pre. GeckoLib fires that event after the source
+        // renderer's preRender() hook, so renderer-side presentation transforms
+        // (for example Iron's KeeperRenderer scale(1.3)) are already present on
+        // this incoming PoseStack. Replaying preRender/scale here would apply the
+        // presentation scale twice (1.3 * 1.3 for the Ancient Knight).
         this.mulPoseStack(poseStack, armature, entity, entitypatch, partialTicks);
-        GeckoSourceScaleBridge.apply(
-                entity,
-                renderer,
-                buffer,
-                poseStack,
-                packedLight,
-                overlay,
-                partialTicks
-        );
         this.setArmaturePose(entitypatch, armature, partialTicks);
 
         SkinnedMesh runtimeMesh = this.mesh.get();
