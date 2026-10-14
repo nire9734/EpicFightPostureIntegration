@@ -14,18 +14,13 @@ import dev.nire9734.epicfightposture.compat.humanoid.skeleton.HumanoidModelResol
 import dev.nire9734.epicfightposture.compat.humanoid.skeleton.HumanoidSourceBinding;
 import dev.nire9734.epicfightposture.compat.humanoid.skeleton.RigidTransform;
 import dev.nire9734.epicfightposture.compat.humanoid.skeleton.SkeletonKey;
-import dev.nire9734.epicfightposture.compat.humanoid.skeleton.SkeletonQuat;
 import dev.nire9734.epicfightposture.compat.humanoid.skeleton.SkeletonVec3;
-import org.joml.Matrix4f;
-import org.joml.Quaternionf;
-import org.joml.Vector4f;
+import org.joml.Vector3f;
 import software.bernie.geckolib.cache.object.BakedGeoModel;
 import software.bernie.geckolib.cache.object.GeoBone;
 import software.bernie.geckolib.cache.object.GeoCube;
 import software.bernie.geckolib.cache.object.GeoQuad;
 import software.bernie.geckolib.cache.object.GeoVertex;
-import software.bernie.geckolib.core.state.BoneSnapshot;
-import software.bernie.geckolib.util.RenderUtils;
 
 import java.util.ArrayList;
 import java.util.EnumMap;
@@ -47,9 +42,7 @@ public final class GeckoSourceRigAdapter {
             throw new IllegalArgumentException("Gecko model has no top-level bones");
         }
 
-        for (GeoBone root : model.topLevelBones()) {
-            resetToInitial(root);
-        }
+        GeckoBindPoseTransforms.resetToInitial(model);
 
         LinkedHashMap<String, SourceNodeSnapshot> nodes = new LinkedHashMap<>();
         LinkedHashMap<String, GeoBone> sourceNodes = new LinkedHashMap<>();
@@ -125,11 +118,6 @@ public final class GeckoSourceRigAdapter {
         }
 
         boolean attachment = inheritedAttachment || SourceNodeHeuristics.pathHasAttachment(path);
-        Matrix4f parentPose = new Matrix4f(stack.last().pose());
-        SkeletonVec3 pivot = transformedBonePivot(parentPose, bone);
-        if (!attachment) {
-            globalPivotBounds.include(pivot);
-        }
 
         float scaleX = bone.getScaleX();
         float scaleY = bone.getScaleY();
@@ -140,19 +128,15 @@ public final class GeckoSourceRigAdapter {
             nonUniformScale[0] = true;
         }
 
-        stack.pushPose();
-        RenderUtils.prepMatrixForBone(stack, bone);
+        GeckoBindPoseTransforms.pushBone(stack, bone);
+        SkeletonVec3 pivot = GeckoBindPoseTransforms.bonePivot(stack, bone);
+        if (!attachment) {
+            globalPivotBounds.include(pivot);
+        }
 
-        Quaternionf sourceRotation = new Matrix4f(stack.last().pose())
-                .getUnnormalizedRotation(new Quaternionf());
         RigidTransform bindTransform = new RigidTransform(
                 pivot,
-                new SkeletonQuat(
-                        sourceRotation.x(),
-                        sourceRotation.y(),
-                        sourceRotation.z(),
-                        sourceRotation.w()
-                )
+                GeckoBindPoseTransforms.boneRotation(stack)
         );
 
         BoundsAccumulator ownGeometry = new BoundsAccumulator();
@@ -204,27 +188,12 @@ public final class GeckoSourceRigAdapter {
         stack.popPose();
     }
 
-    /** Gecko's pivot remains invariant under the local rotation/scale. */
-    private static SkeletonVec3 transformedBonePivot(Matrix4f parentPose, GeoBone bone) {
-        Vector4f pivot = new Vector4f(
-                (bone.getPivotX() - bone.getPosX()) / 16.0F,
-                (bone.getPivotY() + bone.getPosY()) / 16.0F,
-                (bone.getPivotZ() + bone.getPosZ()) / 16.0F,
-                1.0F
-        );
-        pivot.mul(parentPose);
-        return new SkeletonVec3(pivot.x(), pivot.y(), pivot.z());
-    }
-
     private static CubeCapture captureCube(PoseStack boneStack, GeoCube cube) {
         if (cube == null || cube.quads() == null || cube.quads().length == 0) {
             return CubeCapture.empty();
         }
 
-        boneStack.pushPose();
-        RenderUtils.translateToPivotPoint(boneStack, cube);
-        RenderUtils.rotateMatrixAroundCube(boneStack, cube);
-        RenderUtils.translateAwayFromPivotPoint(boneStack, cube);
+        GeckoBindPoseTransforms.pushCube(boneStack, cube);
 
         BoundsAccumulator bounds = new BoundsAccumulator();
         for (GeoQuad quad : cube.quads()) {
@@ -235,12 +204,14 @@ public final class GeckoSourceRigAdapter {
                 if (vertex == null || vertex.position() == null) {
                     continue;
                 }
-                Vector4f position = new Vector4f(vertex.position(), 1.0F);
-                position.mul(boneStack.last().pose());
+                SkeletonVec3 position = GeckoBindPoseTransforms.transformPosition(
+                        boneStack,
+                        new Vector3f(vertex.position())
+                );
                 if (Float.isFinite(position.x())
                         && Float.isFinite(position.y())
                         && Float.isFinite(position.z())) {
-                    bounds.include(new SkeletonVec3(position.x(), position.y(), position.z()));
+                    bounds.include(position);
                 }
             }
         }
@@ -253,29 +224,6 @@ public final class GeckoSourceRigAdapter {
                         || value.depth() > GEOMETRY_EPSILON)
                 .orElse(false);
         return new CubeCapture(result, renderable);
-    }
-
-    private static void resetToInitial(GeoBone bone) {
-        if (bone == null) {
-            return;
-        }
-        BoneSnapshot snapshot = bone.getInitialSnapshot();
-        if (snapshot != null) {
-            bone.setPosX(snapshot.getOffsetX());
-            bone.setPosY(snapshot.getOffsetY());
-            bone.setPosZ(snapshot.getOffsetZ());
-            bone.setRotX(snapshot.getRotX());
-            bone.setRotY(snapshot.getRotY());
-            bone.setRotZ(snapshot.getRotZ());
-            bone.setScaleX(snapshot.getScaleX());
-            bone.setScaleY(snapshot.getScaleY());
-            bone.setScaleZ(snapshot.getScaleZ());
-        }
-        if (bone.getChildBones() != null) {
-            for (GeoBone child : bone.getChildBones()) {
-                resetToInitial(child);
-            }
-        }
     }
 
     public record Capture(SourceRigSnapshot snapshot, Map<String, GeoBone> sourceNodes) {

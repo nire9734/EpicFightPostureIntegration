@@ -12,14 +12,11 @@ import dev.nire9734.epicfightposture.compat.humanoid.skeleton.SkeletonVec3;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntList;
 import org.joml.Vector3f;
-import org.joml.Vector4f;
 import software.bernie.geckolib.cache.object.BakedGeoModel;
 import software.bernie.geckolib.cache.object.GeoBone;
 import software.bernie.geckolib.cache.object.GeoCube;
 import software.bernie.geckolib.cache.object.GeoQuad;
 import software.bernie.geckolib.cache.object.GeoVertex;
-import software.bernie.geckolib.core.state.BoneSnapshot;
-import software.bernie.geckolib.util.RenderUtils;
 import yesman.epicfight.api.client.model.Mesh;
 import yesman.epicfight.api.client.model.MeshPartDefinition;
 import yesman.epicfight.api.client.model.SingleGroupVertexBuilder;
@@ -55,9 +52,7 @@ public final class GeckoHumanoidMeshAdapter {
             HumanoidSkinWeightResolver weights =
                     new HumanoidSkinWeightResolver(capture.snapshot(), analysis, descriptor);
 
-            for (GeoBone root : model.topLevelBones()) {
-                resetToInitial(root);
-            }
+            GeckoBindPoseTransforms.resetToInitial(model);
 
             List<SingleGroupVertexBuilder> vertices = new ArrayList<>();
             Map<MeshPartDefinition, IntList> indices = new LinkedHashMap<>();
@@ -108,8 +103,7 @@ public final class GeckoHumanoidMeshAdapter {
 
         boolean attachment = inheritedAttachment || SourceNodeHeuristics.pathHasAttachment(path);
 
-        stack.pushPose();
-        RenderUtils.prepMatrixForBone(stack, bone);
+        GeckoBindPoseTransforms.pushBone(stack, bone);
 
         if (!bone.isHidden() && !attachment && bone.getCubes() != null) {
             for (GeoCube cube : bone.getCubes()) {
@@ -150,27 +144,21 @@ public final class GeckoHumanoidMeshAdapter {
             return;
         }
 
-        stack.pushPose();
-        RenderUtils.translateToPivotPoint(stack, cube);
-        RenderUtils.rotateMatrixAroundCube(stack, cube);
-        RenderUtils.translateAwayFromPivotPoint(stack, cube);
+        GeckoBindPoseTransforms.pushCube(stack, cube);
 
         for (GeoQuad quad : cube.quads()) {
             if (!isRenderableQuad(quad)) {
                 continue;
             }
 
-            Vector3f normal = new Vector3f(quad.normal());
-            normal.mul(stack.last().normal());
-            if (normal.lengthSquared() > 1.0E-8F) {
-                normal.normalize();
-            }
+            Vector3f normal = GeckoBindPoseTransforms.transformNormal(stack, quad.normal());
 
             int first = vertices.size();
             for (GeoVertex vertex : quad.vertices()) {
-                Vector4f pos = new Vector4f(vertex.position(), 1.0F);
-                pos.mul(stack.last().pose());
-                SkeletonVec3 position = new SkeletonVec3(pos.x(), pos.y(), pos.z());
+                SkeletonVec3 position = GeckoBindPoseTransforms.transformPosition(
+                        stack,
+                        new Vector3f(vertex.position())
+                );
                 HumanoidSkinWeightResolver.SkinWeights skin = weights.weights(nodeId, position);
 
                 vertices.add(new SingleGroupVertexBuilder()
@@ -217,29 +205,6 @@ public final class GeckoHumanoidMeshAdapter {
         list.add(value);
         list.add(value);
         list.add(value);
-    }
-
-    private static void resetToInitial(GeoBone bone) {
-        if (bone == null) {
-            return;
-        }
-        BoneSnapshot snapshot = bone.getInitialSnapshot();
-        if (snapshot != null) {
-            bone.setPosX(snapshot.getOffsetX());
-            bone.setPosY(snapshot.getOffsetY());
-            bone.setPosZ(snapshot.getOffsetZ());
-            bone.setRotX(snapshot.getRotX());
-            bone.setRotY(snapshot.getRotY());
-            bone.setRotZ(snapshot.getRotZ());
-            bone.setScaleX(snapshot.getScaleX());
-            bone.setScaleY(snapshot.getScaleY());
-            bone.setScaleZ(snapshot.getScaleZ());
-        }
-        if (bone.getChildBones() != null) {
-            for (GeoBone child : bone.getChildBones()) {
-                resetToInitial(child);
-            }
-        }
     }
 
     public record Result(
