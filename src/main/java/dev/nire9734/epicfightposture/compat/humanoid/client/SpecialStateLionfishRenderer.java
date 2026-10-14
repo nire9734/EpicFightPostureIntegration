@@ -17,7 +17,7 @@ import yesman.epicfight.api.model.Armature;
 import yesman.epicfight.client.renderer.patched.entity.PatchedEntityRenderer;
 import yesman.epicfight.world.capabilities.entitypatch.LivingEntityPatch;
 
-/** Epic Fight special-state body renderer for Lionfish/Citadel-style humanoids. */
+/** Epic Fight special-state renderer for LivingEntityRenderer-backed humanoids. */
 @SuppressWarnings({"rawtypes", "unchecked"})
 public final class SpecialStateLionfishRenderer extends PatchedEntityRenderer<
         LivingEntity,
@@ -50,9 +50,9 @@ public final class SpecialStateLionfishRenderer extends PatchedEntityRenderer<
         poseStack.pushPose();
         this.mulPoseStack(poseStack, armature, entity, entitypatch, partialTicks);
 
-        // Cataclysm and other LivingEntityRenderer subclasses sometimes scale
-        // large bosses/golems in the renderer. Preserve that source scale while
-        // leaving rotation/translation under Epic Fight control.
+        // Forge RenderLivingEvent.Pre fires before LivingEntityRenderer.scale().
+        // Preserve renderer-owned presentation scale while keeping EF responsible
+        // for the special-state body transform.
         if (renderer instanceof LivingEntityRenderer<?, ?> livingRenderer
                 && livingRenderer instanceof LivingEntityRendererScaleInvoker invoker) {
             invoker.efpi$invokeScale(entity, poseStack, partialTicks);
@@ -85,6 +85,19 @@ public final class SpecialStateLionfishRenderer extends PatchedEntityRenderer<
                     armature.getPoseMatrices()
             );
         }
+
+        // The source render is cancelled while Epic Fight overrideRender() is
+        // active. Preserve renderer-owned translucent/emissive/held-item/rider
+        // passes instead of silently dropping them with the original body pass.
+        LivingRenderLayerBridge.replay(
+                entity,
+                renderer,
+                buffer,
+                poseStack,
+                packedLight,
+                partialTicks
+        );
+
         poseStack.popPose();
     }
 
