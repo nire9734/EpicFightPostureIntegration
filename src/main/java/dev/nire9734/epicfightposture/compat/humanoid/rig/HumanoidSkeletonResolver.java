@@ -88,9 +88,10 @@ public final class HumanoidSkeletonResolver {
     /**
      * Some exported rigs expose semantically named helper bones whose pivots are
      * intentionally shared with a parent joint. Examples include a head bone that
-     * shares the upper-torso pivot, or armor/foot helper bones that share the hip
-     * pivot while their geometry extends down the leg. Treating those helper
-     * pivots literally collapses canonical Epic Fight segments to zero length.
+     * shares the upper-torso pivot, a torso whose pivot remains at the pelvis, or
+     * armor/foot helper bones that share the hip pivot while their geometry extends
+     * down the leg. Treating those helper pivots literally collapses canonical Epic
+     * Fight segments to zero length.
      *
      * <p>When the semantic names are otherwise trustworthy, recover only the
      * collapsed joint position from that source branch's bind geometry. This is
@@ -100,6 +101,7 @@ public final class HumanoidSkeletonResolver {
             SourceRigSnapshot snapshot,
             EnumMap<HumanoidJoint, SemanticJointCandidate> joints) {
         recoverCollapsedHead(snapshot, joints);
+        recoverCollapsedTorso(snapshot, joints);
         recoverCollapsedTerminal(snapshot, joints, HumanoidJoint.SHOULDER_LEFT, HumanoidJoint.WRIST_LEFT);
         recoverCollapsedTerminal(snapshot, joints, HumanoidJoint.SHOULDER_RIGHT, HumanoidJoint.WRIST_RIGHT);
         recoverCollapsedTerminal(snapshot, joints, HumanoidJoint.HIP_LEFT, HumanoidJoint.ANKLE_LEFT);
@@ -139,6 +141,63 @@ public final class HumanoidSkeletonResolver {
                 Optional.of(sourceId),
                 JointOrigin.INFERRED_FROM_GEOMETRY,
                 Math.min(head.confidence(), GEOMETRY_RECOVERY_CONFIDENCE)
+        ));
+    }
+
+    /**
+     * Blockbench-style humanoids commonly keep the torso bone pivot at the pelvis
+     * while the torso cubes extend upward. The semantic CHEST is still reliable,
+     * but using that pivot literally makes ROOT -> CHEST zero length once ROOT is
+     * inferred from the paired hip pivots. Recover CHEST from the torso bone's own
+     * geometry only; using subtree geometry here would let the head/arms skew the
+     * torso center.
+     */
+    private static void recoverCollapsedTorso(
+            SourceRigSnapshot snapshot,
+            EnumMap<HumanoidJoint, SemanticJointCandidate> joints) {
+        SemanticJointCandidate chest = joints.get(HumanoidJoint.CHEST);
+        SemanticJointCandidate leftHip = joints.get(HumanoidJoint.HIP_LEFT);
+        SemanticJointCandidate rightHip = joints.get(HumanoidJoint.HIP_RIGHT);
+        if (chest == null || leftHip == null || rightHip == null || chest.sourceNodeId().isEmpty()) {
+            return;
+        }
+
+        SkeletonVec3 inferredRoot = SkeletonVec3.lerp(
+                leftHip.bindModelPosition(),
+                rightHip.bindModelPosition(),
+                0.5F
+        );
+        if (chest.bindModelPosition().distanceTo(inferredRoot) > EPSILON) {
+            return;
+        }
+
+        String sourceId = chest.sourceNodeId().orElseThrow();
+        Optional<BodyBounds> bounds = snapshot.node(sourceId).geometryBounds();
+        if (bounds.isEmpty()) {
+            return;
+        }
+
+        BodyBounds torsoBounds = bounds.orElseThrow();
+        SkeletonVec3 sourcePivot = chest.bindModelPosition();
+        float recoveredY = (torsoBounds.min().y() + torsoBounds.max().y()) * 0.5F;
+        if (recoveredY <= inferredRoot.y() + EPSILON) {
+            recoveredY = torsoBounds.max().y();
+        }
+
+        SemanticJointCandidate head = joints.get(HumanoidJoint.HEAD);
+        if (head != null && recoveredY >= head.bindModelPosition().y() - EPSILON) {
+            recoveredY = (inferredRoot.y() + head.bindModelPosition().y()) * 0.5F;
+        }
+        if (recoveredY <= inferredRoot.y() + EPSILON) {
+            return;
+        }
+
+        joints.put(HumanoidJoint.CHEST, new SemanticJointCandidate(
+                HumanoidJoint.CHEST,
+                new SkeletonVec3(sourcePivot.x(), recoveredY, sourcePivot.z()),
+                Optional.of(sourceId),
+                JointOrigin.INFERRED_FROM_GEOMETRY,
+                Math.min(chest.confidence(), GEOMETRY_RECOVERY_CONFIDENCE)
         ));
     }
 
