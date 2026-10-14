@@ -22,20 +22,19 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * Narrow compatibility scope for Gecko armor callbacks.
+ * Temporary source-pose scope for Gecko ItemArmorGeoLayer callbacks.
  *
- * <p>The attachment bridge normally replays every layer from an exact Epic Fight
- * skin matrix. That remains the authoritative path for helmets, sleeves, boots,
- * held items and arbitrary decoration layers. A Gecko {@code ItemArmorGeoLayer}
- * body callback is special, however: it also consumes the live source bone's
- * pivot/rotation to prepare its HumanoidModel/GeoArmorRenderer. For torso armor,
- * replaying that callback from the synchronized source-local pose proved to be
- * substantially more faithful than replacing the armor renderer's geometry.</p>
+ * <p>ItemArmorGeoLayer is not a normal rigid attachment layer. It receives the
+ * current source-bone matrix and then reads that same source bone's pivot and
+ * rotation again in prepModelPartForRender(). Replaying it from EFPI's direct
+ * skin matrix therefore applies part of the limb placement twice, which is most
+ * visible on sleeves.</p>
  *
- * <p>This scope therefore changes only the PoseStack seen by torso-like armor
- * callbacks. It never cancels GeckoArmorRenderer rendering and never mutates the
- * shared source bones. The original exact matrix is restored as soon as the
- * callback returns.</p>
+ * <p>Every ItemArmorGeoLayer callback is consequently replayed with the same
+ * cumulative source-pose contract GeckoLib normally supplies. No renderer or
+ * mob id is inspected, no GeoArmorRenderer draw is cancelled, and the shared
+ * source bones are left untouched. The incoming exact attachment matrix is
+ * restored immediately when each callback returns.</p>
  */
 public final class GeckoArmorBodySkinningContext {
     private static final float MATRIX_EPSILON = 1.0E-8F;
@@ -93,7 +92,7 @@ public final class GeckoArmorBodySkinningContext {
         }
 
         boolean pushedOverride = false;
-        if (sourceBone != null && isTorsoArmorHost(sourceBone)) {
+        if (sourceBone != null) {
             Matrix4f sourcePose = animatedAbsoluteSourcePose(
                     sourceBone,
                     frame.armature,
@@ -128,10 +127,10 @@ public final class GeckoArmorBodySkinningContext {
     }
 
     /**
-     * Rebuilds the source bone's absolute transform using the same selective
-     * semantic projection used by GeckoAttachmentBridge's post-render sync.
-     * Unknown helper bones remain in authored bind pose and inherit the nearest
-     * semantic parent normally.
+     * Rebuilds one source bone's absolute transform using the same selective
+     * semantic projection as GeckoAttachmentBridge's post-render synchronization.
+     * Helper/decorative descendants retain their authored local transform and
+     * inherit the nearest semantic parent normally.
      */
     private static Matrix4f animatedAbsoluteSourcePose(
             GeoBone sourceBone,
@@ -216,20 +215,6 @@ public final class GeckoArmorBodySkinningContext {
                 -bone.getPivotY() / 16.0F,
                 -bone.getPivotZ() / 16.0F
         );
-    }
-
-    private static boolean isTorsoArmorHost(GeoBone bone) {
-        String name = normalize(bone.getName());
-        if (name.isEmpty()) {
-            return false;
-        }
-        if (containsAny(name,
-                "head", "skull", "helmet", "hat",
-                "arm", "hand", "wrist", "sleeve",
-                "leg", "foot", "boot", "thigh", "knee")) {
-            return false;
-        }
-        return containsAny(name, "body", "torso", "chest", "trunk", "spine");
     }
 
     private static Matrix3f normalMatrix(Matrix4f matrix) {
