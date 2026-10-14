@@ -2,6 +2,7 @@ package dev.nire9734.epicfightposture.mixin.client;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
+import dev.nire9734.epicfightposture.compat.humanoid.client.GeckoArmorBakeTransformContext;
 import dev.nire9734.epicfightposture.compat.humanoid.client.GeckoArmorSkinnedMeshBridge;
 import net.minecraft.client.model.HumanoidModel;
 import net.minecraft.client.model.geom.ModelPart;
@@ -145,18 +146,25 @@ public abstract class GeckoItemArmorLayerContextMixin {
         }
 
         Vector3f fitScale = fitStack.last().pose().getScale(new Vector3f());
-        if (GeckoArmorSkinnedMeshBridge.renderIfSupported(
-                animatable,
-                bone,
-                armorStack,
-                reportedSlot,
-                armorModel,
-                armorPart,
-                fitScale,
-                bufferSource,
-                packedLight,
-                packedOverlay,
-                partialTick)) {
+        boolean rendered;
+        try (GeckoArmorBakeTransformContext.Scope ignored =
+                     GeckoArmorBakeTransformContext.open(bone, fitScale)) {
+            rendered = GeckoArmorSkinnedMeshBridge.renderIfSupported(
+                    animatable,
+                    bone,
+                    armorStack,
+                    reportedSlot,
+                    armorModel,
+                    armorPart,
+                    fitScale,
+                    bufferSource,
+                    packedLight,
+                    packedOverlay,
+                    partialTick
+            );
+        }
+
+        if (rendered) {
             ci.cancel();
         }
     }

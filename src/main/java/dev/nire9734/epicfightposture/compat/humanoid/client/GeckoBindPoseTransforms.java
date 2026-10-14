@@ -1,6 +1,7 @@
 package dev.nire9734.epicfightposture.compat.humanoid.client;
 
 import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.math.Axis;
 import dev.nire9734.epicfightposture.compat.humanoid.skeleton.SkeletonQuat;
 import dev.nire9734.epicfightposture.compat.humanoid.skeleton.SkeletonVec3;
 import org.joml.Matrix4f;
@@ -12,6 +13,10 @@ import software.bernie.geckolib.cache.object.GeoBone;
 import software.bernie.geckolib.cache.object.GeoCube;
 import software.bernie.geckolib.core.state.BoneSnapshot;
 import software.bernie.geckolib.util.RenderUtils;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
 /**
  * Shared GeckoLib bind-pose transform path used by both rig capture and mesh baking.
@@ -31,6 +36,41 @@ final class GeckoBindPoseTransforms {
 
     static void pushBone(PoseStack stack, GeoBone bone) {
         stack.pushPose();
+
+        /*
+         * GeckoArmorSkinnedMeshBridge historically started armor baking with
+         * stack.scale(fitScale). That is not the coordinate system in which
+         * ItemArmorGeoLayer actually renders the armor. At runtime the layer is
+         * already inside the source entity bone's accumulated matrix, then it
+         * applies its outer axis flip + fit scale, and GeoArmorRenderer adds its
+         * own canonical armor transform before traversing armor bones.
+         *
+         * Reconstruct that complete bind-space composition here for armor roots.
+         * First cancel the baker's old origin-centered fit scale, then reproduce:
+         *
+         *   sourceBoneBind
+         *   * scale(-1,-1,1)        // ItemArmorGeoLayer
+         *   * fitScale              // prepModelPartForRender
+         *   * translate(0,1.5,0)    // GeoArmorRenderer.actuallyRender
+         *   * scale(-1,-1,1)
+         *
+         * This keeps body/ordinary Gecko mesh baking unchanged and only affects
+         * the temporary armor conversion scope.
+         */
+        GeckoArmorBakeTransformContext.State armor = GeckoArmorBakeTransformContext.current();
+        if (armor != null && bone != null && bone.getParent() == null) {
+            float sx = armor.scaleX();
+            float sy = armor.scaleY();
+            float sz = armor.scaleZ();
+
+            stack.scale(1.0F / sx, 1.0F / sy, 1.0F / sz);
+            applyInitialAbsolute(stack, armor.sourceBone());
+            stack.scale(-1.0F, -1.0F, 1.0F);
+            stack.scale(sx, sy, sz);
+            stack.translate(0.0D, 24.0D / 16.0D, 0.0D);
+            stack.scale(-1.0F, -1.0F, 1.0F);
+        }
+
         RenderUtils.prepMatrixForBone(stack, bone);
     }
 
@@ -71,6 +111,64 @@ final class GeckoBindPoseTransforms {
             transformed.normalize();
         }
         return transformed;
+    }
+
+    /** Applies the source bone's complete initial parent chain without mutation. */
+    private static void applyInitialAbsolute(PoseStack stack, GeoBone sourceBone) {
+        if (sourceBone == null) {
+            return;
+        }
+
+        List<GeoBone> chain = new ArrayList<>();
+        GeoBone cursor = sourceBone;
+        while (cursor != null) {
+            chain.add(cursor);
+            cursor = cursor.getParent();
+        }
+        Collections.reverse(chain);
+
+        for (GeoBone bone : chain) {
+            applyInitialBone(stack, bone);
+        }
+    }
+
+    /** Mirrors RenderUtils.prepMatrixForBone using the immutable initial snapshot. */
+    private static void applyInitialBone(PoseStack stack, GeoBone bone) {
+        BoneSnapshot snapshot = bone.getInitialSnapshot();
+
+        float posX = snapshot != null ? snapshot.getOffsetX() : bone.getPosX();
+        float posY = snapshot != null ? snapshot.getOffsetY() : bone.getPosY();
+        float posZ = snapshot != null ? snapshot.getOffsetZ() : bone.getPosZ();
+        float rotX = snapshot != null ? snapshot.getRotX() : bone.getRotX();
+        float rotY = snapshot != null ? snapshot.getRotY() : bone.getRotY();
+        float rotZ = snapshot != null ? snapshot.getRotZ() : bone.getRotZ();
+        float scaleX = snapshot != null ? snapshot.getScaleX() : bone.getScaleX();
+        float scaleY = snapshot != null ? snapshot.getScaleY() : bone.getScaleY();
+        float scaleZ = snapshot != null ? snapshot.getScaleZ() : bone.getScaleZ();
+
+        stack.translate(-posX / 16.0F, posY / 16.0F, posZ / 16.0F);
+        stack.translate(
+                bone.getPivotX() / 16.0F,
+                bone.getPivotY() / 16.0F,
+                bone.getPivotZ() / 16.0F
+        );
+
+        if (rotZ != 0.0F) {
+            stack.mulPose(Axis.ZP.rotation(rotZ));
+        }
+        if (rotY != 0.0F) {
+            stack.mulPose(Axis.YP.rotation(rotY));
+        }
+        if (rotX != 0.0F) {
+            stack.mulPose(Axis.XP.rotation(rotX));
+        }
+
+        stack.scale(scaleX, scaleY, scaleZ);
+        stack.translate(
+                -bone.getPivotX() / 16.0F,
+                -bone.getPivotY() / 16.0F,
+                -bone.getPivotZ() / 16.0F
+        );
     }
 
     private static void resetToInitial(GeoBone bone) {
