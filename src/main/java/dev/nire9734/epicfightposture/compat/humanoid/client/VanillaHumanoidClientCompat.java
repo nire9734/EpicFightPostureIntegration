@@ -24,6 +24,8 @@ import yesman.epicfight.api.client.model.transformer.HumanoidModelBaker;
 import yesman.epicfight.world.capabilities.provider.EntityPatchProvider;
 
 import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Set;
 
 /** Client-side renderer discovery and Epic Fight bridge registration. */
@@ -44,6 +46,7 @@ public final class VanillaHumanoidClientCompat {
         });
 
         HumanoidBackendRegistry.clear();
+        HumanoidBackendRegistry.register(ModelPartHumanoidClientCompat.INSTANCE);
         if (ModList.get().isLoaded("geckolib")) {
             HumanoidBackendRegistry.register(GeckoHumanoidClientCompat.INSTANCE);
         }
@@ -58,38 +61,46 @@ public final class VanillaHumanoidClientCompat {
         Set<EntityType<?>> alreadyPatched = new HashSet<>(EntityPatchProvider.getPatchedEntities());
         Set<EntityType<?>> verifiedVanilla = registerVanillaHumanoids(event, scan, alreadyPatched);
         Set<EntityType<?>> verifiedSpider = registerVanillaSpiders(event, scan, alreadyPatched);
-        Set<EntityType<?>> verifiedLibraryHumanoids = HumanoidBackendRegistry.registerRenderers(
+        Set<EntityType<?>> verifiedPreparedHumanoids = HumanoidBackendRegistry.registerRenderers(
                 event,
                 scan.externalHumanoidTypes()
         );
 
         Set<ResourceLocation> verifiedVanillaIds = idsOf(verifiedVanilla);
-        Set<ResourceLocation> verifiedLibraryIds = idsOf(verifiedLibraryHumanoids);
+        Set<ResourceLocation> verifiedPreparedIds = idsOf(verifiedPreparedHumanoids);
         Set<ResourceLocation> verifiedSpiderIds = idsOf(verifiedSpider);
 
         // The dedicated-server protocol still uses the legacy GeckoLib field name for
-        // the model-library humanoid bucket. Its semantics are now backend-neutral.
+        // the prepared humanoid bucket. Its semantics are backend-neutral.
         VanillaHumanoidCompat.replaceDetectedCache(
                 verifiedVanillaIds,
-                verifiedLibraryIds,
+                verifiedPreparedIds,
                 verifiedSpiderIds
         );
         HumanoidClientDiscovery.updateServerReportSnapshot(new HumanoidClientDiscovery.ScanSnapshot(
                 scan.inspected(),
                 verifiedVanillaIds,
-                verifiedLibraryIds,
+                verifiedPreparedIds,
                 verifiedSpiderIds,
                 verifiedVanilla,
-                verifiedLibraryHumanoids,
+                verifiedPreparedHumanoids,
                 verifiedSpider
         ));
 
+        LinkedHashMap<String, Integer> summary = new LinkedHashMap<>();
+        if (!verifiedVanilla.isEmpty()) {
+            summary.put("vanilla", verifiedVanilla.size());
+        }
+        for (Map.Entry<String, Integer> entry : HumanoidBackendRegistry.lastVerifiedByBackend().entrySet()) {
+            summary.put(entry.getKey(), entry.getValue());
+        }
+        if (!verifiedSpider.isEmpty()) {
+            summary.put("spider", verifiedSpider.size());
+        }
         LOGGER.info(
-                "EFPI auto-detected {} renderer compatibility target(s): {} vanilla humanoid, {} model-library humanoid, {} vanilla SpiderModel",
-                verifiedVanillaIds.size() + verifiedLibraryIds.size() + verifiedSpiderIds.size(),
-                verifiedVanilla.size(),
-                verifiedLibraryHumanoids.size(),
-                verifiedSpider.size()
+                "EFPI compatibility: {} target(s) {}",
+                verifiedVanillaIds.size() + verifiedPreparedIds.size() + verifiedSpiderIds.size(),
+                summary
         );
     }
 

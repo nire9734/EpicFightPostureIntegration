@@ -17,6 +17,7 @@ import yesman.epicfight.model.armature.HumanoidArmature;
 import yesman.epicfight.world.capabilities.provider.EntityPatchProvider;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -24,15 +25,17 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-/** Shared discovery/registration pipeline for GeckoLib, Lionfish and future model-library backends. */
+/** Shared discovery/registration pipeline for all non-HumanoidModel humanoid backends. */
 public final class HumanoidBackendRegistry {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final Map<String, HumanoidRenderBackend> BACKENDS = new LinkedHashMap<>();
     private static final Map<EntityType<?>, PreparedHumanoidModel> PREPARED = new HashMap<>();
+    private static Map<String, Integer> lastVerifiedByBackend = Map.of();
 
     public static synchronized void clear() {
         BACKENDS.clear();
         PREPARED.clear();
+        lastVerifiedByBackend = Map.of();
     }
 
     public static synchronized void register(HumanoidRenderBackend backend) {
@@ -169,17 +172,30 @@ public final class HumanoidBackendRegistry {
             verifiedByBackend.merge(prepared.backendId(), 1, Integer::sum);
         }
 
-        LOGGER.info(
-                "EFPI model-library humanoid compatibility: {} verified target(s), {} target-proportioned armature(s), by backend {}",
+        LinkedHashMap<String, Integer> orderedCounts = new LinkedHashMap<>();
+        for (String backendId : BACKENDS.keySet()) {
+            Integer count = verifiedByBackend.get(backendId);
+            if (count != null && count > 0) {
+                orderedCounts.put(backendId, count);
+            }
+        }
+        lastVerifiedByBackend = Collections.unmodifiableMap(orderedCounts);
+
+        LOGGER.debug(
+                "EFPI prepared humanoid registration: {} verified target(s), {} target-proportioned armature(s), by backend {}",
                 verified.size(),
                 retargetedArmatures,
-                verifiedByBackend
+                lastVerifiedByBackend
         );
         return Set.copyOf(verified);
     }
 
     public static synchronized PreparedHumanoidModel prepared(EntityType<?> entityType) {
         return PREPARED.get(entityType);
+    }
+
+    public static synchronized Map<String, Integer> lastVerifiedByBackend() {
+        return lastVerifiedByBackend;
     }
 
     public record ScanResult(
