@@ -50,6 +50,15 @@ public final class VanillaHumanoidClientCompat {
             HumanoidClientDiscovery.installAdditionalScanner(null);
         }
 
+        boolean lionfishLoaded = ModList.get().isLoaded("lionfishapi");
+        if (lionfishLoaded) {
+            // Lionfish is intentionally shadow-only at this stage: classify and
+            // measure candidate humanoids without registering patches/renderers.
+            LionfishHumanoidClientCompat.shadowScan(
+                    event.getContext().getEntityRenderDispatcher().renderers
+            );
+        }
+
         HumanoidClientDiscovery.ScanSnapshot scan = HumanoidClientDiscovery.scan(
                 event.getContext().getEntityRenderDispatcher().renderers
         );
