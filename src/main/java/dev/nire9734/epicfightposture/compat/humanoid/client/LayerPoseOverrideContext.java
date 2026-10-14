@@ -366,7 +366,7 @@ public final class LayerPoseOverrideContext {
 
             HumanoidSkinWeightResolver.SkinWeights skin = weights.weights(
                     node.id(),
-                    node.bindTransform().position()
+                    node.bindModelTransform().position()
             );
             int jointId = dominantJoint(skin);
             planned.add(new PlannedPart(
