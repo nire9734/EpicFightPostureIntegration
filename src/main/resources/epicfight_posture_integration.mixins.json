@@ -13,6 +13,7 @@
   "client": [
     "client.BridgeHealthBarMixin",
     "client.IronsHumanoidRendererCapeMixin",
-    "client.LivingEntityRendererScaleInvoker"
+    "client.LivingEntityRendererScaleInvoker",
+    "client.LivingEntityRendererLayersAccessor"
   ]
 }
