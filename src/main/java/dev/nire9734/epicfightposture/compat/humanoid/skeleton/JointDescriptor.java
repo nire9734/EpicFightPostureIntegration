@@ -2,7 +2,13 @@ package dev.nire9734.epicfightposture.compat.humanoid.skeleton;
 
 import java.util.Objects;
 
-/** One normalized semantic joint in the authored bind pose. */
+/**
+ * One normalized semantic joint in the authored bind pose.
+ *
+ * <p>The rotation is a normalized semantic frame, not necessarily the native local
+ * rotation of the source model node. Framework-specific source transforms belong in
+ * {@link HumanoidSourceBinding}; this keeps animation axes stable across model APIs.</p>
+ */
 public record JointDescriptor(
         HumanoidJoint joint,
         RigidTransform bindModelTransform,

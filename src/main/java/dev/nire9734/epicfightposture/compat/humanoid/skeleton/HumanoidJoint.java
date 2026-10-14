@@ -3,13 +3,13 @@ package dev.nire9734.epicfightposture.compat.humanoid.skeleton;
 /**
  * Library-independent semantic joints used by EFPI's humanoid retargeting pipeline.
  *
- * <p>Source model hierarchies are normalized to this topology before any Epic Fight
- * mapping or animation retargeting is performed.</p>
+ * <p>{@link #ROOT} is the skeletal pelvis/hip-center root, not the renderer/model
+ * origin. Source model hierarchies are normalized to this topology before any
+ * Epic Fight mapping or animation retargeting is performed.</p>
  */
 public enum HumanoidJoint {
     ROOT,
 
-    PELVIS,
     SPINE,
     CHEST,
     NECK,

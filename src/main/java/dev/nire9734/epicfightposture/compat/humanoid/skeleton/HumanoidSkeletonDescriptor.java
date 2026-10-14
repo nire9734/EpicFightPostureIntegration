@@ -8,7 +8,8 @@ import java.util.Objects;
  * Completed, library-independent humanoid bind skeleton.
  *
  * <p>All joint transforms are expressed in EFPI model space: +X entity-right,
- * +Y up, +Z entity-forward, with one unit equal to one Minecraft block. Source
+ * +Y up, +Z entity-forward, with one unit equal to one Minecraft block. ROOT is
+ * the skeletal pelvis/hip-center root, not the renderer/model origin. Source
  * adapters must remove runtime animation and bake source bind scale before
  * constructing this descriptor.</p>
  */

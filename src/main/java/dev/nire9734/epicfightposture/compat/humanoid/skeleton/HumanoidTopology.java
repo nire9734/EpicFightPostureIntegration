@@ -11,7 +11,6 @@ public final class HumanoidTopology {
 
     public static final List<HumanoidJoint> ORDER = List.of(
             HumanoidJoint.ROOT,
-            HumanoidJoint.PELVIS,
             HumanoidJoint.SPINE,
             HumanoidJoint.CHEST,
             HumanoidJoint.NECK,
@@ -34,8 +33,7 @@ public final class HumanoidTopology {
 
     static {
         EnumMap<HumanoidJoint, HumanoidJoint> parents = new EnumMap<>(HumanoidJoint.class);
-        parents.put(HumanoidJoint.PELVIS, HumanoidJoint.ROOT);
-        parents.put(HumanoidJoint.SPINE, HumanoidJoint.PELVIS);
+        parents.put(HumanoidJoint.SPINE, HumanoidJoint.ROOT);
         parents.put(HumanoidJoint.CHEST, HumanoidJoint.SPINE);
         parents.put(HumanoidJoint.NECK, HumanoidJoint.CHEST);
         parents.put(HumanoidJoint.HEAD, HumanoidJoint.NECK);
@@ -48,11 +46,11 @@ public final class HumanoidTopology {
         parents.put(HumanoidJoint.ELBOW_RIGHT, HumanoidJoint.SHOULDER_RIGHT);
         parents.put(HumanoidJoint.WRIST_RIGHT, HumanoidJoint.ELBOW_RIGHT);
 
-        parents.put(HumanoidJoint.HIP_LEFT, HumanoidJoint.PELVIS);
+        parents.put(HumanoidJoint.HIP_LEFT, HumanoidJoint.ROOT);
         parents.put(HumanoidJoint.KNEE_LEFT, HumanoidJoint.HIP_LEFT);
         parents.put(HumanoidJoint.ANKLE_LEFT, HumanoidJoint.KNEE_LEFT);
 
-        parents.put(HumanoidJoint.HIP_RIGHT, HumanoidJoint.PELVIS);
+        parents.put(HumanoidJoint.HIP_RIGHT, HumanoidJoint.ROOT);
         parents.put(HumanoidJoint.KNEE_RIGHT, HumanoidJoint.HIP_RIGHT);
         parents.put(HumanoidJoint.ANKLE_RIGHT, HumanoidJoint.KNEE_RIGHT);
         PARENTS = Map.copyOf(parents);

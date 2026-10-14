@@ -41,7 +41,7 @@ public record BodyMetrics(
                 bounds.height(),
                 distance(joints, HumanoidJoint.SHOULDER_LEFT, HumanoidJoint.SHOULDER_RIGHT),
                 distance(joints, HumanoidJoint.HIP_LEFT, HumanoidJoint.HIP_RIGHT),
-                distance(joints, HumanoidJoint.PELVIS, HumanoidJoint.CHEST),
+                distance(joints, HumanoidJoint.ROOT, HumanoidJoint.CHEST),
                 distance(joints, HumanoidJoint.SHOULDER_LEFT, HumanoidJoint.ELBOW_LEFT),
                 distance(joints, HumanoidJoint.ELBOW_LEFT, HumanoidJoint.WRIST_LEFT),
                 distance(joints, HumanoidJoint.SHOULDER_RIGHT, HumanoidJoint.ELBOW_RIGHT),
@@ -50,7 +50,7 @@ public record BodyMetrics(
                 distance(joints, HumanoidJoint.KNEE_LEFT, HumanoidJoint.ANKLE_LEFT),
                 distance(joints, HumanoidJoint.HIP_RIGHT, HumanoidJoint.KNEE_RIGHT),
                 distance(joints, HumanoidJoint.KNEE_RIGHT, HumanoidJoint.ANKLE_RIGHT),
-                position(joints, HumanoidJoint.PELVIS).y(),
+                position(joints, HumanoidJoint.ROOT).y(),
                 position(joints, HumanoidJoint.CHEST).y(),
                 position(joints, HumanoidJoint.HEAD).y()
         );
