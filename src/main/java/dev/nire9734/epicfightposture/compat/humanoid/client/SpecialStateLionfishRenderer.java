@@ -119,7 +119,8 @@ public final class SpecialStateLionfishRenderer extends PatchedEntityRenderer<
                 buffer,
                 poseStack,
                 packedLight,
-                partialTicks
+                partialTicks,
+                armature
         );
 
         poseStack.popPose();
