@@ -23,7 +23,9 @@ import java.util.Objects;
  */
 public final class HumanoidSkinWeightResolver {
     private static final float EPSILON = 1.0E-6F;
-    private static final float TRANSITION_HALF_WIDTH = 0.08F;
+    private static final float TRANSITION_SHORT_SEGMENT_FACTOR = 0.16F;
+    private static final float MIN_TRANSITION_HALF_WIDTH = 0.025F;
+    private static final float MAX_TRANSITION_HALF_WIDTH = 0.12F;
 
     // Epic Fight 20.14.x canonical BIPED deformation joint ids.
     public static final int ROOT = 0;
@@ -164,13 +166,14 @@ public final class HumanoidSkinWeightResolver {
         }
 
         float t = dot(position.subtract(start), axis) / denominator;
-        float bendT = dot(bend.subtract(start), axis) / denominator;
+        float bendT = clamp01(dot(bend.subtract(start), axis) / denominator);
         if (!Float.isFinite(t) || !Float.isFinite(bendT)) {
             return SkinWeights.rigid(upperJointId);
         }
 
-        float lowerEdge = bendT - TRANSITION_HALF_WIDTH;
-        float upperEdge = bendT + TRANSITION_HALF_WIDTH;
+        float transitionHalfWidth = transitionHalfWidth(start, bend, end);
+        float lowerEdge = bendT - transitionHalfWidth;
+        float upperEdge = bendT + transitionHalfWidth;
         if (t <= lowerEdge) {
             return SkinWeights.rigid(upperJointId);
         }
@@ -180,6 +183,26 @@ public final class HumanoidSkinWeightResolver {
 
         float lowerWeight = clamp01((t - lowerEdge) / Math.max(EPSILON, upperEdge - lowerEdge));
         return SkinWeights.blend(upperJointId, lowerJointId, 1.0F - lowerWeight, lowerWeight);
+    }
+
+    /**
+     * Blend width is expressed in normalized limb coordinates. The old constant
+     * 0.08 was already scale invariant; this preserves that property while making
+     * the transition narrower for strongly uneven upper/lower limb proportions.
+     */
+    static float transitionHalfWidth(SkeletonVec3 start, SkeletonVec3 bend, SkeletonVec3 end) {
+        float upperLength = start.distanceTo(bend);
+        float lowerLength = bend.distanceTo(end);
+        float chainLength = upperLength + lowerLength;
+        if (chainLength <= EPSILON) {
+            return MIN_TRANSITION_HALF_WIDTH;
+        }
+        float shorterFraction = Math.min(upperLength, lowerLength) / chainLength;
+        return clamp(
+                shorterFraction * TRANSITION_SHORT_SEGMENT_FACTOR,
+                MIN_TRANSITION_HALF_WIDTH,
+                MAX_TRANSITION_HALF_WIDTH
+        );
     }
 
     private static boolean hasDirectSource(
@@ -196,7 +219,11 @@ public final class HumanoidSkinWeightResolver {
     }
 
     private static float clamp01(float value) {
-        return Math.max(0.0F, Math.min(1.0F, value));
+        return clamp(value, 0.0F, 1.0F);
+    }
+
+    private static float clamp(float value, float minimum, float maximum) {
+        return Math.max(minimum, Math.min(maximum, value));
     }
 
     public record SkinWeights(

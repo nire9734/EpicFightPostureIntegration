@@ -89,15 +89,9 @@ public final class HumanoidSkeletonResolver {
 
     /**
      * Some exported rigs expose semantically named helper bones whose pivots are
-     * intentionally shared with a parent joint. Examples include a head bone that
-     * shares the upper-torso pivot, a torso whose pivot remains at the pelvis, or
-     * armor/foot helper bones that share the hip pivot while their geometry extends
-     * down the leg. Treating those helper pivots literally collapses canonical Epic
-     * Fight segments to zero length.
-     *
-     * <p>When the semantic names are otherwise trustworthy, recover only the
-     * collapsed joint position from that source branch's bind geometry. This is
-     * framework-neutral and keeps the semantic source id for skin weighting.</p>
+     * intentionally shared with a parent joint. Recover only the collapsed
+     * canonical position from shared bind geometry while keeping semantic source
+     * ownership intact for skin weighting.
      */
     private static void recoverCollapsedSourceJoints(
             SourceRigSnapshot snapshot,
@@ -122,7 +116,7 @@ public final class HumanoidSkeletonResolver {
         }
 
         String sourceId = head.sourceNodeId().orElseThrow();
-        Optional<BodyBounds> bounds = subtreeBounds(snapshot, sourceId);
+        Optional<BodyBounds> bounds = HumanoidGeometryInference.subtreeBounds(snapshot, sourceId);
         if (bounds.isEmpty()) {
             return;
         }
@@ -146,12 +140,6 @@ public final class HumanoidSkeletonResolver {
         ));
     }
 
-    /**
-     * Blockbench-style humanoids commonly keep the torso bone pivot at the pelvis
-     * while the torso cubes extend upward. Prefer the torso node's own geometry so
-     * head/arm branches cannot skew the chest center, but fall back to the torso
-     * subtree when the semantic torso is only a pivot/helper with no cubes itself.
-     */
     private static void recoverCollapsedTorso(
             SourceRigSnapshot snapshot,
             EnumMap<HumanoidJoint, SemanticJointCandidate> joints) {
@@ -172,10 +160,7 @@ public final class HumanoidSkeletonResolver {
         }
 
         String sourceId = chest.sourceNodeId().orElseThrow();
-        Optional<BodyBounds> bounds = snapshot.node(sourceId).geometryBounds();
-        if (bounds.isEmpty()) {
-            bounds = subtreeBounds(snapshot, sourceId);
-        }
+        Optional<BodyBounds> bounds = HumanoidGeometryInference.ownOrSubtreeBounds(snapshot, sourceId);
         if (bounds.isEmpty()) {
             return;
         }
@@ -204,12 +189,6 @@ public final class HumanoidSkeletonResolver {
         ));
     }
 
-    /**
-     * Recovers a collapsed wrist/ankle from bind geometry. Explicit hand/foot
-     * helpers are often empty pivot nodes, so first try their subtree and then the
-     * whole proximal limb branch. This keeps the rule independent of framework,
-     * mod and bone naming beyond the already-resolved semantic joints.
-     */
     private static void recoverCollapsedTerminal(
             SourceRigSnapshot snapshot,
             EnumMap<HumanoidJoint, SemanticJointCandidate> joints,
@@ -223,17 +202,13 @@ public final class HumanoidSkeletonResolver {
         }
 
         SkeletonVec3 anchor = proximal.bindModelPosition();
-        Optional<BodyBounds> bounds = terminal.sourceNodeId()
-                .flatMap(sourceId -> subtreeBounds(snapshot, sourceId));
-        SkeletonVec3 recovered = bounds
-                .map(value -> farthestCorner(value, anchor))
+        SkeletonVec3 recovered = terminal.sourceNodeId()
+                .flatMap(sourceId -> HumanoidGeometryInference.inferDistalCenter(snapshot, sourceId, anchor))
                 .orElse(anchor);
 
         if (recovered.distanceTo(anchor) <= MIN_RECOVERABLE_LIMB_SPAN) {
-            bounds = proximal.sourceNodeId()
-                    .flatMap(sourceId -> subtreeBounds(snapshot, sourceId));
-            recovered = bounds
-                    .map(value -> farthestCorner(value, anchor))
+            recovered = proximal.sourceNodeId()
+                    .flatMap(sourceId -> HumanoidGeometryInference.inferDistalCenter(snapshot, sourceId, anchor))
                     .orElse(anchor);
         }
 
@@ -251,48 +226,6 @@ public final class HumanoidSkeletonResolver {
                 JointOrigin.INFERRED_FROM_GEOMETRY,
                 Math.min(terminal.confidence(), GEOMETRY_RECOVERY_CONFIDENCE)
         ));
-    }
-
-    private static Optional<BodyBounds> subtreeBounds(SourceRigSnapshot snapshot, String nodeId) {
-        BoundsAccumulator bounds = new BoundsAccumulator();
-        collectSubtreeBounds(snapshot, nodeId, bounds, true);
-        return bounds.toBounds();
-    }
-
-    private static void collectSubtreeBounds(
-            SourceRigSnapshot snapshot,
-            String nodeId,
-            BoundsAccumulator bounds,
-            boolean root) {
-        SourceNodeSnapshot node = snapshot.node(nodeId);
-        if (!root && SourceNodeHeuristics.likelyAttachment(node.name())) {
-            return;
-        }
-        node.geometryBounds().ifPresent(bounds::include);
-        for (SourceNodeSnapshot child : snapshot.childrenOf(nodeId)) {
-            collectSubtreeBounds(snapshot, child.id(), bounds, false);
-        }
-    }
-
-    private static SkeletonVec3 farthestCorner(BodyBounds bounds, SkeletonVec3 anchor) {
-        SkeletonVec3 best = bounds.min();
-        float bestDistance = -1.0F;
-        float[] xs = {bounds.min().x(), bounds.max().x()};
-        float[] ys = {bounds.min().y(), bounds.max().y()};
-        float[] zs = {bounds.min().z(), bounds.max().z()};
-        for (float x : xs) {
-            for (float y : ys) {
-                for (float z : zs) {
-                    SkeletonVec3 candidate = new SkeletonVec3(x, y, z);
-                    float distance = candidate.subtract(anchor).lengthSquared();
-                    if (distance > bestDistance) {
-                        bestDistance = distance;
-                        best = candidate;
-                    }
-                }
-            }
-        }
-        return best;
     }
 
     private static void completeVirtualJoints(
@@ -507,36 +440,6 @@ public final class HumanoidSkeletonResolver {
             throw new IllegalArgumentException("Missing semantic joint " + joint);
         }
         return candidate.bindModelPosition();
-    }
-
-    private static final class BoundsAccumulator {
-        private float minX = Float.POSITIVE_INFINITY;
-        private float minY = Float.POSITIVE_INFINITY;
-        private float minZ = Float.POSITIVE_INFINITY;
-        private float maxX = Float.NEGATIVE_INFINITY;
-        private float maxY = Float.NEGATIVE_INFINITY;
-        private float maxZ = Float.NEGATIVE_INFINITY;
-        private boolean any;
-
-        void include(BodyBounds bounds) {
-            any = true;
-            minX = Math.min(minX, bounds.min().x());
-            minY = Math.min(minY, bounds.min().y());
-            minZ = Math.min(minZ, bounds.min().z());
-            maxX = Math.max(maxX, bounds.max().x());
-            maxY = Math.max(maxY, bounds.max().y());
-            maxZ = Math.max(maxZ, bounds.max().z());
-        }
-
-        Optional<BodyBounds> toBounds() {
-            if (!any) {
-                return Optional.empty();
-            }
-            return Optional.of(new BodyBounds(
-                    new SkeletonVec3(minX, minY, minZ),
-                    new SkeletonVec3(maxX, maxY, maxZ)
-            ));
-        }
     }
 
     private HumanoidSkeletonResolver() {

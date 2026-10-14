@@ -55,6 +55,9 @@ dependencies {
     compileOnly fg.deobf("curse.maven:lionfish-api-1001614:8095554")
     compileOnly fg.deobf("curse.maven:azurelib-817423:4812417")
 
+    testImplementation platform('org.junit:junit-bom:5.10.3')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+
     annotationProcessor 'org.spongepowered:mixin:0.8.5:processor'
 }
 
@@ -96,6 +99,10 @@ tasks.named('jar', Jar).configure {
         ])
     }
     finalizedBy 'reobfJar'
+}
+
+tasks.named('test', Test).configure {
+    useJUnitPlatform()
 }
 
 tasks.withType(JavaCompile).configureEach {

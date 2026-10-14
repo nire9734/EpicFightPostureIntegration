@@ -1,6 +1,5 @@
 package dev.nire9734.epicfightposture.compat.humanoid.rig;
 
-import dev.nire9734.epicfightposture.compat.humanoid.skeleton.BodyBounds;
 import dev.nire9734.epicfightposture.compat.humanoid.skeleton.HumanoidJoint;
 import dev.nire9734.epicfightposture.compat.humanoid.skeleton.JointOrigin;
 import dev.nire9734.epicfightposture.compat.humanoid.skeleton.SkeletonVec3;
@@ -192,62 +191,20 @@ public final class ConservativeHumanoidSemanticAnalyzer implements HumanoidSeman
             HumanoidJoint joint,
             SourceNodeSnapshot anchorNode,
             SourceNodeSnapshot branchRoot) {
-        Optional<BodyBounds> subtreeBounds = subtreeBounds(snapshot, branchRoot.id());
-        if (subtreeBounds.isEmpty()) {
-            return;
-        }
-
         SkeletonVec3 anchor = anchorNode.bindModelTransform().position();
-        SkeletonVec3 terminal = farthestCorner(subtreeBounds.orElseThrow(), anchor);
-        if (terminal.distanceTo(anchor) <= 1.0E-5F) {
+        Optional<SkeletonVec3> terminal = HumanoidGeometryInference.inferDistalCenter(
+                snapshot, branchRoot.id(), anchor);
+        if (terminal.isEmpty() || terminal.orElseThrow().distanceTo(anchor) <= 1.0E-5F) {
             return;
         }
 
         result.put(joint, new SemanticJointCandidate(
                 joint,
-                terminal,
+                terminal.orElseThrow(),
                 Optional.of(branchRoot.id()),
                 JointOrigin.INFERRED_FROM_GEOMETRY,
                 GEOMETRY_CONFIDENCE
         ));
-    }
-
-    private static Optional<BodyBounds> subtreeBounds(SourceRigSnapshot snapshot, String rootId) {
-        BoundsAccumulator bounds = new BoundsAccumulator();
-        collectBounds(snapshot, rootId, bounds);
-        return bounds.toBounds();
-    }
-
-    private static void collectBounds(SourceRigSnapshot snapshot, String nodeId, BoundsAccumulator bounds) {
-        if (isAttachmentBranch(snapshot, nodeId)) {
-            return;
-        }
-        SourceNodeSnapshot node = snapshot.node(nodeId);
-        node.geometryBounds().ifPresent(bounds::include);
-        for (SourceNodeSnapshot child : snapshot.childrenOf(nodeId)) {
-            collectBounds(snapshot, child.id(), bounds);
-        }
-    }
-
-    private static SkeletonVec3 farthestCorner(BodyBounds bounds, SkeletonVec3 anchor) {
-        SkeletonVec3 best = bounds.min();
-        float bestDistance = -1.0F;
-        float[] xs = {bounds.min().x(), bounds.max().x()};
-        float[] ys = {bounds.min().y(), bounds.max().y()};
-        float[] zs = {bounds.min().z(), bounds.max().z()};
-        for (float x : xs) {
-            for (float y : ys) {
-                for (float z : zs) {
-                    SkeletonVec3 candidate = new SkeletonVec3(x, y, z);
-                    float distance = candidate.subtract(anchor).lengthSquared();
-                    if (distance > bestDistance) {
-                        bestDistance = distance;
-                        best = candidate;
-                    }
-                }
-            }
-        }
-        return best;
     }
 
     private static List<NodeCandidate> candidates(SourceRigSnapshot snapshot) {
@@ -287,8 +244,6 @@ public final class ConservativeHumanoidSemanticAnalyzer implements HumanoidSeman
 
             int candidateScore = lexical - candidate.depth();
             if (candidate.node().geometryBounds().isPresent()) {
-                // Geometry is useful evidence, but it must not outweigh a more
-                // anatomically meaningful upper-torso pivot.
                 candidateScore += 6;
             }
             if (PREFERRED_UPPER_TORSO.contains(candidate.normalizedName())) {
@@ -302,13 +257,9 @@ public final class ConservativeHumanoidSemanticAnalyzer implements HumanoidSeman
             if (hipMidpoint != null
                     && candidate.node().bindModelTransform().position().distanceTo(hipMidpoint)
                     <= TORSO_ROOT_COLLAPSE_EPSILON) {
-                // Blockbench rigs often place a lower "body" pivot exactly at
-                // the thigh roots while exposing a child "chest" pivot above it.
-                // Choosing the lower pivot would collapse EFPI ROOT->CHEST.
                 candidateScore -= 80;
             }
 
-            // A torso candidate should remain reasonably close to the leg roots.
             candidateScore += lowerBodyReachabilityScore(snapshot, candidate.node(), rightLeg);
             candidateScore += lowerBodyReachabilityScore(snapshot, candidate.node(), leftLeg);
 
@@ -336,8 +287,6 @@ public final class ConservativeHumanoidSemanticAnalyzer implements HumanoidSeman
             return -20;
         }
 
-        // Head and upper arms are normally direct children of the chest or one
-        // helper joint away. Prefer that structure over a lower "body" node.
         if (snapshot.isAncestor(torso.id(), branch.id())) {
             return Math.max(0, 30 - distance * 6);
         }
@@ -504,7 +453,7 @@ public final class ConservativeHumanoidSemanticAnalyzer implements HumanoidSeman
     }
 
     private static boolean hasRenderableGeometry(SourceRigSnapshot snapshot, String nodeId) {
-        if (isAttachmentBranch(snapshot, nodeId)) {
+        if (HumanoidGeometryInference.isAttachmentBranch(snapshot, nodeId)) {
             return false;
         }
         SourceNodeSnapshot node = snapshot.node(nodeId);
@@ -517,19 +466,6 @@ public final class ConservativeHumanoidSemanticAnalyzer implements HumanoidSeman
             }
         }
         return false;
-    }
-
-    private static boolean isAttachmentBranch(SourceRigSnapshot snapshot, String nodeId) {
-        SourceNodeSnapshot cursor = snapshot.node(nodeId);
-        while (true) {
-            if (SourceNodeHeuristics.likelyAttachment(cursor.name())) {
-                return true;
-            }
-            if (cursor.parentId().isEmpty()) {
-                return false;
-            }
-            cursor = snapshot.node(cursor.parentId().orElseThrow());
-        }
     }
 
     private static int graphDistance(SourceRigSnapshot snapshot, String firstId, String secondId) {
@@ -604,36 +540,6 @@ public final class ConservativeHumanoidSemanticAnalyzer implements HumanoidSeman
     }
 
     private record NodeCandidate(SourceNodeSnapshot node, int depth, String normalizedName) {
-    }
-
-    private static final class BoundsAccumulator {
-        private float minX = Float.POSITIVE_INFINITY;
-        private float minY = Float.POSITIVE_INFINITY;
-        private float minZ = Float.POSITIVE_INFINITY;
-        private float maxX = Float.NEGATIVE_INFINITY;
-        private float maxY = Float.NEGATIVE_INFINITY;
-        private float maxZ = Float.NEGATIVE_INFINITY;
-        private boolean any;
-
-        void include(BodyBounds bounds) {
-            any = true;
-            minX = Math.min(minX, bounds.min().x());
-            minY = Math.min(minY, bounds.min().y());
-            minZ = Math.min(minZ, bounds.min().z());
-            maxX = Math.max(maxX, bounds.max().x());
-            maxY = Math.max(maxY, bounds.max().y());
-            maxZ = Math.max(maxZ, bounds.max().z());
-        }
-
-        Optional<BodyBounds> toBounds() {
-            if (!any) {
-                return Optional.empty();
-            }
-            return Optional.of(new BodyBounds(
-                    new SkeletonVec3(minX, minY, minZ),
-                    new SkeletonVec3(maxX, maxY, maxZ)
-            ));
-        }
     }
 
     private ConservativeHumanoidSemanticAnalyzer() {
