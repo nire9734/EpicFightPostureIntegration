@@ -3,7 +3,6 @@ package dev.nire9734.epicfightposture.compat.humanoid.client;
 import com.github.L_Ender.lionfishapi.client.model.tools.AdvancedEntityModel;
 import com.mojang.logging.LogUtils;
 import dev.nire9734.epicfightposture.compat.humanoid.VanillaHumanoidCompat;
-import dev.nire9734.epicfightposture.compat.humanoid.rig.ConservativeHumanoidSemanticAnalyzer;
 import dev.nire9734.epicfightposture.compat.humanoid.skeleton.HumanoidSkeletonDescriptor;
 import dev.nire9734.epicfightposture.compat.humanoid.skeleton.SkeletonKey;
 import net.minecraft.client.renderer.entity.EntityRenderer;
@@ -11,25 +10,31 @@ import net.minecraft.client.renderer.entity.LivingEntityRenderer;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.EntityType;
 import org.slf4j.Logger;
+import yesman.epicfight.api.client.model.SkinnedMesh;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
- * Experimental Lionfish/Citadel-style humanoid discovery.
+ * Experimental Lionfish/Citadel-style humanoid discovery and mesh preparation.
  *
- * <p>This is intentionally shadow-only for now. It validates that the generic
- * source-rig and semantic resolver can classify real Lionfish models without
- * changing patch registration or rendering behavior.</p>
+ * <p>This remains shadow-only: successful descriptors and meshes are cached for
+ * validation, but no entity patch or renderer is registered yet.</p>
  */
 public final class LionfishHumanoidClientCompat {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final Map<EntityType<?>, HumanoidSkeletonDescriptor> RUNTIME_SKELETONS = new HashMap<>();
+    private static final Map<EntityType<?>, SkinnedMesh> RUNTIME_MESHES = new HashMap<>();
 
     public static void shadowScan(Map<EntityType<?>, EntityRenderer<?>> renderers) {
         RUNTIME_SKELETONS.clear();
+        RUNTIME_MESHES.clear();
         int inspected = 0;
         int resolved = 0;
+        int meshed = 0;
+        List<ResourceLocation> ready = new ArrayList<>();
 
         for (Map.Entry<EntityType<?>, EntityRenderer<?>> entry : renderers.entrySet()) {
             EntityType<?> entityType = entry.getKey();
@@ -46,44 +51,44 @@ public final class LionfishHumanoidClientCompat {
             }
             inspected++;
 
-            try {
-                SkeletonKey key = new SkeletonKey(
-                        entityId,
-                        advancedModel.getClass().getName()
-                );
-                HumanoidSkeletonDescriptor descriptor = LionfishSourceRigAdapter.resolve(
-                        advancedModel,
-                        key,
-                        ConservativeHumanoidSemanticAnalyzer.INSTANCE
-                ).descriptor();
-                RUNTIME_SKELETONS.put(entityType, descriptor);
-                resolved++;
-
-                LOGGER.debug(
-                        "EFPI Lionfish shadow resolver accepted {}: height={}, shoulderWidth={}, armL={}/{}, armR={}/{}, virtualJoints={}, confidence={}",
-                        entityId,
-                        descriptor.metrics().totalHeight(),
-                        descriptor.metrics().shoulderWidth(),
-                        descriptor.metrics().upperArmLeft(),
-                        descriptor.metrics().lowerArmLeft(),
-                        descriptor.metrics().upperArmRight(),
-                        descriptor.metrics().lowerArmRight(),
-                        descriptor.quality().virtualJointCount(),
-                        descriptor.quality().overallConfidence()
-                );
-            } catch (Throwable throwable) {
-                LOGGER.debug(
-                        "EFPI Lionfish shadow resolver rejected {}: {}",
-                        entityId,
-                        throwable.getMessage()
-                );
+            SkeletonKey key = new SkeletonKey(entityId, advancedModel.getClass().getName());
+            LionfishHumanoidMeshAdapter.Result result = LionfishHumanoidMeshAdapter.analyseAndBake(advancedModel, key);
+            if (!result.supported() || result.descriptor() == null) {
+                LOGGER.debug("EFPI Lionfish shadow resolver rejected {}: {}", entityId, result.reason());
+                continue;
             }
+
+            HumanoidSkeletonDescriptor descriptor = result.descriptor();
+            RUNTIME_SKELETONS.put(entityType, descriptor);
+            resolved++;
+
+            if (result.mesh() != null) {
+                RUNTIME_MESHES.put(entityType, result.mesh());
+                meshed++;
+                ready.add(entityId);
+            }
+
+            LOGGER.debug(
+                    "EFPI Lionfish shadow accepted {}: height={}, shoulderWidth={}, armL={}/{}, armR={}/{}, virtualJoints={}, confidence={}, mesh={}",
+                    entityId,
+                    descriptor.metrics().totalHeight(),
+                    descriptor.metrics().shoulderWidth(),
+                    descriptor.metrics().upperArmLeft(),
+                    descriptor.metrics().lowerArmLeft(),
+                    descriptor.metrics().upperArmRight(),
+                    descriptor.metrics().lowerArmRight(),
+                    descriptor.quality().virtualJointCount(),
+                    descriptor.quality().overallConfidence(),
+                    result.mesh() != null
+            );
         }
 
         LOGGER.info(
-                "EFPI Lionfish humanoid shadow scan resolved {}/{} unpatched AdvancedEntityModel entity type(s)",
+                "EFPI Lionfish humanoid shadow scan: {} inspected, {} resolved, {} mesh-ready; ready targets: {}",
+                inspected,
                 resolved,
-                inspected
+                meshed,
+                ready
         );
     }
 
@@ -91,6 +96,9 @@ public final class LionfishHumanoidClientCompat {
         return RUNTIME_SKELETONS.get(entityType);
     }
 
-    private LionfishHumanoidClientCompat() {
+    static SkinnedMesh runtimeMesh(EntityType<?> entityType) {
+        return RUNTIME_MESHES.get(entityType);
     }
+
+    private LionfishHumanoidClientCompat() {}
 }
