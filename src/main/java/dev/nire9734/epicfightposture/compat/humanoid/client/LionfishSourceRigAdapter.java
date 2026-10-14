@@ -23,6 +23,8 @@ import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 import org.joml.Vector4f;
 
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.IdentityHashMap;
@@ -67,6 +69,12 @@ public final class LionfishSourceRigAdapter {
             throw new IllegalArgumentException("Lionfish model exposes no root AdvancedModelBox");
         }
 
+        // A large number of Cataclysm/Lionfish 1.20.1 models construct boxes with
+        // AdvancedModelBox(this) rather than AdvancedModelBox(this, "name"), leaving
+        // boxName empty. The Java model fields still preserve semantic names such as
+        // left_arm_joint/right_leg, so recover those names by object identity.
+        Map<AdvancedModelBox, String> reflectedNames = reflectedPartNames(model);
+
         LinkedHashMap<String, SourceNodeSnapshot> nodes = new LinkedHashMap<>();
         LinkedHashMap<String, AdvancedModelBox> sourceNodes = new LinkedHashMap<>();
         BoundsAccumulator geometryBounds = new BoundsAccumulator();
@@ -84,6 +92,7 @@ public final class LionfishSourceRigAdapter {
                     null,
                     "r" + rootIndex,
                     stack,
+                    reflectedNames,
                     nodes,
                     sourceNodes,
                     geometryBounds,
@@ -132,6 +141,7 @@ public final class LionfishSourceRigAdapter {
             String parentId,
             String nodeId,
             PoseStack stack,
+            Map<AdvancedModelBox, String> reflectedNames,
             Map<String, SourceNodeSnapshot> nodes,
             Map<String, AdvancedModelBox> sourceNodes,
             BoundsAccumulator globalGeometryBounds,
@@ -201,7 +211,7 @@ public final class LionfishSourceRigAdapter {
 
         nodes.put(nodeId, new SourceNodeSnapshot(
                 nodeId,
-                part.boxName == null ? "" : part.boxName,
+                semanticName(part, reflectedNames),
                 Optional.ofNullable(parentId),
                 bindTransform,
                 ownBounds,
@@ -218,6 +228,7 @@ public final class LionfishSourceRigAdapter {
                             nodeId,
                             nodeId + "/" + childIndex,
                             stack,
+                            reflectedNames,
                             nodes,
                             sourceNodes,
                             globalGeometryBounds,
@@ -231,6 +242,42 @@ public final class LionfishSourceRigAdapter {
         }
 
         stack.popPose();
+    }
+
+    private static String semanticName(
+            AdvancedModelBox part,
+            Map<AdvancedModelBox, String> reflectedNames) {
+        if (part.boxName != null && !part.boxName.isBlank()) {
+            return part.boxName;
+        }
+        return reflectedNames.getOrDefault(part, "");
+    }
+
+    private static Map<AdvancedModelBox, String> reflectedPartNames(AdvancedEntityModel<?> model) {
+        IdentityHashMap<AdvancedModelBox, String> names = new IdentityHashMap<>();
+        Class<?> type = model.getClass();
+        while (type != null && AdvancedEntityModel.class.isAssignableFrom(type)) {
+            for (Field field : type.getDeclaredFields()) {
+                if (Modifier.isStatic(field.getModifiers())
+                        || !AdvancedModelBox.class.isAssignableFrom(field.getType())) {
+                    continue;
+                }
+                try {
+                    if (!field.canAccess(model)) {
+                        field.setAccessible(true);
+                    }
+                    Object value = field.get(model);
+                    if (value instanceof AdvancedModelBox box) {
+                        names.putIfAbsent(box, field.getName());
+                    }
+                } catch (Throwable ignored) {
+                    // Reflection is only a semantic-name fallback. Explicit
+                    // AdvancedModelBox names remain usable when a field is inaccessible.
+                }
+            }
+            type = type.getSuperclass();
+        }
+        return names;
     }
 
     private static BindValues bindValues(AdvancedModelBox part) {
