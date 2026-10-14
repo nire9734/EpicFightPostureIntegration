@@ -160,11 +160,12 @@ public final class HumanoidSkeletonResolver {
         if (left.distanceTo(right) <= EPSILON) {
             throw new IllegalArgumentException("Humanoid " + label + " collapse to the same pivot");
         }
-        // EFPI model space is +X entity-right, therefore anatomical left must be
-        // to the negative-X side of anatomical right.
-        if (left.x() >= right.x()) {
-            throw new IllegalArgumentException("Humanoid " + label + " have reversed left/right placement");
-        }
+
+        // Do not require one fixed X handedness here. Minecraft ModelPart rigs are
+        // canonicalized with an X mirror before analysis, while Gecko/Azure-style
+        // authored geometry can expose the opposite bind-space handedness. The
+        // semantic labels already tell us which branch is left/right; requiring a
+        // framework-specific X sign here rejected otherwise valid Gecko humanoids.
     }
 
     private static void requireSegment(
