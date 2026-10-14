@@ -3,6 +3,7 @@ package dev.nire9734.epicfightposture.compat.humanoid.client;
 import com.mojang.logging.LogUtils;
 import dev.nire9734.epicfightposture.EpicFightPostureIntegration;
 import dev.nire9734.epicfightposture.compat.humanoid.VanillaHumanoidCompat;
+import dev.nire9734.epicfightposture.compat.humanoid.retarget.HumanoidArmatureFactory;
 import dev.nire9734.epicfightposture.compat.humanoid.rig.ConservativeHumanoidSemanticAnalyzer;
 import dev.nire9734.epicfightposture.compat.humanoid.skeleton.HumanoidSkeletonDescriptor;
 import dev.nire9734.epicfightposture.compat.humanoid.skeleton.SkeletonKey;
@@ -17,6 +18,9 @@ import yesman.epicfight.api.asset.AssetAccessor;
 import yesman.epicfight.api.asset.SelfAccessor;
 import yesman.epicfight.api.client.forgeevent.PatchedRenderersEvent;
 import yesman.epicfight.api.client.model.SkinnedMesh;
+import yesman.epicfight.api.model.Armature;
+import yesman.epicfight.gameasset.Armatures;
+import yesman.epicfight.model.armature.HumanoidArmature;
 import yesman.epicfight.world.capabilities.provider.EntityPatchProvider;
 
 import java.util.HashMap;
@@ -60,10 +64,10 @@ public final class GeckoHumanoidClientCompat {
                 ResourceLocation modelLocation = geoModel.getModelResource(null);
                 BakedGeoModel bakedModel = geoModel.getBakedModel(modelLocation);
 
-                // Shadow the 2.0.0 detector through the new framework-neutral rig
-                // pipeline. The result is cached for later retargeting work but is
-                // deliberately not authoritative yet; legacy detection/baking below
-                // still decides whether an entity is automatic-compatible.
+                // Run the new framework-neutral rig pipeline alongside the 2.0.0
+                // detector. Legacy detection/baking below remains authoritative for
+                // compatibility classification until the new path has been validated
+                // against existing Gecko targets.
                 HumanoidSkeletonDescriptor shadowDescriptor = null;
                 try {
                     SkeletonKey key = new SkeletonKey(
@@ -125,7 +129,7 @@ public final class GeckoHumanoidClientCompat {
                 } else {
                     LOGGER.debug(
                             "EFPI legacy Gecko compatibility accepted {} but the new humanoid rig resolver did not; "
-                                    + "keeping the legacy path for this entity",
+                                    + "keeping the canonical BIPED armature for this entity",
                             entityId
                     );
                 }
@@ -137,7 +141,7 @@ public final class GeckoHumanoidClientCompat {
         }
 
         LOGGER.debug(
-                "EFPI Gecko shadow retarget resolver prepared descriptors for {}/{} legacy-compatible entity type(s)",
+                "EFPI Gecko retarget resolver prepared descriptors for {}/{} legacy-compatible entity type(s)",
                 retargetReady,
                 compatibleTypes.size()
         );
@@ -160,6 +164,7 @@ public final class GeckoHumanoidClientCompat {
         Set<EntityType<?>> verified = new HashSet<>();
         int patched = 0;
         int rendered = 0;
+        int retargetedArmatures = 0;
 
         for (EntityType<?> entityType : entityTypes) {
             ResourceLocation entityId = EntityType.getKey(entityType);
@@ -182,9 +187,35 @@ public final class GeckoHumanoidClientCompat {
                 continue;
             }
 
+            AssetAccessor<? extends Armature> armatureOverride = null;
+            HumanoidSkeletonDescriptor descriptor = RUNTIME_SKELETONS.get(entityType);
+            if (!oursAlready && descriptor != null) {
+                try {
+                    ResourceLocation runtimeArmatureId = new ResourceLocation(
+                            EpicFightPostureIntegration.MODID,
+                            "runtime_armature/gecko/" + entityId.getNamespace() + "/" + entityId.getPath()
+                    );
+                    HumanoidArmature targetArmature = HumanoidArmatureFactory.create(
+                            runtimeArmatureId.toString(),
+                            descriptor,
+                            Armatures.BIPED.get()
+                    );
+                    armatureOverride = HumanoidArmatureFactory.accessor(runtimeArmatureId, targetArmature);
+                    retargetedArmatures++;
+                } catch (Throwable throwable) {
+                    LOGGER.warn(
+                            "EFPI could not create a target-proportioned humanoid armature for {}; "
+                                    + "falling back to the canonical BIPED armature",
+                            entityId,
+                            throwable
+                    );
+                }
+            }
+
             if (!oursAlready && !VanillaHumanoidCompat.registerDiscoveredAtRuntime(
                     entityType,
-                    VanillaHumanoidCompat.CompatibilityKind.GECKOLIB_HUMANOID)) {
+                    VanillaHumanoidCompat.CompatibilityKind.GECKOLIB_HUMANOID,
+                    armatureOverride)) {
                 continue;
             }
             patched++;
@@ -198,8 +229,9 @@ public final class GeckoHumanoidClientCompat {
         }
 
         LOGGER.info(
-                "EFPI auto-detected {} GeckoLib humanoid entity type(s): {} patched, {} special renderer(s), {} verified",
-                entityTypes.size(), patched, rendered, verified.size()
+                "EFPI auto-detected {} GeckoLib humanoid entity type(s): {} patched, {} special renderer(s), "
+                        + "{} target-proportioned armature(s), {} verified",
+                entityTypes.size(), patched, rendered, retargetedArmatures, verified.size()
         );
         return Set.copyOf(verified);
     }
