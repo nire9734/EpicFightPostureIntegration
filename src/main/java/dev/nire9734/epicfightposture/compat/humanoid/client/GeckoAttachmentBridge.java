@@ -18,6 +18,7 @@ import software.bernie.geckolib.core.state.BoneSnapshot;
 import software.bernie.geckolib.model.GeoModel;
 import software.bernie.geckolib.renderer.GeoEntityRenderer;
 import software.bernie.geckolib.renderer.layer.GeoRenderLayer;
+import software.bernie.geckolib.renderer.layer.ItemArmorGeoLayer;
 import software.bernie.geckolib.util.RenderUtils;
 import yesman.epicfight.api.animation.Joint;
 import yesman.epicfight.api.animation.JointTransform;
@@ -36,23 +37,24 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Bridges GeckoLib attachment rendering onto Epic Fight's final BIPED pose.
  *
- * <p>Normal Gecko render layers are replayed with the exact matrix composition
- * used by {@code SkinnedMesh.drawPosed}:</p>
+ * <p>Most Gecko render layers are rigid attachments, so they can be replayed
+ * directly from the exact Epic Fight skin matrix:</p>
  *
  * <pre>
  * attachment = (poseMatrix * joint.toOrigin) * geoBoneBind
  * </pre>
  *
- * <p>This is the precise path for held items, armor, hats and normal per-bone
- * layers. Some mods also draw attachments <em>after</em> their Gecko renderer's
- * {@code super.render()} call by directly reading a source {@link GeoBone} and
- * calling {@link RenderUtils#prepMatrixForBone}. Those callbacks happen after
- * Epic Fight's Gecko pre-render cancellation has returned, so the source bone
- * would otherwise stay in bind/stale pose. For that second path only, semantic
- * anchor bones are also synchronized back to the current EF local pose after
- * the matrix-based layer replay. This keeps hard-coded capes/back attachments
- * following the body without sacrificing the exact matrix path used by normal
- * Gecko render layers.</p>
+ * <p>{@link ItemArmorGeoLayer} is different. It does not merely draw geometry at
+ * the current matrix: it reads the live {@link GeoBone} pivot/rotation and uses
+ * those values to rebuild a HumanoidModel/GeoArmorRenderer pose. Feeding it an
+ * exact EF matrix while leaving the source bones in bind pose makes armor and
+ * robe pieces orbit away from the body during large animations. Armor layers
+ * are therefore replayed through Gecko's normal recursive bone-matrix path after
+ * the semantic source bones have been projected onto the current EF local pose.
+ * This is framework-level behaviour and does not depend on any mob or mod id.</p>
+ *
+ * <p>Renderer-specific post-super drawing (for example Iron's cape path) also
+ * consumes the synchronized source bones after this method returns.</p>
  */
 @SuppressWarnings({"rawtypes", "unchecked"})
 final class GeckoAttachmentBridge {
@@ -99,7 +101,7 @@ final class GeckoAttachmentBridge {
 
             // Gecko's normal render is cancelled while EF overrideRender() is
             // active, so source bones can contain an arbitrary stale animation.
-            // Start from the model bind snapshot for deterministic matrices.
+            // Start from authored bind state so the exact-matrix pass is stable.
             for (GeoBone top : bakedModel.topLevelBones()) {
                 resetTreeToInitial(top);
             }
@@ -108,7 +110,6 @@ final class GeckoAttachmentBridge {
             OpenMatrix4f[] poseMatrices = armature.getPoseMatrices();
             List<GeoRenderLayer> layers = new ArrayList<>(geoRenderer.getRenderLayers());
 
-            // Path 1: normal Gecko per-bone layers. Keep these fully matrix based.
             if (!layers.isEmpty()) {
                 ResourceLocation texture = geoRenderer.getTextureLocation(animatable);
                 RenderType renderType = geoRenderer.getRenderType(animatable, texture, bufferSource, partialTicks);
@@ -129,32 +130,72 @@ final class GeckoAttachmentBridge {
                 }
 
                 if (renderType != null && baseBuffer != null) {
-                    PoseStack bindStack = new PoseStack();
-                    for (GeoBone top : bakedModel.topLevelBones()) {
-                        replayBoneLayers(
-                                top,
-                                -1,
-                                armature,
-                                poseMatrices,
-                                layers,
-                                animatable,
-                                renderType,
-                                bufferSource,
-                                baseBuffer,
-                                poseStack,
-                                bindStack,
-                                packedLight,
-                                packedOverlay,
-                                partialTicks
-                        );
+                    List<GeoRenderLayer> exactLayers = new ArrayList<>();
+                    List<GeoRenderLayer> sourcePoseLayers = new ArrayList<>();
+                    for (GeoRenderLayer layer : layers) {
+                        if (layer instanceof ItemArmorGeoLayer) {
+                            sourcePoseLayers.add(layer);
+                        } else {
+                            exactLayers.add(layer);
+                        }
+                    }
+
+                    // Ordinary held-item/emissive/bone layers remain on the exact
+                    // EF skin-matrix path used before this fix.
+                    if (!exactLayers.isEmpty()) {
+                        PoseStack bindStack = new PoseStack();
+                        for (GeoBone top : bakedModel.topLevelBones()) {
+                            replayBoneLayersExact(
+                                    top,
+                                    -1,
+                                    armature,
+                                    poseMatrices,
+                                    exactLayers,
+                                    animatable,
+                                    renderType,
+                                    bufferSource,
+                                    baseBuffer,
+                                    poseStack,
+                                    bindStack,
+                                    packedLight,
+                                    packedOverlay,
+                                    partialTicks
+                            );
+                        }
+                    }
+
+                    // Armor rendering is pose-sensitive: ItemArmorGeoLayer reads
+                    // live GeoBone Euler/pivot values to position ModelParts and
+                    // GeoArmorRenderer models. Reconstruct the source skeleton's
+                    // current local pose first, then replay the armor layer in the
+                    // same recursive coordinate system Gecko normally supplies.
+                    if (!sourcePoseLayers.isEmpty()) {
+                        Pose efPose = entityPatch.getAnimator().getPose(partialTicks);
+                        for (GeoBone top : bakedModel.topLevelBones()) {
+                            syncPostRenderAnchors(top, -1, armature, efPose);
+                        }
+                        for (GeoBone top : bakedModel.topLevelBones()) {
+                            replayBoneLayersFromSourcePose(
+                                    top,
+                                    sourcePoseLayers,
+                                    animatable,
+                                    renderType,
+                                    bufferSource,
+                                    baseBuffer,
+                                    poseStack,
+                                    packedLight,
+                                    packedOverlay,
+                                    partialTicks
+                            );
+                        }
                     }
                 }
             }
 
-            // Path 2: renderer-specific post-super drawing. Iron's HumanoidRenderer,
-            // for example, reads the live "torso" GeoBone and then draws its
-            // ArmorCapeLayer after GeoEntityRenderer.render() returns. Leave the
-            // semantic source anchors synchronized for the remainder of that call.
+            // Leave semantic source anchors synchronized for renderer-specific
+            // post-super drawing (Iron's hard-coded cape is one example). If an
+            // armor layer already did this above, applying the same absolute
+            // snapshot+delta projection again is idempotent.
             Pose efPose = entityPatch.getAnimator().getPose(partialTicks);
             for (GeoBone top : bakedModel.topLevelBones()) {
                 syncPostRenderAnchors(top, -1, armature, efPose);
@@ -171,7 +212,7 @@ final class GeckoAttachmentBridge {
         }
     }
 
-    private static void replayBoneLayers(
+    private static void replayBoneLayersExact(
             GeoBone bone,
             int inheritedJoint,
             Armature armature,
@@ -235,7 +276,7 @@ final class GeckoAttachmentBridge {
 
         if (!bone.isHidingChildren()) {
             for (GeoBone child : bone.getChildBones()) {
-                replayBoneLayers(
+                replayBoneLayersExact(
                         child,
                         jointId,
                         armature,
@@ -258,8 +299,64 @@ final class GeckoAttachmentBridge {
     }
 
     /**
-     * Synchronizes only semantic BIPED transition bones for renderer code that
-     * directly consumes GeoBones after Gecko's cancelled render has returned.
+     * Replays layers using the same cumulative source-bone transform contract as
+     * GeoRenderer.renderRecursively. This is required for layers that inspect the
+     * live GeoBone state in addition to the PoseStack, most notably armor.
+     */
+    private static void replayBoneLayersFromSourcePose(
+            GeoBone bone,
+            List<GeoRenderLayer> layers,
+            GeoAnimatable animatable,
+            RenderType renderType,
+            MultiBufferSource bufferSource,
+            VertexConsumer baseBuffer,
+            PoseStack poseStack,
+            int packedLight,
+            int packedOverlay,
+            float partialTicks) {
+        if (bone == null) {
+            return;
+        }
+
+        poseStack.pushPose();
+        RenderUtils.prepMatrixForBone(poseStack, bone);
+
+        for (GeoRenderLayer layer : layers) {
+            layer.renderForBone(
+                    poseStack,
+                    animatable,
+                    bone,
+                    renderType,
+                    bufferSource,
+                    baseBuffer,
+                    partialTicks,
+                    packedLight,
+                    packedOverlay
+            );
+        }
+
+        if (!bone.isHidingChildren()) {
+            for (GeoBone child : bone.getChildBones()) {
+                replayBoneLayersFromSourcePose(
+                        child,
+                        layers,
+                        animatable,
+                        renderType,
+                        bufferSource,
+                        baseBuffer,
+                        poseStack,
+                        packedLight,
+                        packedOverlay,
+                        partialTicks
+                );
+            }
+        }
+
+        poseStack.popPose();
+    }
+
+    /**
+     * Synchronizes only semantic BIPED transition bones for source-side code.
      * Unknown decoration children retain their authored local bind transform and
      * therefore inherit the nearest synchronized semantic parent normally.
      */
