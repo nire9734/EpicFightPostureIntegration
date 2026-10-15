@@ -176,9 +176,10 @@ public final class GeckoArmorSkinnedMeshBridge {
                 actualSlot,
                 reportedSlot,
                 armorRenderer.getClass(),
-                sourceBone.getName(),
+                GeckoArmorCacheKey.sourceIdentity(sourceBone),
                 selectedRegion,
-                partTransform
+                partTransform,
+                prepared.modelState
         );
         BakedArmor bakedArmor = cachedArmor(
                 prepared.bakedModel,
@@ -294,9 +295,53 @@ public final class GeckoArmorSkinnedMeshBridge {
                 renderType = RenderType.armorCutoutNoCull(texture);
             }
 
-            return new PreparedArmor(bakedModel, texture, renderType);
+            return new PreparedArmor(
+                    bakedModel,
+                    texture,
+                    renderType,
+                    armorModelState(bakedModel)
+            );
         } catch (Throwable ignored) {
             return null;
+        }
+    }
+
+    private static GeckoArmorCacheKey.ModelState armorModelState(BakedGeoModel model) {
+        List<GeckoArmorCacheKey.BoneState> states = new ArrayList<>();
+        if (model != null && model.topLevelBones() != null) {
+            for (GeoBone root : model.topLevelBones()) {
+                collectArmorModelState(root, states);
+            }
+        }
+        return GeckoArmorCacheKey.modelState(states);
+    }
+
+    private static void collectArmorModelState(
+            GeoBone bone,
+            List<GeckoArmorCacheKey.BoneState> states) {
+        if (bone == null) {
+            return;
+        }
+        states.add(GeckoArmorCacheKey.boneState(
+                bone.isHidden(),
+                bone.isHidingChildren(),
+                bone.getPosX(),
+                bone.getPosY(),
+                bone.getPosZ(),
+                bone.getRotX(),
+                bone.getRotY(),
+                bone.getRotZ(),
+                bone.getScaleX(),
+                bone.getScaleY(),
+                bone.getScaleZ(),
+                bone.getPivotX(),
+                bone.getPivotY(),
+                bone.getPivotZ()
+        ));
+        if (bone.getChildBones() != null) {
+            for (GeoBone child : bone.getChildBones()) {
+                collectArmorModelState(child, states);
+            }
         }
     }
 
@@ -312,7 +357,7 @@ public final class GeckoArmorSkinnedMeshBridge {
                     CACHE.computeIfAbsent(model, ignored -> new HashMap<>());
             BakedArmor cached = meshes.get(key);
             if (cached != null) {
-                return cached.supported ? cached : null;
+                return cached;
             }
 
             BakedArmor baked = bakeArmor(
@@ -322,8 +367,13 @@ public final class GeckoArmorSkinnedMeshBridge {
                     skeleton,
                     fitScale
             );
-            meshes.put(key, baked);
-            return baked.supported ? baked : null;
+            if (baked.supported) {
+                meshes.put(key, baked);
+                return baked;
+            }
+            // Unsupported can be transient (visibility/model state can change on a
+            // later callback), so never make a failed conversion sticky.
+            return null;
         }
     }
 
@@ -711,7 +761,8 @@ public final class GeckoArmorSkinnedMeshBridge {
     private record PreparedArmor(
             BakedGeoModel bakedModel,
             ResourceLocation texture,
-            RenderType renderType) {
+            RenderType renderType,
+            GeckoArmorCacheKey.ModelState modelState) {
     }
 
     private record MeshCacheKey(
@@ -719,9 +770,10 @@ public final class GeckoArmorSkinnedMeshBridge {
             EquipmentSlot actualSlot,
             EquipmentSlot reportedSlot,
             Class<?> rendererClass,
-            String sourceBoneName,
+            GeckoArmorCacheKey.SourceIdentity sourceBone,
             ArmorRegion region,
-            PartTransformKey partTransform) {
+            PartTransformKey partTransform,
+            GeckoArmorCacheKey.ModelState modelState) {
     }
 
     private record PartTransformKey(

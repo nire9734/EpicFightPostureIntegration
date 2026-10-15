@@ -13,6 +13,7 @@ import net.minecraft.client.renderer.entity.EntityRendererProvider;
 import net.minecraft.client.renderer.entity.LivingEntityRenderer;
 import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import yesman.epicfight.api.asset.AssetAccessor;
 import yesman.epicfight.api.asset.SelfAccessor;
@@ -23,6 +24,7 @@ import yesman.epicfight.client.renderer.patched.entity.PatchedEntityRenderer;
 import yesman.epicfight.world.capabilities.entitypatch.LivingEntityPatch;
 
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.WeakHashMap;
 
@@ -52,8 +54,12 @@ public final class SpecialStateGeckoRenderer extends PatchedEntityRenderer<
      * of the entity lifecycle. Cache a native HumanoidModel conversion for that
      * runtime source renderer instead of drawing the prepared Gecko mesh with an
      * unrelated vanilla texture/layer contract.
+     *
+     * <p>The same HumanoidModel instance can legally be shared by more than one
+     * EntityType. The inner map therefore keeps the renderer's EntityType-specific
+     * layer/setup contract from leaking across those entities.</p>
      */
-    private static final Map<HumanoidModel<?>, SpecialStateHumanoidRenderer> HUMANOID_FALLBACKS =
+    private static final Map<HumanoidModel<?>, Map<EntityType<?>, SpecialStateHumanoidRenderer>> HUMANOID_FALLBACKS =
             Collections.synchronizedMap(new WeakHashMap<>());
 
     private final AssetAccessor<SkinnedMesh> mesh;
@@ -171,7 +177,8 @@ public final class SpecialStateGeckoRenderer extends PatchedEntityRenderer<
 
         // Some Gecko renderers draw attachments after their super.render()
         // returns instead of using GeoRenderLayer. Queue the exact Chest skin
-        // matrix + authored torso local bind for that immediate post-render call.
+        // matrix + authored semantic Chest source local bind for that immediate
+        // post-render call.
         GeckoPostRenderMatrixOverride.armTorsoFromEpicFight(entity, entitypatch, renderer);
 
         poseStack.popPose();
@@ -212,7 +219,10 @@ public final class SpecialStateGeckoRenderer extends PatchedEntityRenderer<
             LivingEntity entity,
             HumanoidModel<?> humanoidModel) {
         synchronized (HUMANOID_FALLBACKS) {
-            SpecialStateHumanoidRenderer cached = HUMANOID_FALLBACKS.get(humanoidModel);
+            EntityType<?> entityType = entity.getType();
+            Map<EntityType<?>, SpecialStateHumanoidRenderer> byType =
+                    HUMANOID_FALLBACKS.computeIfAbsent(humanoidModel, ignored -> new HashMap<>());
+            SpecialStateHumanoidRenderer cached = byType.get(entityType);
             if (cached != null) {
                 return cached;
             }
@@ -223,7 +233,7 @@ public final class SpecialStateGeckoRenderer extends PatchedEntityRenderer<
                     return null;
                 }
 
-                ResourceLocation entityId = net.minecraft.world.entity.EntityType.getKey(entity.getType());
+                ResourceLocation entityId = EntityType.getKey(entityType);
                 String namespace = entityId == null ? EpicFightPostureIntegration.MODID : entityId.getNamespace();
                 String path = entityId == null ? "unknown" : entityId.getPath();
                 ResourceLocation runtimeMeshId = new ResourceLocation(
@@ -234,10 +244,10 @@ public final class SpecialStateGeckoRenderer extends PatchedEntityRenderer<
                 AssetAccessor<SkinnedMesh> accessor = SelfAccessor.create(runtimeMeshId, baked);
                 SpecialStateHumanoidRenderer created = new SpecialStateHumanoidRenderer(
                         this.context,
-                        entity.getType(),
+                        entityType,
                         accessor
                 );
-                HUMANOID_FALLBACKS.put(humanoidModel, created);
+                byType.put(entityType, created);
                 return created;
             } catch (Throwable ignored) {
                 return null;
