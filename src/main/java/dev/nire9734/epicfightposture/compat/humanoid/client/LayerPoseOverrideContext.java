@@ -8,7 +8,9 @@ import dev.nire9734.epicfightposture.compat.humanoid.rig.HumanoidSkeletonResolve
 import dev.nire9734.epicfightposture.compat.humanoid.rig.SourceNodeSnapshot;
 import dev.nire9734.epicfightposture.compat.humanoid.rig.SourceRigSnapshot;
 import dev.nire9734.epicfightposture.compat.humanoid.skeleton.HumanoidSkeletonDescriptor;
+import dev.nire9734.epicfightposture.compat.humanoid.skeleton.JointOrigin;
 import dev.nire9734.epicfightposture.compat.humanoid.skeleton.SkeletonKey;
+import dev.nire9734.epicfightposture.compat.humanoid.skeleton.SkeletonVec3;
 import net.minecraft.client.model.EntityModel;
 import net.minecraft.client.model.HierarchicalModel;
 import net.minecraft.client.model.geom.ModelPart;
@@ -364,10 +366,11 @@ public final class LayerPoseOverrideContext {
                 continue;
             }
 
-            HumanoidSkinWeightResolver.SkinWeights skin = weights.weights(
-                    node.id(),
-                    node.bindModelTransform().position()
-            );
+            boolean directSemanticSource = analysis.candidates().values().stream().anyMatch(candidate ->
+                    candidate.origin() == JointOrigin.SOURCE
+                            && candidate.sourceNodeId().filter(node.id()::equals).isPresent());
+            SkeletonVec3 anchorPosition = rigidAnchorPosition(node, directSemanticSource);
+            HumanoidSkinWeightResolver.SkinWeights skin = weights.weights(node.id(), anchorPosition);
             int jointId = dominantJoint(skin);
             planned.add(new PlannedPart(
                     new WeakReference<>(sourcePart),
@@ -378,6 +381,15 @@ public final class LayerPoseOverrideContext {
             ));
         }
         return planned.isEmpty() ? ModelPlan.EMPTY : new ModelPlan(List.copyOf(planned));
+    }
+
+    static SkeletonVec3 rigidAnchorPosition(SourceNodeSnapshot node, boolean directSemanticSource) {
+        if (directSemanticSource) {
+            return node.bindModelTransform().position();
+        }
+        return node.geometryBounds()
+                .map(bounds -> bounds.center())
+                .orElse(node.bindModelTransform().position());
     }
 
     private static int dominantJoint(HumanoidSkinWeightResolver.SkinWeights weights) {
