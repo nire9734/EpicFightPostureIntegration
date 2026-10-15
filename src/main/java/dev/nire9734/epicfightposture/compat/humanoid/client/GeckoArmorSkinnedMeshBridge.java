@@ -67,14 +67,13 @@ import java.util.function.Supplier;
  * mixin first runs GeckoLib's own prepModelPartForRender against the source bone's
  * bind rotation. We then let the concrete GeoArmorRenderer apply that fitted
  * ModelPart to its GeoBones, preserve applyBoneVisibilityByPart(), bake only the
- * selected semantic region, and skin it with the entity's existing EF armature.</p>
+ * selected semantic region, and skin it with the entity's existing EF armature.
+ * Armor vertices use {@link HumanoidSkinWeightResolver#semanticWeights} so the
+ * deformation transition is exactly the shared body/attachment contract.</p>
  */
 @SuppressWarnings({"rawtypes", "unchecked"})
 public final class GeckoArmorSkinnedMeshBridge {
     private static final float EPSILON = 1.0E-6F;
-    private static final float TRANSITION_SHORT_SEGMENT_FACTOR = 0.16F;
-    private static final float MIN_TRANSITION_HALF_WIDTH = 0.025F;
-    private static final float MAX_TRANSITION_HALF_WIDTH = 0.12F;
 
     private static final MeshPartDefinition PART = new RuntimeArmorPart("gecko_armor");
     private static final ThreadLocal<Frame> ACTIVE = new ThreadLocal<>();
@@ -132,8 +131,6 @@ public final class GeckoArmorSkinnedMeshBridge {
             return false;
         }
 
-        // Custom armor render layers may add passes that cannot yet be represented
-        // by a single EF mesh. Leave those on Gecko's original rendering path.
         if (armorRenderer.getRenderLayers() != null && !armorRenderer.getRenderLayers().isEmpty()) {
             return false;
         }
@@ -279,17 +276,11 @@ public final class GeckoArmorSkinnedMeshBridge {
                 return null;
             }
 
-            // Remove any item animation left on the shared baked model, then
-            // reproduce GeoArmorRenderer.preRender's base-model fitting without
-            // running the armor's own animation controller.
             GeckoBindPoseTransforms.resetToInitial(bakedModel);
             invoker.efpi$applyBaseModel(armorModel);
             invoker.efpi$grabRelevantBones(bakedModel);
             invoker.efpi$applyBaseTransformations(armorModel);
 
-            // This is the important distinction from the previous slot-wide
-            // attempt: preserve the concrete ItemArmorGeoLayer callback's exact
-            // ModelPart selection. Subclass visibility overrides remain active.
             armorRenderer.applyBoneVisibilityByPart(reportedSlot, armorPart, armorModel);
 
             ResourceLocation texture = rawGeoRenderer.getTextureLocation(armorAnimatable);
@@ -461,7 +452,11 @@ public final class GeckoArmorSkinnedMeshBridge {
                         new Vector3f(vertex.position())
                 );
                 HumanoidSkinWeightResolver.SkinWeights weights =
-                        weightsFor(region, skeleton, position);
+                        HumanoidSkinWeightResolver.semanticWeights(
+                                skeleton,
+                                semanticOwner(region),
+                                position
+                        );
 
                 vertices.add(new SingleGroupVertexBuilder()
                         .setPosition(new Vec3f(position.x(), position.y(), position.z()))
@@ -486,112 +481,15 @@ public final class GeckoArmorSkinnedMeshBridge {
         stack.popPose();
     }
 
-    private static HumanoidSkinWeightResolver.SkinWeights weightsFor(
-            ArmorRegion region,
-            HumanoidSkeletonDescriptor skeleton,
-            SkeletonVec3 position) {
+    private static HumanoidJoint semanticOwner(ArmorRegion region) {
         return switch (region) {
-            case HEAD -> HumanoidSkinWeightResolver.SkinWeights.rigid(
-                    HumanoidSkinWeightResolver.HEAD);
-            case BODY -> HumanoidSkinWeightResolver.torsoWeights(skeleton, position);
-            case RIGHT_ARM -> chainWeights(
-                    skeleton,
-                    position,
-                    HumanoidJoint.SHOULDER_RIGHT,
-                    HumanoidJoint.ELBOW_RIGHT,
-                    HumanoidJoint.WRIST_RIGHT,
-                    HumanoidSkinWeightResolver.ARM_RIGHT,
-                    HumanoidSkinWeightResolver.HAND_RIGHT
-            );
-            case LEFT_ARM -> chainWeights(
-                    skeleton,
-                    position,
-                    HumanoidJoint.SHOULDER_LEFT,
-                    HumanoidJoint.ELBOW_LEFT,
-                    HumanoidJoint.WRIST_LEFT,
-                    HumanoidSkinWeightResolver.ARM_LEFT,
-                    HumanoidSkinWeightResolver.HAND_LEFT
-            );
-            case RIGHT_LEG -> chainWeights(
-                    skeleton,
-                    position,
-                    HumanoidJoint.HIP_RIGHT,
-                    HumanoidJoint.KNEE_RIGHT,
-                    HumanoidJoint.ANKLE_RIGHT,
-                    HumanoidSkinWeightResolver.THIGH_RIGHT,
-                    HumanoidSkinWeightResolver.LEG_RIGHT
-            );
-            case LEFT_LEG -> chainWeights(
-                    skeleton,
-                    position,
-                    HumanoidJoint.HIP_LEFT,
-                    HumanoidJoint.KNEE_LEFT,
-                    HumanoidJoint.ANKLE_LEFT,
-                    HumanoidSkinWeightResolver.THIGH_LEFT,
-                    HumanoidSkinWeightResolver.LEG_LEFT
-            );
+            case HEAD -> HumanoidJoint.HEAD;
+            case BODY -> HumanoidJoint.CHEST;
+            case RIGHT_ARM -> HumanoidJoint.SHOULDER_RIGHT;
+            case LEFT_ARM -> HumanoidJoint.SHOULDER_LEFT;
+            case RIGHT_LEG -> HumanoidJoint.HIP_RIGHT;
+            case LEFT_LEG -> HumanoidJoint.HIP_LEFT;
         };
-    }
-
-    private static HumanoidSkinWeightResolver.SkinWeights chainWeights(
-            HumanoidSkeletonDescriptor skeleton,
-            SkeletonVec3 position,
-            HumanoidJoint startJoint,
-            HumanoidJoint bendJoint,
-            HumanoidJoint endJoint,
-            int proximalJoint,
-            int distalJoint) {
-        SkeletonVec3 start = skeleton.bindModelPosition(startJoint);
-        SkeletonVec3 bend = skeleton.bindModelPosition(bendJoint);
-        SkeletonVec3 end = skeleton.bindModelPosition(endJoint);
-
-        SkeletonVec3 axis = end.subtract(start);
-        float denominator = axis.lengthSquared();
-        if (denominator <= EPSILON) {
-            return HumanoidSkinWeightResolver.SkinWeights.rigid(proximalJoint);
-        }
-
-        float t = dot(position.subtract(start), axis) / denominator;
-        float bendT = clamp01(dot(bend.subtract(start), axis) / denominator);
-        if (!Float.isFinite(t) || !Float.isFinite(bendT)) {
-            return HumanoidSkinWeightResolver.SkinWeights.rigid(proximalJoint);
-        }
-
-        float upperLength = start.distanceTo(bend);
-        float lowerLength = bend.distanceTo(end);
-        float chainLength = upperLength + lowerLength;
-        float halfWidth = chainLength <= EPSILON
-                ? MIN_TRANSITION_HALF_WIDTH
-                : clamp(
-                        (Math.min(upperLength, lowerLength) / chainLength)
-                                * TRANSITION_SHORT_SEGMENT_FACTOR,
-                        MIN_TRANSITION_HALF_WIDTH,
-                        MAX_TRANSITION_HALF_WIDTH
-                );
-
-        float lowerEdge = bendT - halfWidth;
-        float upperEdge = bendT + halfWidth;
-        float distalWeight;
-        if (t <= lowerEdge) {
-            distalWeight = 0.0F;
-        } else if (t >= upperEdge) {
-            distalWeight = 1.0F;
-        } else {
-            distalWeight = clamp01((t - lowerEdge) / Math.max(EPSILON, upperEdge - lowerEdge));
-        }
-
-        if (distalWeight <= EPSILON) {
-            return HumanoidSkinWeightResolver.SkinWeights.rigid(proximalJoint);
-        }
-        if (distalWeight >= 1.0F - EPSILON) {
-            return HumanoidSkinWeightResolver.SkinWeights.rigid(distalJoint);
-        }
-        return HumanoidSkinWeightResolver.SkinWeights.blend(
-                proximalJoint,
-                distalJoint,
-                1.0F - distalWeight,
-                distalWeight
-        );
     }
 
     private static ArmorRegion regionForModelPart(HumanoidModel<?> model, ModelPart part) {
@@ -710,18 +608,6 @@ public final class GeckoArmorSkinnedMeshBridge {
         list.add(value);
         list.add(value);
         list.add(value);
-    }
-
-    private static float dot(SkeletonVec3 a, SkeletonVec3 b) {
-        return a.x() * b.x() + a.y() * b.y() + a.z() * b.z();
-    }
-
-    private static float clamp01(float value) {
-        return clamp(value, 0.0F, 1.0F);
-    }
-
-    private static float clamp(float value, float min, float max) {
-        return Math.max(min, Math.min(max, value));
     }
 
     private static boolean finitePositive(float value) {
