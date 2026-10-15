@@ -3,7 +3,7 @@ package dev.nire9734.epicfightposture.compat.humanoid.client;
 import com.mojang.logging.LogUtils;
 import dev.nire9734.epicfightposture.EpicFightPostureIntegration;
 import dev.nire9734.epicfightposture.compat.humanoid.VanillaHumanoidCompat;
-import dev.nire9734.epicfightposture.compat.humanoid.retarget.HumanoidArmatureFactory;
+import dev.nire9734.epicfightposture.compat.humanoid.runtime.epicfight.HumanoidArmatureFactory;
 import dev.nire9734.epicfightposture.compat.humanoid.skeleton.HumanoidSkeletonDescriptor;
 import net.minecraft.client.renderer.entity.EntityRenderer;
 import net.minecraft.resources.ResourceLocation;
@@ -129,7 +129,7 @@ public final class HumanoidBackendRegistry {
             }
 
             AssetAccessor<? extends Armature> armatureOverride = null;
-            if (!oursAlready && prepared.skeleton().isPresent()) {
+            if (prepared.skeleton().isPresent()) {
                 HumanoidSkeletonDescriptor descriptor = prepared.skeleton().get();
                 try {
                     ResourceLocation runtimeArmatureId = new ResourceLocation(
@@ -145,18 +145,37 @@ public final class HumanoidBackendRegistry {
                     armatureOverride = HumanoidArmatureFactory.accessor(runtimeArmatureId, targetArmature);
                     retargetedArmatures++;
                 } catch (Throwable throwable) {
+                    if (oursAlready) {
+                        VanillaHumanoidCompat.rejectRuntimeCompatibility(entityType);
+                    }
                     LOGGER.warn(
-                            "EFPI could not create a target-proportioned humanoid armature for {}; falling back to canonical BIPED",
+                            "EFPI rejected automatic humanoid compatibility for {} because target-proportioned runtime armature generation failed; canonical BIPED fallback would not match the prepared mesh/descriptor",
                             entityId,
                             throwable
                     );
+                    continue;
                 }
             }
 
-            if (!oursAlready && !VanillaHumanoidCompat.registerDiscoveredAtRuntime(
-                    entityType,
-                    VanillaHumanoidCompat.CompatibilityKind.GECKOLIB_HUMANOID,
-                    armatureOverride)) {
+            boolean runtimeReady;
+            if (oursAlready) {
+                runtimeReady = armatureOverride == null
+                        || VanillaHumanoidCompat.refreshRuntimeArmature(
+                                entityType,
+                                VanillaHumanoidCompat.CompatibilityKind.GECKOLIB_HUMANOID,
+                                armatureOverride
+                        );
+            } else {
+                runtimeReady = VanillaHumanoidCompat.registerDiscoveredAtRuntime(
+                        entityType,
+                        VanillaHumanoidCompat.CompatibilityKind.GECKOLIB_HUMANOID,
+                        armatureOverride
+                );
+            }
+            if (!runtimeReady) {
+                if (oursAlready) {
+                    VanillaHumanoidCompat.rejectRuntimeCompatibility(entityType);
+                }
                 continue;
             }
 

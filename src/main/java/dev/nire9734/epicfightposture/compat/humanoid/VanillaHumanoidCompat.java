@@ -34,6 +34,7 @@ public final class VanillaHumanoidCompat {
     private static volatile Map<ResourceLocation, CompatibilityKind> cachedDetected = Map.of();
     private static volatile Set<ResourceLocation> externallyPatched = Set.of();
     private static final Map<ResourceLocation, CompatibilityKind> registeredByEfpi = new HashMap<>();
+    private static final Set<ResourceLocation> runtimeRejected = new HashSet<>();
 
     public enum CompatibilityKind {
         VANILLA_HUMANOID,
@@ -60,6 +61,7 @@ public final class VanillaHumanoidCompat {
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public static synchronized void onEntityPatchRegistry(EntityPatchRegistryEvent event) {
         registeredByEfpi.clear();
+        runtimeRejected.clear();
 
         // Snapshot everything that already owns an Epic Fight patch before EFPI
         // adds its lightweight compatibility patches. At LOWEST priority this also
@@ -109,7 +111,7 @@ public final class VanillaHumanoidCompat {
 
     /** Returns whether server-authoritative settings permit this EFPI-owned lightweight patch. */
     public static synchronized boolean isCompatibilityEnabled(ResourceLocation id) {
-        if (id == null) {
+        if (id == null || runtimeRejected.contains(id)) {
             return false;
         }
         CompatibilityKind kind = registeredByEfpi.get(id);
@@ -153,6 +155,7 @@ public final class VanillaHumanoidCompat {
         try {
             registerRuntime(entityType, kind, armatureOverride);
             registeredByEfpi.put(id, kind);
+            runtimeRejected.remove(id);
 
             Map<ResourceLocation, CompatibilityKind> updated = new HashMap<>(cachedDetected);
             CompatibilityKind previous = updated.put(id, kind);
@@ -165,6 +168,54 @@ public final class VanillaHumanoidCompat {
         } catch (Throwable throwable) {
             LOGGER.warn("Failed to install runtime automatic compatibility patch for {}", id, throwable);
             return false;
+        }
+    }
+
+    /**
+     * Refreshes only the runtime armature mapping for an EFPI-owned patch.
+     *
+     * <p>Renderer/model reloads can rebuild a target descriptor without requiring
+     * a second EntityPatchProvider registration. Keeping those operations separate
+     * avoids a new mesh/descriptor being paired with the armature from an older scan.</p>
+     */
+    public static synchronized boolean refreshRuntimeArmature(
+            EntityType<?> entityType,
+            CompatibilityKind kind,
+            AssetAccessor<? extends Armature> armatureOverride) {
+        if (entityType == null || entityType == EntityType.PLAYER
+                || kind == null || armatureOverride == null) {
+            return false;
+        }
+
+        ResourceLocation id = EntityType.getKey(entityType);
+        if (id == null || externallyPatched.contains(id) || registeredByEfpi.get(id) != kind) {
+            return false;
+        }
+
+        try {
+            Armatures.registerEntityTypeArmature(entityType, armatureOverride);
+            runtimeRejected.remove(id);
+            return true;
+        } catch (Throwable throwable) {
+            runtimeRejected.add(id);
+            LOGGER.warn("Failed to refresh runtime humanoid armature for {}; compatibility is disabled until a later successful scan",
+                    id, throwable);
+            return false;
+        }
+    }
+
+    /**
+     * Leaves an already-installed EFPI patch physically registered but inert.
+     * This is used when a later renderer scan cannot safely rebuild the matching
+     * runtime armature. Retaining ownership lets a subsequent scan retry cleanly.
+     */
+    public static synchronized void rejectRuntimeCompatibility(EntityType<?> entityType) {
+        if (entityType == null) {
+            return;
+        }
+        ResourceLocation id = EntityType.getKey(entityType);
+        if (id != null && registeredByEfpi.containsKey(id)) {
+            runtimeRejected.add(id);
         }
     }
 

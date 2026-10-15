@@ -1,4 +1,4 @@
-package dev.nire9734.epicfightposture.compat.humanoid.retarget;
+package dev.nire9734.epicfightposture.compat.humanoid.runtime.epicfight;
 
 import dev.nire9734.epicfightposture.compat.humanoid.skeleton.HumanoidJoint;
 import dev.nire9734.epicfightposture.compat.humanoid.skeleton.HumanoidSkeletonDescriptor;
@@ -18,8 +18,9 @@ import java.util.Objects;
  * Builds a target-proportioned Epic Fight humanoid armature while preserving the
  * canonical BIPED joint names, ids, hierarchy, and model-space joint axes.
  *
- * <p>This is deliberately not wired into 2.0.0 compatibility yet. It is the
- * retargeting foundation for a later adapter migration.</p>
+ * <p>This class is intentionally kept in the Epic Fight runtime compatibility
+ * layer. The portable humanoid rig/skeleton/weight pipeline does not depend on
+ * Epic Fight armature or asset APIs.</p>
  */
 public final class HumanoidArmatureFactory {
     private static final float EPSILON = 1.0E-8F;
