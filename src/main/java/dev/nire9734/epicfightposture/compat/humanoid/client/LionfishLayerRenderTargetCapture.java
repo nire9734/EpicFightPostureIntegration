@@ -1,10 +1,13 @@
 package dev.nire9734.epicfightposture.compat.humanoid.client;
 
 import com.mojang.blaze3d.vertex.VertexConsumer;
+import com.mojang.logging.LogUtils;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
+import org.slf4j.Logger;
 
 import java.util.IdentityHashMap;
+import java.util.Map;
 
 /**
  * Captures the RenderType selected by a source RenderLayer without replacing its
@@ -17,6 +20,7 @@ import java.util.IdentityHashMap;
  * triangulated RenderType while preserving the layer's shader/texture/state.</p>
  */
 public final class LionfishLayerRenderTargetCapture {
+    private static final Logger LOGGER = LogUtils.getLogger();
     private static final ThreadLocal<Frame> ACTIVE = new ThreadLocal<>();
 
     static Scope open(MultiBufferSource bufferSource) {
@@ -34,10 +38,19 @@ public final class LionfishLayerRenderTargetCapture {
             RenderType renderType,
             VertexConsumer vertexConsumer) {
         Frame frame = ACTIVE.get();
-        if (frame == null
-                || frame.bufferSource != bufferSource
-                || renderType == null
-                || vertexConsumer == null) {
+        if (frame == null) {
+            return;
+        }
+        frame.recordCalls++;
+        if (frame.bufferSource != bufferSource) {
+            frame.mismatchedBufferSourceRecords++;
+            frame.lastMismatchedBufferSource = bufferSource;
+            frame.lastMismatchedRenderType = renderType;
+            frame.lastMismatchedConsumer = vertexConsumer;
+            return;
+        }
+        if (renderType == null || vertexConsumer == null) {
+            frame.invalidRecords++;
             return;
         }
         frame.renderTypes.put(vertexConsumer, renderType);
@@ -50,7 +63,46 @@ public final class LionfishLayerRenderTargetCapture {
             return null;
         }
         RenderType renderType = frame.renderTypes.get(vertexConsumer);
-        return renderType == null ? null : new Target(frame.bufferSource, renderType);
+        if (renderType != null) {
+            return new Target(frame.bufferSource, renderType);
+        }
+
+        LOGGER.info(
+                "[EFPI-DIAG] RENDER_TARGET_MISS consumer={} activeSource={} recordCalls={} captured={} invalidRecords={} mismatchRecords={} lastMismatchSource={} lastMismatchConsumer={} lastMismatchRenderType={} capturedTargets={}",
+                id(vertexConsumer),
+                id(frame.bufferSource),
+                frame.recordCalls,
+                frame.renderTypes.size(),
+                frame.invalidRecords,
+                frame.mismatchedBufferSourceRecords,
+                id(frame.lastMismatchedBufferSource),
+                id(frame.lastMismatchedConsumer),
+                String.valueOf(frame.lastMismatchedRenderType),
+                capturedTargets(frame)
+        );
+        return null;
+    }
+
+    private static String capturedTargets(Frame frame) {
+        if (frame.renderTypes.isEmpty()) {
+            return "[]";
+        }
+        StringBuilder result = new StringBuilder("[");
+        boolean first = true;
+        for (Map.Entry<VertexConsumer, RenderType> entry : frame.renderTypes.entrySet()) {
+            if (!first) result.append(';');
+            first = false;
+            result.append(id(entry.getKey())).append("->").append(entry.getValue());
+        }
+        return result.append(']').toString();
+    }
+
+    private static String id(Object value) {
+        if (value == null) {
+            return "null";
+        }
+        return value.getClass().getName() + "@"
+                + Integer.toHexString(System.identityHashCode(value));
     }
 
     record Target(MultiBufferSource bufferSource, RenderType renderType) {
@@ -84,6 +136,12 @@ public final class LionfishLayerRenderTargetCapture {
     private static final class Frame {
         private final MultiBufferSource bufferSource;
         private final IdentityHashMap<VertexConsumer, RenderType> renderTypes = new IdentityHashMap<>();
+        private int recordCalls;
+        private int invalidRecords;
+        private int mismatchedBufferSourceRecords;
+        private MultiBufferSource lastMismatchedBufferSource;
+        private RenderType lastMismatchedRenderType;
+        private VertexConsumer lastMismatchedConsumer;
 
         private Frame(MultiBufferSource bufferSource) {
             this.bufferSource = bufferSource;
