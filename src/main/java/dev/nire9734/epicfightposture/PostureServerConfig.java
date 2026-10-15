@@ -29,6 +29,7 @@ public final class PostureServerConfig {
     private static final ForgeConfigSpec.Builder BUILDER = new ForgeConfigSpec.Builder();
 
     public static final ForgeConfigSpec.DoubleValue GLOBAL_MULTIPLIER;
+    public static final ForgeConfigSpec.DoubleValue POSTURE_DAMAGE_MULTIPLIER;
     public static final ForgeConfigSpec.DoubleValue MINIMUM_POSTURE;
     public static final ForgeConfigSpec.BooleanValue USE_ARMOR_SCALING;
     public static final ForgeConfigSpec.ConfigValue<List<? extends String>> ENTITY_BLACKLIST;
@@ -55,6 +56,12 @@ public final class PostureServerConfig {
         GLOBAL_MULTIPLIER = BUILDER
                 .comment("Global maximum posture multiplier. 1.0 = default.")
                 .defineInRange("global_multiplier", 1.0D, 0.1D, 100.0D);
+        POSTURE_DAMAGE_MULTIPLIER = BUILDER
+                .comment(
+                        "Multiplier applied to Impact-derived posture damage from direct player attacks.",
+                        "Default: 0.55. Set to 0 to disable attack-based posture damage without disabling parry posture damage."
+                )
+                .defineInRange("posture_damage_multiplier", 0.55D, 0.0D, 100.0D);
         MINIMUM_POSTURE = BUILDER
                 .comment("Minimum maximum posture an eligible mob can have.")
                 .defineInRange("minimum_posture", 1.0D, 0.1D, 10000.0D);
@@ -97,6 +104,11 @@ public final class PostureServerConfig {
     public static float globalMultiplier() {
         Snapshot snapshot = effectiveClientSnapshot();
         return (snapshot != null ? snapshot.globalMultiplier() : GLOBAL_MULTIPLIER.get()).floatValue();
+    }
+
+    /** Server-side tuning for Impact-derived posture damage. */
+    public static float postureDamageMultiplier() {
+        return POSTURE_DAMAGE_MULTIPLIER.get().floatValue();
     }
 
     public static float minimumPosture() {

@@ -25,21 +25,15 @@ import java.util.WeakHashMap;
 
 /** Owns server-authoritative posture state for eligible Epic Fight entity patches. */
 public final class PostureManager {
-    private static final float HURT_IMPACT_MULTIPLIER = 0.55F;
-    private static final int REGEN_DELAY_TICKS = 150;
+    private static final int REGEN_DELAY_TICKS = 50;
     private static final int MAX_POSTURE_REFRESH_INTERVAL_TICKS = 10;
     private static final int BREAK_RECOVERY_TICKS = 60;
-    private static final float REGEN_FRACTION_PER_SECOND = 0.05F;
 
     private static final float EHP_REFERENCE_DAMAGE = 8.0F;
     private static final float EHP_REFERENCE_HEALTH = 20.0F;
     private static final float EHP_REFERENCE_POSTURE = 3.2F;
     private static final double EHP_EXPONENT = 0.7D;
     private static final float MAX_SAFE_POSTURE = 1_000_000.0F;
-
-    private static final float PARRY_BASE_DAMAGE = 0.5F;
-    private static final float PARRY_MAX_FRACTION = 0.08F;
-    private static final float PARRY_DAMAGE_CAP = 2.0F;
 
     private static final Map<LivingEntity, State> STATES = new WeakHashMap<>();
 
@@ -58,7 +52,7 @@ public final class PostureManager {
             return;
         }
 
-        damagePosture(target, patch, impact * HURT_IMPACT_MULTIPLIER);
+        damagePosture(target, patch, impact * PostureServerConfig.postureDamageMultiplier());
     }
 
     public static void onParried(LivingEntity target, PlayerPatch<?> playerPatch) {
@@ -76,17 +70,12 @@ public final class PostureManager {
             return;
         }
 
-        float postureDamage = Math.min(PARRY_DAMAGE_CAP, PARRY_BASE_DAMAGE + state.max * PARRY_MAX_FRACTION);
+        float postureDamage = PostureBalance.parryDamage(state.max);
         state.current = Math.max(0.0F, state.current - postureDamage);
         state.regenDelay = REGEN_DELAY_TICKS;
 
         if (state.current <= 0.0F) {
             breakPosture(target, patch, state);
-        } else {
-            try {
-                patch.applyStun(StunType.LONG, 0.0F);
-            } catch (Throwable ignored) {
-            }
         }
         PostureSyncEvents.syncNow(target);
     }
@@ -167,7 +156,13 @@ public final class PostureManager {
             return true;
         }
 
-        float regenPerTick = state.max * REGEN_FRACTION_PER_SECOND / 20.0F;
+        float maxHealth = finiteOr(entity.getMaxHealth(), EHP_REFERENCE_HEALTH);
+        if (maxHealth <= 0.0F) {
+            maxHealth = EHP_REFERENCE_HEALTH;
+        }
+        float currentHealth = finiteOr(entity.getHealth(), maxHealth);
+        float healthFraction = clamp(currentHealth / maxHealth, 0.0F, 1.0F);
+        float regenPerTick = state.max * PostureBalance.regenFractionPerSecond(healthFraction) / 20.0F;
         state.current = Math.min(state.max, state.current + regenPerTick);
         return true;
     }
