@@ -40,6 +40,8 @@ Generalized humanoid retargeting and special-state rendering reliability update.
 - Fixed potential Gecko armor cache collisions between different source bones with the same name.
 - Fixed hybrid Gecko fallback renderers being reused across different entity types that happen to share one `HumanoidModel` instance.
 - Fixed Gecko post-render attachment anchoring depending on a literal `torso` source-bone name.
+- Fixed automatic humanoid compatibility overriding existing Epic Fight patches hidden from Epic Fight's public patched-entity list, including Guard Villagers x Epic Fight compatibility.
+- Fixed Illager-style alternate crossed-arm geometry remaining visible or deforming incorrectly during posture-break special rendering.
 
 ### Compatibility / Requirements
 
