@@ -143,6 +143,13 @@ public final class GeckoSourceRigAdapter {
         boolean renderable = false;
         if (!attachment && bone.getCubes() != null) {
             for (GeoCube cube : bone.getCubes()) {
+                // Gecko entity models may contain UV-less inflated cubes solely
+                // for ItemArmorGeoLayer's fitting math. They still need to exist
+                // as source bones/anchors, but must not affect body bounds or
+                // semantic geometry inference.
+                if (GeckoGeometryHeuristics.isLayoutReferenceCube(bone, cube)) {
+                    continue;
+                }
                 CubeCapture cubeCapture = captureCube(stack, cube);
                 cubeCapture.bounds().ifPresent(bounds -> {
                     ownGeometry.include(bounds);

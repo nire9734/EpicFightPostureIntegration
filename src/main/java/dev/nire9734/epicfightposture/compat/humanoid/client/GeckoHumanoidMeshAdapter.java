@@ -107,6 +107,13 @@ public final class GeckoHumanoidMeshAdapter {
 
         if (!bone.isHidden() && !attachment && bone.getCubes() != null) {
             for (GeoCube cube : bone.getCubes()) {
+                // Gecko armor fitting/reference cubes are deliberately present in
+                // some entity GeoModels but are not body presentation geometry.
+                // Baking them here makes their empty UVs cover the real entity and
+                // can also occlude the actual ItemArmorGeoLayer result.
+                if (GeckoGeometryHeuristics.isLayoutReferenceCube(bone, cube)) {
+                    continue;
+                }
                 bakeCube(nodeId, cube, stack, weights, vertices, indices);
             }
         }

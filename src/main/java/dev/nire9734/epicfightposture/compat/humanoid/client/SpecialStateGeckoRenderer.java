@@ -1,20 +1,30 @@
 package dev.nire9734.epicfightposture.compat.humanoid.client;
 
 import com.mojang.blaze3d.vertex.PoseStack;
+import dev.nire9734.epicfightposture.EpicFightPostureIntegration;
+import dev.nire9734.epicfightposture.compat.humanoid.LightweightHumanoidPatch;
 import dev.nire9734.epicfightposture.compat.humanoid.skeleton.HumanoidSkeletonDescriptor;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.model.HumanoidModel;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.entity.EntityRenderer;
 import net.minecraft.client.renderer.entity.EntityRendererProvider;
+import net.minecraft.client.renderer.entity.LivingEntityRenderer;
 import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.LivingEntity;
 import yesman.epicfight.api.asset.AssetAccessor;
+import yesman.epicfight.api.asset.SelfAccessor;
 import yesman.epicfight.api.client.model.SkinnedMesh;
+import yesman.epicfight.api.client.model.transformer.HumanoidModelBaker;
 import yesman.epicfight.api.model.Armature;
 import yesman.epicfight.client.renderer.patched.entity.PatchedEntityRenderer;
 import yesman.epicfight.world.capabilities.entitypatch.LivingEntityPatch;
+
+import java.util.Collections;
+import java.util.Map;
+import java.util.WeakHashMap;
 
 /**
  * Special-state renderer for GeckoLib-backed humanoids.
@@ -29,14 +39,26 @@ import yesman.epicfight.world.capabilities.entitypatch.LivingEntityPatch;
  * separately and converted to EF skinned meshes so clothing deforms with the
  * same Root/Chest and limb chains as the body.
  */
+@SuppressWarnings({"rawtypes", "unchecked"})
 public final class SpecialStateGeckoRenderer extends PatchedEntityRenderer<
         LivingEntity,
         LivingEntityPatch<LivingEntity>,
         EntityRenderer<LivingEntity>,
         SkinnedMesh> {
 
+    /**
+     * Some entity renderers are hybrid dispatchers: they are discovered as a
+     * GeoEntityRenderer but delegate to an ordinary LivingEntityRenderer for part
+     * of the entity lifecycle. Cache a native HumanoidModel conversion for that
+     * runtime source renderer instead of drawing the prepared Gecko mesh with an
+     * unrelated vanilla texture/layer contract.
+     */
+    private static final Map<HumanoidModel<?>, SpecialStateHumanoidRenderer> HUMANOID_FALLBACKS =
+            Collections.synchronizedMap(new WeakHashMap<>());
+
     private final AssetAccessor<SkinnedMesh> mesh;
     private final HumanoidSkeletonDescriptor skeleton;
+    private final EntityRendererProvider.Context context;
 
     public SpecialStateGeckoRenderer(
             AssetAccessor<SkinnedMesh> mesh,
@@ -44,6 +66,7 @@ public final class SpecialStateGeckoRenderer extends PatchedEntityRenderer<
             EntityRendererProvider.Context context) {
         this.mesh = mesh;
         this.skeleton = skeleton;
+        this.context = context;
     }
 
     @Override
@@ -55,6 +78,23 @@ public final class SpecialStateGeckoRenderer extends PatchedEntityRenderer<
             PoseStack poseStack,
             int packedLight,
             float partialTicks) {
+        // A Gecko renderer may delegate at runtime to SkeletonRenderer,
+        // ZombieRenderer, or another HumanoidModel renderer. In that case the
+        // event's actual source renderer is authoritative: using the pre-baked
+        // Gecko mesh with its vanilla texture produces broken UVs, and Gecko
+        // layer replay cannot see the delegate's HumanoidArmorLayer. Reuse EF's
+        // normal humanoid renderer contract for this invocation instead.
+        if (renderHumanoidDelegateIfPresent(
+                entity,
+                entitypatch,
+                renderer,
+                buffer,
+                poseStack,
+                packedLight,
+                partialTicks)) {
+            return;
+        }
+
         super.render(entity, entitypatch, renderer, buffer, poseStack, packedLight, partialTicks);
 
         Minecraft mc = Minecraft.getInstance();
@@ -135,6 +175,74 @@ public final class SpecialStateGeckoRenderer extends PatchedEntityRenderer<
         GeckoPostRenderMatrixOverride.armTorsoFromEpicFight(entity, entitypatch, renderer);
 
         poseStack.popPose();
+    }
+
+    private boolean renderHumanoidDelegateIfPresent(
+            LivingEntity entity,
+            LivingEntityPatch<LivingEntity> entitypatch,
+            EntityRenderer<LivingEntity> renderer,
+            MultiBufferSource buffer,
+            PoseStack poseStack,
+            int packedLight,
+            float partialTicks) {
+        if (!(entitypatch instanceof LightweightHumanoidPatch lightweightPatch)
+                || !(renderer instanceof LivingEntityRenderer<?, ?> livingRenderer)
+                || !(livingRenderer.getModel() instanceof HumanoidModel<?> humanoidModel)) {
+            return false;
+        }
+
+        SpecialStateHumanoidRenderer fallback = humanoidFallback(entity, humanoidModel);
+        if (fallback == null) {
+            return false;
+        }
+
+        fallback.render(
+                entity,
+                lightweightPatch,
+                (LivingEntityRenderer)livingRenderer,
+                buffer,
+                poseStack,
+                packedLight,
+                partialTicks
+        );
+        return true;
+    }
+
+    private SpecialStateHumanoidRenderer humanoidFallback(
+            LivingEntity entity,
+            HumanoidModel<?> humanoidModel) {
+        synchronized (HUMANOID_FALLBACKS) {
+            SpecialStateHumanoidRenderer cached = HUMANOID_FALLBACKS.get(humanoidModel);
+            if (cached != null) {
+                return cached;
+            }
+
+            try {
+                SkinnedMesh baked = HumanoidModelBaker.VANILLA_TRANSFORMER.transformArmorModel(humanoidModel);
+                if (baked == null) {
+                    return null;
+                }
+
+                ResourceLocation entityId = net.minecraft.world.entity.EntityType.getKey(entity.getType());
+                String namespace = entityId == null ? EpicFightPostureIntegration.MODID : entityId.getNamespace();
+                String path = entityId == null ? "unknown" : entityId.getPath();
+                ResourceLocation runtimeMeshId = new ResourceLocation(
+                        EpicFightPostureIntegration.MODID,
+                        "runtime_hybrid/" + namespace + "/" + path + "/"
+                                + Integer.toHexString(System.identityHashCode(humanoidModel))
+                );
+                AssetAccessor<SkinnedMesh> accessor = SelfAccessor.create(runtimeMeshId, baked);
+                SpecialStateHumanoidRenderer created = new SpecialStateHumanoidRenderer(
+                        this.context,
+                        entity.getType(),
+                        accessor
+                );
+                HUMANOID_FALLBACKS.put(humanoidModel, created);
+                return created;
+            } catch (Throwable ignored) {
+                return null;
+            }
+        }
     }
 
     @Override

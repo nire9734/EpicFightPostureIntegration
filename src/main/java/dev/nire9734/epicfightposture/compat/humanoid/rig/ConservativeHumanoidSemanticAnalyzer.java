@@ -44,6 +44,10 @@ public final class ConservativeHumanoidSemanticAnalyzer implements HumanoidSeman
     private static final Set<String> LEFT_ARM = aliases(
             "leftarm", "left_arm", "armleft", "arm_left", "larm", "arml",
             "leftupperarm", "upperarmleft", "upper_arm_left");
+    private static final Set<String> RIGHT_SHOULDER_CARRIER = aliases(
+            "rightshoulder", "right_shoulder", "shoulderright", "shoulder_right", "rshoulder");
+    private static final Set<String> LEFT_SHOULDER_CARRIER = aliases(
+            "leftshoulder", "left_shoulder", "shoulderleft", "shoulder_left", "lshoulder");
     private static final Set<String> RIGHT_FOREARM = aliases(
             "rightforearm", "right_forearm", "forearmright", "forearm_right",
             "rightlowerarm", "right_lower_arm", "lowerarmright", "lower_arm_right",
@@ -102,11 +106,27 @@ public final class ConservativeHumanoidSemanticAnalyzer implements HumanoidSeman
         requireIndependentBranches(snapshot, body, head, rightArm, leftArm, rightLeg, leftLeg);
         requireRenderableBranches(snapshot, head, rightArm, leftArm, rightLeg, leftLeg);
 
+        // A number of authored humanoids insert a real shoulder/clavicle carrier
+        // between the torso and the named upper-arm node. If it is an exact
+        // shoulder alias on that ancestry path, use its authored pivot as the
+        // semantic shoulder. This keeps visible shoulder plates and the upper arm
+        // on the same EF deformation chain without guessing from a mod/entity id.
+        SourceNodeSnapshot rightShoulder = findStructuralShoulderCarrier(
+                snapshot, body, rightArm, RIGHT_SHOULDER_CARRIER);
+        SourceNodeSnapshot leftShoulder = findStructuralShoulderCarrier(
+                snapshot, body, leftArm, LEFT_SHOULDER_CARRIER);
+        SourceNodeSnapshot rightShoulderSource = rightShoulder != null ? rightShoulder : rightArm;
+        SourceNodeSnapshot leftShoulderSource = leftShoulder != null ? leftShoulder : leftArm;
+        Set<String> rightShoulderNames = rightShoulder != null ? RIGHT_SHOULDER_CARRIER : RIGHT_ARM;
+        Set<String> leftShoulderNames = leftShoulder != null ? LEFT_SHOULDER_CARRIER : LEFT_ARM;
+
         EnumMap<HumanoidJoint, SemanticJointCandidate> result = new EnumMap<>(HumanoidJoint.class);
         putSource(result, snapshot, HumanoidJoint.CHEST, body, confidence(body, BODY, true));
         putSource(result, snapshot, HumanoidJoint.HEAD, head, confidence(head, HEAD, false));
-        putSource(result, snapshot, HumanoidJoint.SHOULDER_RIGHT, rightArm, confidence(rightArm, RIGHT_ARM, false));
-        putSource(result, snapshot, HumanoidJoint.SHOULDER_LEFT, leftArm, confidence(leftArm, LEFT_ARM, false));
+        putSource(result, snapshot, HumanoidJoint.SHOULDER_RIGHT, rightShoulderSource,
+                confidence(rightShoulderSource, rightShoulderNames, false));
+        putSource(result, snapshot, HumanoidJoint.SHOULDER_LEFT, leftShoulderSource,
+                confidence(leftShoulderSource, leftShoulderNames, false));
         putSource(result, snapshot, HumanoidJoint.HIP_RIGHT, rightLeg, confidence(rightLeg, RIGHT_LEG, false));
         putSource(result, snapshot, HumanoidJoint.HIP_LEFT, leftLeg, confidence(leftLeg, LEFT_LEG, false));
 
@@ -322,6 +342,35 @@ public final class ConservativeHumanoidSemanticAnalyzer implements HumanoidSeman
             }
         }
         return bestScore >= 70 && !tied && best != null ? best.node() : null;
+    }
+
+    /**
+     * Finds an authored shoulder/clavicle carrier only when it lies on the exact
+     * torso -> named upper-arm ancestry path. This is deliberately stricter than
+     * a global name search so decorative shoulder nodes elsewhere in a model do
+     * not become deformation anchors.
+     */
+    private static SourceNodeSnapshot findStructuralShoulderCarrier(
+            SourceRigSnapshot snapshot,
+            SourceNodeSnapshot body,
+            SourceNodeSnapshot arm,
+            Set<String> shoulderNames) {
+        if (body == null || arm == null || !snapshot.isAncestor(body.id(), arm.id())) {
+            return null;
+        }
+
+        SourceNodeSnapshot cursor = arm;
+        while (cursor.parentId().isPresent()) {
+            SourceNodeSnapshot parent = snapshot.node(cursor.parentId().orElseThrow());
+            if (parent.id().equals(body.id())) {
+                return null;
+            }
+            if (shoulderNames.contains(normalize(parent.name()))) {
+                return parent;
+            }
+            cursor = parent;
+        }
+        return null;
     }
 
     private static SourceNodeSnapshot findDescendantBest(
