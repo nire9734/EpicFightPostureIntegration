@@ -87,20 +87,25 @@ public final class LionfishPrimaryModelLayerBridge {
             float blue,
             float alpha) {
         Frame frame = ACTIVE.get();
-        if (frame == null
-                || renderedModel != frame.primaryModel
-                || poseStack == null
-                || vertexConsumer == null
-                || !visibilityMatches(frame.visibility)) {
+        if (frame == null || poseStack == null || vertexConsumer == null) {
+            return false;
+        }
+        if (renderedModel != frame.primaryModel) {
+            LionfishRetargetDiagnostics.primaryBridge(
+                    renderedModel, "SKIP", "not_primary_model", poseStack);
+            return false;
+        }
+        if (!visibilityMatches(frame.visibility)) {
+            LionfishRetargetDiagnostics.primaryBridge(
+                    renderedModel, "FALLBACK", "visibility_changed", poseStack);
             return false;
         }
 
         LionfishLayerRenderTargetCapture.Target target =
                 LionfishLayerRenderTargetCapture.resolve(vertexConsumer);
         if (target == null) {
-            // Without the source RenderType we cannot safely know whether the
-            // supplied VertexConsumer expects QUADS or TRIANGLES. Keep the
-            // framework-original compatible rigid replay instead of guessing.
+            LionfishRetargetDiagnostics.primaryBridge(
+                    renderedModel, "FALLBACK", "render_type_not_captured", poseStack);
             return false;
         }
 
@@ -111,6 +116,12 @@ public final class LionfishPrimaryModelLayerBridge {
             // the complete EF skin matrices, so remove only that replay basis and
             // preserve the renderer-owned/model presentation transform beneath it.
             mulPoseAndNormal(poseStack, frame.inverseExternalTransform);
+            LionfishRetargetDiagnostics.primaryBridge(
+                    renderedModel,
+                    "REPLACE",
+                    "renderType=" + target.renderType() + ",mode=" + target.renderType().mode(),
+                    poseStack
+            );
             frame.primaryMesh.draw(
                     poseStack,
                     target.bufferSource(),

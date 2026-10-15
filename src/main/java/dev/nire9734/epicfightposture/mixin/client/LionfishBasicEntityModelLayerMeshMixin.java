@@ -3,6 +3,7 @@ package dev.nire9734.epicfightposture.mixin.client;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import dev.nire9734.epicfightposture.compat.humanoid.client.LionfishPrimaryModelLayerBridge;
+import dev.nire9734.epicfightposture.compat.humanoid.client.LionfishRetargetDiagnostics;
 import dev.nire9734.epicfightposture.compat.humanoid.client.LionfishSecondaryModelLayerBridge;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Pseudo;
@@ -40,8 +41,11 @@ public abstract class LionfishBasicEntityModelLayerMeshMixin {
                 red,
                 green,
                 blue,
-                alpha)
-                || LionfishSecondaryModelLayerBridge.renderIfPresent(
+                alpha)) {
+            ci.cancel();
+            return;
+        }
+        if (LionfishSecondaryModelLayerBridge.renderIfPresent(
                 this,
                 poseStack,
                 vertexConsumer,
@@ -52,6 +56,8 @@ public abstract class LionfishBasicEntityModelLayerMeshMixin {
                 blue,
                 alpha)) {
             ci.cancel();
+            return;
         }
+        LionfishRetargetDiagnostics.sourceFallback(this, poseStack);
     }
 }

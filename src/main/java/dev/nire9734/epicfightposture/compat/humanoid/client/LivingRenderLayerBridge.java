@@ -103,18 +103,23 @@ public final class LivingRenderLayerBridge {
                         if (layer == null) {
                             continue;
                         }
-                        layer.render(
-                                poseStack,
-                                buffer,
-                                packedLight,
-                                entity,
-                                limbSwing,
-                                limbSwingAmount,
-                                partialTicks,
-                                ageInTicks,
-                                netHeadYaw,
-                                headPitch
-                        );
+                        LionfishRetargetDiagnostics.layerStart(layer);
+                        try {
+                            layer.render(
+                                    poseStack,
+                                    buffer,
+                                    packedLight,
+                                    entity,
+                                    limbSwing,
+                                    limbSwingAmount,
+                                    partialTicks,
+                                    ageInTicks,
+                                    netHeadYaw,
+                                    headPitch
+                            );
+                        } finally {
+                            LionfishRetargetDiagnostics.layerEnd(layer);
+                        }
                     }
                 }
             } finally {

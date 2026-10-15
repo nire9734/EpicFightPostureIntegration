@@ -67,68 +67,78 @@ public final class SpecialStateLionfishRenderer extends PatchedEntityRenderer<
         Armature armature = entitypatch.getArmature();
         int overlay = OverlayTexture.pack(0, OverlayTexture.v(entity.hurtTime > 5));
 
-        poseStack.pushPose();
-        this.mulPoseStack(poseStack, armature, entity, entitypatch, partialTicks);
+        try (LionfishRetargetDiagnostics.Scope ignoredDiagnostics =
+                     LionfishRetargetDiagnostics.open(
+                             entity,
+                             renderer,
+                             this.skeleton,
+                             armature,
+                             partialTicks)) {
+            poseStack.pushPose();
+            this.mulPoseStack(poseStack, armature, entity, entitypatch, partialTicks);
 
-        if (renderer instanceof LivingEntityRenderer<?, ?> livingRenderer
-                && livingRenderer instanceof LivingEntityRendererScaleInvoker invoker) {
-            invoker.efpi$invokeScale(entity, poseStack, partialTicks);
-        }
+            if (renderer instanceof LivingEntityRenderer<?, ?> livingRenderer
+                    && livingRenderer instanceof LivingEntityRendererScaleInvoker invoker) {
+                invoker.efpi$invokeScale(entity, poseStack, partialTicks);
+            }
 
-        this.setArmaturePose(entitypatch, armature, partialTicks);
-        SkinnedMesh runtimeMesh = this.mesh.get();
-        float alpha = entity.isInvisibleTo(minecraft.player) ? 0.15F : 1.0F;
+            this.setArmaturePose(entitypatch, armature, partialTicks);
+            SkinnedMesh runtimeMesh = this.mesh.get();
+            float alpha = entity.isInvisibleTo(minecraft.player) ? 0.15F : 1.0F;
+            RenderType bodyRenderType = RenderType.entityCutoutNoCull(texture);
+            LionfishRetargetDiagnostics.bodyPass(poseStack, bodyRenderType);
 
-        runtimeMesh.draw(
-                poseStack,
-                buffer,
-                RenderType.entityCutoutNoCull(texture),
-                packedLight,
-                1.0F, 1.0F, 1.0F, alpha,
-                overlay,
-                armature,
-                armature.getPoseMatrices()
-        );
-
-        if (minecraft.shouldEntityAppearGlowing(entity)) {
             runtimeMesh.draw(
                     poseStack,
                     buffer,
-                    RenderType.outline(texture),
+                    bodyRenderType,
                     packedLight,
-                    1.0F, 1.0F, 1.0F, 1.0F,
+                    1.0F, 1.0F, 1.0F, alpha,
                     overlay,
                     armature,
                     armature.getPoseMatrices()
             );
+
+            if (minecraft.shouldEntityAppearGlowing(entity)) {
+                runtimeMesh.draw(
+                        poseStack,
+                        buffer,
+                        RenderType.outline(texture),
+                        packedLight,
+                        1.0F, 1.0F, 1.0F, 1.0F,
+                        overlay,
+                        armature,
+                        armature.getPoseMatrices()
+                );
+            }
+
+            ModelPartDynamicAttachmentRenderer.render(
+                    this.modelPartAttachments,
+                    entity,
+                    renderer,
+                    buffer,
+                    poseStack,
+                    packedLight,
+                    overlay,
+                    partialTicks,
+                    texture,
+                    armature
+            );
+
+            LivingRenderLayerBridge.replay(
+                    entity,
+                    renderer,
+                    buffer,
+                    poseStack,
+                    packedLight,
+                    partialTicks,
+                    armature,
+                    runtimeMesh,
+                    this.skeleton
+            );
+
+            poseStack.popPose();
         }
-
-        ModelPartDynamicAttachmentRenderer.render(
-                this.modelPartAttachments,
-                entity,
-                renderer,
-                buffer,
-                poseStack,
-                packedLight,
-                overlay,
-                partialTicks,
-                texture,
-                armature
-        );
-
-        LivingRenderLayerBridge.replay(
-                entity,
-                renderer,
-                buffer,
-                poseStack,
-                packedLight,
-                partialTicks,
-                armature,
-                runtimeMesh,
-                this.skeleton
-        );
-
-        poseStack.popPose();
     }
 
     @Override

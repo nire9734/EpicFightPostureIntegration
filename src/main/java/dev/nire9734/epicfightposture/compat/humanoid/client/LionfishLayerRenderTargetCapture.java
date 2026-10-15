@@ -41,6 +41,7 @@ public final class LionfishLayerRenderTargetCapture {
             return;
         }
         frame.renderTypes.put(vertexConsumer, renderType);
+        LionfishRetargetDiagnostics.renderTarget(vertexConsumer, renderType);
     }
 
     static Target resolve(VertexConsumer vertexConsumer) {
