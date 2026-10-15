@@ -13,6 +13,8 @@ Generalized humanoid retargeting and special-state rendering reliability update.
 - Added officially tested compatibility targets for supported humanoid mobs from Iron's Spells 'n Spellbooks and L_Ender's Cataclysm. This does not imply support for every mob or custom render path in either mod.
 - Added shared semantic resolution for Gecko body, attachment, and post-render anchor handling.
 - Added full-model Lionfish layer replay through the already-prepared skinned body mesh when the layer redraws the exact same parent model without changing part visibility.
+- Added a framework-neutral secondary-deformation policy that classifies sampled humanoid geometry as rigid or deformable from canonical Root/Chest, Arm/Hand, and Thigh/Leg skin weights.
+- Added skinned replay for safely analyzable layer-owned Lionfish secondary models, using the primary body's humanoid descriptor for elbow, knee, and spine transitions.
 
 ### Changed
 
@@ -23,6 +25,9 @@ Generalized humanoid retargeting and special-state rendering reliability update.
 - Runtime humanoid armatures are now refreshed from the latest prepared skeleton when renderer/model discovery is repeated instead of keeping a stale earlier armature.
 - Runtime armature generation now fails closed instead of pairing a target-weighted mesh with the canonical BIPED armature when target armature creation fails.
 - Lionfish full-parent-model secondary passes now preserve the same per-vertex one-bone limb deformation as the prepared body mesh instead of reducing the entire source limb to one rigid dominant joint.
+- Lionfish geometry primitives that remain inside one canonical limb segment can stay rigid to that segment, while primitives that actually cross a supported joint transition retain per-vertex deformation and adaptive subdivision.
+- Separate RenderLayer models now use their own source hierarchy for semantic ownership but the primary body's resolved humanoid descriptor for rigid ownership decisions, preventing clothing from deriving different elbow/knee/spine transition positions.
+- Unsupported or opaque secondary render contracts continue through the existing rigid or source-compatible fallback instead of being forced into SkinnedMesh conversion.
 - Portable humanoid rig/skeleton code no longer depends on Minecraft `ResourceLocation`; CI now rejects platform/framework imports from those core packages.
 - Epic Fight runtime armature construction was moved out of the portable retargeting package into the runtime Epic Fight compatibility layer.
 - Existing Epic Fight or third-party entity patches continue to take priority over EFPI automatic compatibility.
@@ -30,6 +35,7 @@ Generalized humanoid retargeting and special-state rendering reliability update.
 ### Fixed
 
 - Fixed L_Ender's Cataclysm Deepling-family arm/leg secondary geometry appearing offset from the correctly retargeted limbs during full-model secondary/emissive layer rendering.
+- Fixed distal Deepling-family limb decorations inheriting the upper-arm/thigh segment when their actual geometry belongs to the forearm/lower-leg segment, while preserving deformation for longer decorations that cross the inferred elbow or knee.
 - Fixed stale Gecko armor meshes when visibility or prepared model transforms change while the same baked model instance is reused.
 - Fixed potential Gecko armor cache collisions between different source bones with the same name.
 - Fixed hybrid Gecko fallback renderers being reused across different entity types that happen to share one `HumanoidModel` instance.

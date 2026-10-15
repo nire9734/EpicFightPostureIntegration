@@ -11,13 +11,16 @@ Automatic compatibility remains conservative. EFPI does not claim universal huma
 - L_Ender's Cataclysm is now an officially tested compatibility target for supported humanoid mobs.
 - Improved GeckoLib armor rendering, including bind-space handling, cache correctness, and visibility/model-variant handling.
 - Improved attachment and secondary-part retargeting so supported body, layer, and post-render paths share consistent semantic ownership.
+- Added a shared secondary-deformation policy that classifies real geometry samples as rigid or deformable from the same canonical humanoid skin weights used by the body.
+- Lionfish limb decorations, overlays, sleeves, and other supported geometry can now stay rigid to one body segment when appropriate or deform across Root/Chest, Arm/Hand, and Thigh/Leg transitions when their actual geometry spans those transitions.
+- Safely analyzable layer-owned Lionfish secondary models can now be skinned against the primary body's humanoid descriptor, keeping their elbow, knee, and spine transition positions aligned with the body instead of deriving a separate clothing skeleton.
 - Improved runtime humanoid armature refresh behavior when renderer/model discovery is repeated.
 - Improved hybrid GeckoLib/vanilla renderer compatibility for entities that delegate to ordinary Minecraft humanoid renderers at runtime.
 - Added structural shoulder-carrier support for compatible `body -> shoulder/clavicle -> arm` hierarchies.
-- Fixed L_Ender's Cataclysm Deepling-family arm/leg secondary geometry appearing offset from the correctly retargeted limbs during full-model secondary/emissive layer rendering.
-- Full-parent-model Lionfish secondary passes can now reuse the already-prepared skinned body mesh, preserving the same per-vertex one-bone limb deformation as the body.
-- Gecko post-render attachment anchoring now uses the shared semantic CHEST binding instead of relying on a literal source-bone name.
-- Runtime target-proportioned armature generation now fails closed if it cannot be prepared safely instead of falling back to a mismatched canonical BIPED armature.
+- Fixed L_Ender's Cataclysm Deepling-family arm/leg decoration deformation so distal decorations can follow the forearm or lower leg while longer surfaces continue to bend across the inferred elbow or knee.
+- Full-parent-model Lionfish secondary passes can reuse the already-prepared skinned body mesh, preserving the same one-bone limb deformation as the body.
+- Gecko post-render attachment anchoring uses the shared semantic CHEST binding instead of relying on a literal source-bone name.
+- Runtime target-proportioned armature generation fails closed if it cannot be prepared safely instead of falling back to a mismatched canonical BIPED armature.
 - Existing Epic Fight or third-party entity patches continue to take priority over EFPI automatic compatibility.
 
 ## Tested compatibility targets
@@ -44,6 +47,8 @@ Iron's Spells 'n Spellbooks and L_Ender's Cataclysm are optional compatibility t
 
 - EFPI keeps the source mob's normal AI and ordinary rendering outside posture-related special states.
 - Automatic compatibility remains fail-closed for ambiguous, unsupported, conflicting, or unbakeable models.
+- Secondary geometry is only converted to deformable rendering when EFPI can obtain and classify its geometry safely. Opaque custom callbacks, item/effect layers, and other render contracts without safely extractable geometry retain their existing rigid or source-compatible fallback behavior.
+- GeckoLib `GeoArmorRenderer` armor keeps its existing per-vertex skinned path. Arbitrary `GeoRenderLayer` callbacks are not treated as generic meshes when their rendered geometry cannot be determined safely.
 - Existing Epic Fight patches supplied by Epic Fight or another compatibility addon take priority and are not replaced by EFPI.
 - No posture balance changes are included in 2.1.0.
 
