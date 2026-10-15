@@ -68,7 +68,9 @@ public final class LionfishHumanoidMeshAdapter {
         PoseStack stack = LionfishSourceRigAdapter.canonicalModelStack();
 
         for (AdvancedModelBox part : model.getAllParts()) {
-            if (part != null && part.getParent() == null) bakePart(part, stack, nodeIds, weights, vertices, indices);
+            if (part != null && part.getParent() == null) {
+                bakePart(part, stack, nodeIds, weights, vertices, indices);
+            }
         }
         return vertices.isEmpty() ? null : SingleGroupVertexBuilder.loadVertexInformation(vertices, indices);
     }
@@ -97,7 +99,9 @@ public final class LionfishHumanoidMeshAdapter {
         }
         if (part.childModels != null) {
             for (BasicModelPart child : part.childModels) {
-                if (child instanceof AdvancedModelBox box) bakePart(box, stack, nodeIds, weights, vertices, indices);
+                if (child instanceof AdvancedModelBox box) {
+                    bakePart(box, stack, nodeIds, weights, vertices, indices);
+                }
             }
         }
         stack.popPose();
@@ -124,45 +128,150 @@ public final class LionfishHumanoidMeshAdapter {
             if (sourceVertices == null || Array.getLength(sourceVertices) != 4
                     || !(normalValue instanceof Vector3f sourceNormal)) continue;
 
+            SourceVertex[] corners = readQuadVertices(sourceVertices, access);
+            if (corners == null) continue;
+
             Vector3f normal = new Vector3f(sourceNormal);
             normal.mul(stack.last().normal());
             if (normal.lengthSquared() > 1.0E-8F) normal.normalize();
 
-            int first = vertices.size();
-            List<SingleGroupVertexBuilder> built = new ArrayList<>(4);
-            for (int v = 0; v < 4; v++) {
-                Object sourceVertex = Array.get(sourceVertices, v);
-                if (sourceVertex == null) { built.clear(); break; }
-                VertexFields vf = access.vertexFields(sourceVertex.getClass());
-                Object positionValue = vf.position.get(sourceVertex);
-                if (!(positionValue instanceof Vector3f sourcePosition)) { built.clear(); break; }
+            HumanoidSkinWeightResolver.SkinWeights[] cornerWeights = new HumanoidSkinWeightResolver.SkinWeights[4];
+            for (int i = 0; i < corners.length; i++) {
+                SkeletonVec3 position = modelPosition(corners[i].position(), stack);
+                cornerWeights[i] = weights.weights(sourceNodeId, position);
+            }
 
-                Vector4f p = new Vector4f(sourcePosition.x() / 16.0F, sourcePosition.y() / 16.0F,
-                        sourcePosition.z() / 16.0F, 1.0F);
-                p.mul(stack.last().pose());
-                SkeletonVec3 position = new SkeletonVec3(p.x(), p.y(), p.z());
+            boolean uVaries = SkinningSubdivision.weightsDiffer(cornerWeights[0], cornerWeights[1])
+                    || SkinningSubdivision.weightsDiffer(cornerWeights[3], cornerWeights[2]);
+            boolean vVaries = SkinningSubdivision.weightsDiffer(cornerWeights[0], cornerWeights[3])
+                    || SkinningSubdivision.weightsDiffer(cornerWeights[1], cornerWeights[2]);
+
+            float uLengthPixels = Math.max(
+                    corners[0].position().distance(corners[1].position()),
+                    corners[3].position().distance(corners[2].position())
+            );
+            float vLengthPixels = Math.max(
+                    corners[0].position().distance(corners[3].position()),
+                    corners[1].position().distance(corners[2].position())
+            );
+            int uSegments = SkinningSubdivision.segmentCount(uLengthPixels, uVaries);
+            int vSegments = SkinningSubdivision.segmentCount(vLengthPixels, vVaries);
+
+            bakeSubdividedQuad(
+                    corners,
+                    normal,
+                    sourceNodeId,
+                    stack,
+                    weights,
+                    uSegments,
+                    vSegments,
+                    vertices,
+                    indices
+            );
+        }
+    }
+
+    private static SourceVertex[] readQuadVertices(
+            Object sourceVertices,
+            ReflectionAccess access) throws ReflectiveOperationException {
+        SourceVertex[] result = new SourceVertex[4];
+        for (int i = 0; i < result.length; i++) {
+            Object sourceVertex = Array.get(sourceVertices, i);
+            if (sourceVertex == null) return null;
+            VertexFields vf = access.vertexFields(sourceVertex.getClass());
+            Object positionValue = vf.position.get(sourceVertex);
+            if (!(positionValue instanceof Vector3f sourcePosition)) return null;
+            result[i] = new SourceVertex(
+                    new Vector3f(sourcePosition),
+                    vf.textureU.getFloat(sourceVertex),
+                    vf.textureV.getFloat(sourceVertex)
+            );
+        }
+        return result;
+    }
+
+    private static void bakeSubdividedQuad(
+            SourceVertex[] corners,
+            Vector3f normal,
+            String sourceNodeId,
+            PoseStack stack,
+            HumanoidSkinWeightResolver weights,
+            int uSegments,
+            int vSegments,
+            List<SingleGroupVertexBuilder> vertices,
+            Map<MeshPartDefinition, IntList> indices) {
+        int first = vertices.size();
+        for (int vIndex = 0; vIndex <= vSegments; vIndex++) {
+            float v = vSegments == 0 ? 0.0F : (float) vIndex / (float) vSegments;
+            for (int uIndex = 0; uIndex <= uSegments; uIndex++) {
+                float u = uSegments == 0 ? 0.0F : (float) uIndex / (float) uSegments;
+                SourceVertex sample = interpolate(corners, u, v);
+                SkeletonVec3 position = modelPosition(sample.position(), stack);
                 HumanoidSkinWeightResolver.SkinWeights skin = weights.weights(sourceNodeId, position);
-                built.add(new SingleGroupVertexBuilder()
+                vertices.add(new SingleGroupVertexBuilder()
                         .setPosition(new Vec3f(position.x(), position.y(), position.z()))
                         .setNormal(new Vec3f(normal.x(), normal.y(), normal.z()))
-                        .setTextureCoordinate(new Vec2f(vf.textureU.getFloat(sourceVertex), vf.textureV.getFloat(sourceVertex)))
+                        .setTextureCoordinate(new Vec2f(sample.textureU(), sample.textureV()))
                         .setEffectiveJointIDs(new Vec3f(skin.firstJoint(), skin.secondJoint(), 0.0F))
                         .setEffectiveJointWeights(new Vec3f(skin.firstWeight(), skin.secondWeight(), 0.0F))
                         .setEffectiveJointNumber(skin.count()));
             }
-            if (built.size() != 4) continue;
-            vertices.addAll(built);
-            triangulateQuad(indices, first);
+        }
+
+        IntList list = indices.computeIfAbsent(PART, ignored -> new IntArrayList());
+        int rowWidth = uSegments + 1;
+        for (int vIndex = 0; vIndex < vSegments; vIndex++) {
+            for (int uIndex = 0; uIndex < uSegments; uIndex++) {
+                int topLeft = first + vIndex * rowWidth + uIndex;
+                int topRight = topLeft + 1;
+                int bottomLeft = topLeft + rowWidth;
+                int bottomRight = bottomLeft + 1;
+                addTriangle(list, topLeft, topRight, bottomLeft);
+                addTriangle(list, bottomLeft, topRight, bottomRight);
+            }
         }
     }
 
-    private static void triangulateQuad(Map<MeshPartDefinition, IntList> indices, int first) {
-        IntList list = indices.computeIfAbsent(PART, ignored -> new IntArrayList());
-        add3(list, first); add3(list, first + 1); add3(list, first + 3);
-        add3(list, first + 3); add3(list, first + 1); add3(list, first + 2);
+    private static SourceVertex interpolate(SourceVertex[] corners, float u, float v) {
+        Vector3f top = new Vector3f(corners[0].position()).lerp(corners[1].position(), u);
+        Vector3f bottom = new Vector3f(corners[3].position()).lerp(corners[2].position(), u);
+        Vector3f position = top.lerp(bottom, v);
+
+        float topU = lerp(corners[0].textureU(), corners[1].textureU(), u);
+        float bottomU = lerp(corners[3].textureU(), corners[2].textureU(), u);
+        float textureU = lerp(topU, bottomU, v);
+        float topV = lerp(corners[0].textureV(), corners[1].textureV(), u);
+        float bottomV = lerp(corners[3].textureV(), corners[2].textureV(), u);
+        float textureV = lerp(topV, bottomV, v);
+        return new SourceVertex(position, textureU, textureV);
     }
 
-    private static void add3(IntList list, int value) { list.add(value); list.add(value); list.add(value); }
+    private static SkeletonVec3 modelPosition(Vector3f sourcePosition, PoseStack stack) {
+        Vector4f p = new Vector4f(
+                sourcePosition.x() / 16.0F,
+                sourcePosition.y() / 16.0F,
+                sourcePosition.z() / 16.0F,
+                1.0F
+        );
+        p.mul(stack.last().pose());
+        return new SkeletonVec3(p.x(), p.y(), p.z());
+    }
+
+    private static float lerp(float start, float end, float amount) {
+        return start + (end - start) * amount;
+    }
+
+    private static void addTriangle(IntList list, int first, int second, int third) {
+        add3(list, first);
+        add3(list, second);
+        add3(list, third);
+    }
+
+    private static void add3(IntList list, int value) {
+        list.add(value);
+        list.add(value);
+        list.add(value);
+    }
 
     private static ReflectionAccess reflection() throws ReflectiveOperationException {
         if (reflectionAccess != null) return reflectionAccess;
@@ -180,37 +289,55 @@ public final class LionfishHumanoidMeshAdapter {
         static Result supported(HumanoidSkeletonDescriptor descriptor, SkinnedMesh mesh) {
             return new Result(true, descriptor, mesh, "ok");
         }
-        static Result unsupported(String reason) { return new Result(false, null, null, reason); }
+        static Result unsupported(String reason) {
+            return new Result(false, null, null, reason);
+        }
     }
 
     private static final class ReflectionAccess {
         final Field quadsField;
         final Map<Class<?>, QuadFields> quads = new HashMap<>();
         final Map<Class<?>, VertexFields> vertices = new HashMap<>();
-        ReflectionAccess(Field field) { quadsField = field; }
+
+        ReflectionAccess(Field field) {
+            quadsField = field;
+        }
+
         synchronized QuadFields quadFields(Class<?> type) throws ReflectiveOperationException {
             QuadFields f = quads.get(type);
             if (f == null) {
                 Field vs = type.getDeclaredField("vertexPositions"), n = type.getDeclaredField("normal");
-                vs.setAccessible(true); n.setAccessible(true); f = new QuadFields(vs, n); quads.put(type, f);
+                vs.setAccessible(true);
+                n.setAccessible(true);
+                f = new QuadFields(vs, n);
+                quads.put(type, f);
             }
             return f;
         }
+
         synchronized VertexFields vertexFields(Class<?> type) throws ReflectiveOperationException {
             VertexFields f = vertices.get(type);
             if (f == null) {
-                Field p = type.getDeclaredField("position"), u = type.getDeclaredField("textureU"), v = type.getDeclaredField("textureV");
-                p.setAccessible(true); u.setAccessible(true); v.setAccessible(true); f = new VertexFields(p, u, v); vertices.put(type, f);
+                Field p = type.getDeclaredField("position"),
+                        u = type.getDeclaredField("textureU"),
+                        v = type.getDeclaredField("textureV");
+                p.setAccessible(true);
+                u.setAccessible(true);
+                v.setAccessible(true);
+                f = new VertexFields(p, u, v);
+                vertices.put(type, f);
             }
             return f;
         }
     }
 
+    private record SourceVertex(Vector3f position, float textureU, float textureV) {}
     private record QuadFields(Field vertices, Field normal) {}
     private record VertexFields(Field position, Field textureU, Field textureV) {}
     private record RuntimeLionfishPart(String partName) implements MeshPartDefinition {
         @Override public Mesh.RenderProperties renderProperties() { return null; }
         @Override public Supplier<OpenMatrix4f> getModelPartAnimationProvider() { return () -> null; }
     }
+
     private LionfishHumanoidMeshAdapter() {}
 }
