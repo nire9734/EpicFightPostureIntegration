@@ -45,7 +45,7 @@ public final class GeckoHumanoidClientCompat implements HumanoidRenderBackend {
             ResourceLocation modelLocation = geoModel.getModelResource(null);
             BakedGeoModel bakedModel = geoModel.getBakedModel(modelLocation);
             SkeletonKey key = new SkeletonKey(
-                    entityId,
+                    entityId.toString(),
                     geoModel.getClass().getName() + "|" + String.valueOf(modelLocation)
             );
 

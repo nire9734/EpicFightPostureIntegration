@@ -4,7 +4,6 @@ import dev.nire9734.epicfightposture.compat.humanoid.skeleton.BodyBounds;
 import dev.nire9734.epicfightposture.compat.humanoid.skeleton.RigidTransform;
 import dev.nire9734.epicfightposture.compat.humanoid.skeleton.SkeletonKey;
 import dev.nire9734.epicfightposture.compat.humanoid.skeleton.SkeletonVec3;
-import net.minecraft.resources.ResourceLocation;
 import org.junit.jupiter.api.Test;
 
 import java.util.LinkedHashMap;
@@ -65,7 +64,7 @@ class HumanoidGeometryInferenceTest {
                         new SkeletonVec3(60.0F, 60.0F, 60.0F)), true));
 
         SourceRigSnapshot snapshot = new SourceRigSnapshot(
-                new SkeletonKey(new ResourceLocation("test", "humanoid"), "geometry-test"),
+                new SkeletonKey("test:humanoid", "geometry-test"),
                 nodes,
                 new BodyBounds(new SkeletonVec3(-1.0F, 0.0F, -1.0F),
                         new SkeletonVec3(60.0F, 60.0F, 60.0F)),

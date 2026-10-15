@@ -8,7 +8,6 @@ import dev.nire9734.epicfightposture.compat.humanoid.skeleton.RigidTransform;
 import dev.nire9734.epicfightposture.compat.humanoid.skeleton.SkeletonKey;
 import dev.nire9734.epicfightposture.compat.humanoid.skeleton.SkeletonQuat;
 import dev.nire9734.epicfightposture.compat.humanoid.skeleton.SkeletonVec3;
-import net.minecraft.resources.ResourceLocation;
 import org.junit.jupiter.api.Test;
 
 import java.util.EnumMap;
@@ -46,7 +45,7 @@ class HumanoidSkeletonResolverTest {
         nodes.put("right_foot", node("right_foot", "right_foot", "right_leg", 0.125F, 0.75F, 0.0F, null));
 
         SourceRigSnapshot snapshot = new SourceRigSnapshot(
-                new SkeletonKey(new ResourceLocation("test", "collapsed_feet"), "collapsed-feet"),
+                new SkeletonKey("test:collapsed_feet", "collapsed-feet"),
                 nodes,
                 bounds(-0.85F, 0.0F, -0.25F, 0.85F, 2.05F, 0.25F),
                 false

@@ -45,7 +45,7 @@ public final class ModelPartHumanoidClientCompat implements HumanoidRenderBacken
         }
 
         try {
-            SkeletonKey key = new SkeletonKey(entityId, hierarchicalModel.getClass().getName());
+            SkeletonKey key = new SkeletonKey(entityId.toString(), hierarchicalModel.getClass().getName());
             ModelPartHumanoidMeshAdapter.Result result =
                     ModelPartHumanoidMeshAdapter.analyseAndBake(hierarchicalModel, key);
             if (!result.supported() || result.descriptor() == null || result.mesh() == null) {

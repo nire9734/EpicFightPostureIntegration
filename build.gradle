@@ -105,6 +105,65 @@ tasks.named('test', Test).configure {
     useJUnitPlatform()
 }
 
+tasks.register('checkHumanoidCoreDependencies') {
+    group = 'verification'
+    description = 'Rejects platform/framework imports from the portable humanoid rig and skeleton core.'
+
+    doLast {
+        def coreDirectories = [
+            file('src/main/java/dev/nire9734/epicfightposture/compat/humanoid/rig'),
+            file('src/main/java/dev/nire9734/epicfightposture/compat/humanoid/skeleton')
+        ]
+        def forbiddenPrefixes = [
+            'net.minecraft',
+            'net.minecraftforge',
+            'net.neoforged',
+            'yesman.epicfight',
+            'software.bernie',
+            'mod.azure',
+            'com.github.L_Ender'
+        ]
+        def violations = []
+
+        coreDirectories.each { directory ->
+            if (!directory.exists()) {
+                return
+            }
+            fileTree(directory) {
+                include '**/*.java'
+            }.each { sourceFile ->
+                sourceFile.eachLine('UTF-8') { line, lineNumber ->
+                    String statement = line.trim()
+                    String imported = null
+                    if (statement.startsWith('import static ')) {
+                        imported = statement.substring('import static '.length()).replace(';', '').trim()
+                    } else if (statement.startsWith('import ')) {
+                        imported = statement.substring('import '.length()).replace(';', '').trim()
+                    }
+                    if (imported == null) {
+                        return
+                    }
+                    forbiddenPrefixes.each { prefix ->
+                        if (imported == prefix || imported.startsWith(prefix + '.')) {
+                            violations.add("${sourceFile}:$lineNumber imports ${imported}")
+                        }
+                    }
+                }
+            }
+        }
+
+        if (!violations.isEmpty()) {
+            throw new GradleException(
+                    'Portable humanoid core depends on platform/framework APIs:\n' + violations.join('\n')
+            )
+        }
+    }
+}
+
+tasks.named('check').configure {
+    dependsOn tasks.named('checkHumanoidCoreDependencies')
+}
+
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
 }

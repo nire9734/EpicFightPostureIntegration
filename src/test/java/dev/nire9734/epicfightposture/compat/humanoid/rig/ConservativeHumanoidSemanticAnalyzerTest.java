@@ -6,7 +6,6 @@ import dev.nire9734.epicfightposture.compat.humanoid.skeleton.RigidTransform;
 import dev.nire9734.epicfightposture.compat.humanoid.skeleton.SkeletonKey;
 import dev.nire9734.epicfightposture.compat.humanoid.skeleton.SkeletonQuat;
 import dev.nire9734.epicfightposture.compat.humanoid.skeleton.SkeletonVec3;
-import net.minecraft.resources.ResourceLocation;
 import org.junit.jupiter.api.Test;
 
 import java.util.LinkedHashMap;
@@ -50,7 +49,7 @@ class ConservativeHumanoidSemanticAnalyzerTest {
                 bounds(-0.28F, 0.0F, -0.12F, -0.02F, 0.8F, 0.12F)));
 
         SourceRigSnapshot snapshot = new SourceRigSnapshot(
-                new SkeletonKey(new ResourceLocation("test", "shoulder_carrier"), "shoulder-carrier"),
+                new SkeletonKey("test:shoulder_carrier", "shoulder-carrier"),
                 nodes,
                 bounds(-0.7F, 0.0F, -0.25F, 0.7F, 2.1F, 0.25F),
                 false
@@ -58,6 +57,9 @@ class ConservativeHumanoidSemanticAnalyzerTest {
 
         HumanoidSemanticAnalysis analysis = ConservativeHumanoidSemanticAnalyzer.INSTANCE.analyze(snapshot);
 
+        // CHEST binding must come from semantics, not from a literal source bone name such as "torso".
+        assertEquals("body", analysis.candidate(HumanoidJoint.CHEST)
+                .orElseThrow().sourceNodeId().orElseThrow());
         assertEquals("right_shoulder", analysis.candidate(HumanoidJoint.SHOULDER_RIGHT)
                 .orElseThrow().sourceNodeId().orElseThrow());
         assertEquals("left_shoulder", analysis.candidate(HumanoidJoint.SHOULDER_LEFT)

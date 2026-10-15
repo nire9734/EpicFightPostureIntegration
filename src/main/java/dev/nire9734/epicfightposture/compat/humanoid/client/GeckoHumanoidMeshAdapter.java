@@ -2,9 +2,6 @@ package dev.nire9734.epicfightposture.compat.humanoid.client;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import dev.nire9734.epicfightposture.compat.humanoid.retarget.HumanoidSkinWeightResolver;
-import dev.nire9734.epicfightposture.compat.humanoid.rig.ConservativeHumanoidSemanticAnalyzer;
-import dev.nire9734.epicfightposture.compat.humanoid.rig.HumanoidSemanticAnalysis;
-import dev.nire9734.epicfightposture.compat.humanoid.rig.HumanoidSkeletonResolver;
 import dev.nire9734.epicfightposture.compat.humanoid.rig.SourceNodeHeuristics;
 import dev.nire9734.epicfightposture.compat.humanoid.skeleton.HumanoidSkeletonDescriptor;
 import dev.nire9734.epicfightposture.compat.humanoid.skeleton.SkeletonKey;
@@ -44,13 +41,9 @@ public final class GeckoHumanoidMeshAdapter {
         Objects.requireNonNull(key, "key");
 
         try {
-            GeckoSourceRigAdapter.Capture capture = GeckoSourceRigAdapter.capture(model, key);
-            HumanoidSemanticAnalysis analysis =
-                    ConservativeHumanoidSemanticAnalyzer.INSTANCE.analyze(capture.snapshot());
-            HumanoidSkeletonDescriptor descriptor =
-                    HumanoidSkeletonResolver.resolve(capture.snapshot(), analysis);
-            HumanoidSkinWeightResolver weights =
-                    new HumanoidSkinWeightResolver(capture.snapshot(), analysis, descriptor);
+            GeckoResolvedHumanoidRig resolved = GeckoResolvedHumanoidRig.resolve(model, key);
+            HumanoidSkeletonDescriptor descriptor = resolved.descriptor();
+            HumanoidSkinWeightResolver weights = resolved.weights();
 
             GeckoBindPoseTransforms.resetToInitial(model);
 

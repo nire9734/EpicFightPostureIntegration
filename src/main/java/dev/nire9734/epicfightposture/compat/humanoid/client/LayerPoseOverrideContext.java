@@ -344,7 +344,7 @@ public final class LayerPoseOverrideContext {
 
         private SkeletonKey keyFor(Object model) {
             ResourceLocation entityId = EntityType.getKey(entity.getType());
-            return new SkeletonKey(entityId, model.getClass().getName() + "#render_layer");
+            return new SkeletonKey(entityId.toString(), model.getClass().getName() + "#render_layer");
         }
     }
 

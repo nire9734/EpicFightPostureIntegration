@@ -4,20 +4,10 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.logging.LogUtils;
 import dev.nire9734.epicfightposture.compat.humanoid.retarget.HumanoidSkinWeightResolver;
-import dev.nire9734.epicfightposture.compat.humanoid.rig.ConservativeHumanoidSemanticAnalyzer;
-import dev.nire9734.epicfightposture.compat.humanoid.rig.HumanoidSemanticAnalysis;
-import dev.nire9734.epicfightposture.compat.humanoid.rig.HumanoidSkeletonResolver;
-import dev.nire9734.epicfightposture.compat.humanoid.rig.SemanticJointCandidate;
-import dev.nire9734.epicfightposture.compat.humanoid.rig.SourceRigSnapshot;
-import dev.nire9734.epicfightposture.compat.humanoid.skeleton.HumanoidJoint;
-import dev.nire9734.epicfightposture.compat.humanoid.skeleton.HumanoidSkeletonDescriptor;
-import dev.nire9734.epicfightposture.compat.humanoid.skeleton.JointOrigin;
-import dev.nire9734.epicfightposture.compat.humanoid.skeleton.SkeletonKey;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.entity.EntityRenderer;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
@@ -39,12 +29,8 @@ import yesman.epicfight.api.utils.math.Vec3f;
 import yesman.epicfight.world.capabilities.entitypatch.LivingEntityPatch;
 
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.IdentityHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
-import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -58,21 +44,15 @@ import java.util.concurrent.ConcurrentHashMap;
  * </pre>
  *
  * <p>Attachment ownership is deliberately not classified here by a second set of
- * Gecko bone-name heuristics. The same {@link ConservativeHumanoidSemanticAnalyzer}
- * and {@link HumanoidSkinWeightResolver} that baked the body are run once per
- * baked GeoModel and cached. Direct semantic source anchors use their canonical
- * deformation joint; decoration/attachment descendants select the dominant joint
- * from the shared spatial weight resolver. This keeps shoulder carriers, one-bone
- * limbs and inferred wrists/knees consistent with the body conversion.</p>
+ * Gecko bone-name heuristics. Body baking, layer replay and renderer-specific
+ * post-render attachment handling share {@link GeckoResolvedHumanoidRig}; direct
+ * semantic source anchors use their canonical deformation joint while decoration
+ * descendants select the dominant joint from the shared {@link HumanoidSkinWeightResolver}.</p>
  */
 @SuppressWarnings({"rawtypes", "unchecked"})
 final class GeckoAttachmentBridge {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final Set<Class<?>> WARNED_RENDERERS = ConcurrentHashMap.newKeySet();
-
-    /** Weak model keys naturally invalidate on Gecko resource reload. */
-    private static final Map<BakedGeoModel, SemanticRig> SEMANTIC_RIGS =
-            Collections.synchronizedMap(new WeakHashMap<>());
 
     static void syncAndRenderLayers(
             LivingEntity entity,
@@ -96,7 +76,10 @@ final class GeckoAttachmentBridge {
                 return;
             }
 
-            SemanticRig semanticRig = semanticRig(entity, geoModel, modelLocation, bakedModel);
+            GeckoResolvedHumanoidRig semanticRig = GeckoResolvedHumanoidRig.resolve(
+                    bakedModel,
+                    GeckoResolvedHumanoidRig.keyFor(entity, geoModel, modelLocation)
+            );
 
             for (GeoBone top : bakedModel.topLevelBones()) {
                 resetTreeToInitial(top);
@@ -164,65 +147,9 @@ final class GeckoAttachmentBridge {
         }
     }
 
-    private static SemanticRig semanticRig(
-            LivingEntity entity,
-            GeoModel geoModel,
-            ResourceLocation modelLocation,
-            BakedGeoModel bakedModel) {
-        synchronized (SEMANTIC_RIGS) {
-            SemanticRig cached = SEMANTIC_RIGS.get(bakedModel);
-            if (cached != null) {
-                return cached;
-            }
-
-            ResourceLocation entityId = EntityType.getKey(entity.getType());
-            if (entityId == null) {
-                throw new IllegalArgumentException("Gecko attachment entity has no registry id");
-            }
-
-            SkeletonKey key = new SkeletonKey(
-                    entityId,
-                    geoModel.getClass().getName() + "|" + String.valueOf(modelLocation)
-            );
-            GeckoSourceRigAdapter.Capture capture = GeckoSourceRigAdapter.capture(bakedModel, key);
-            HumanoidSemanticAnalysis analysis =
-                    ConservativeHumanoidSemanticAnalyzer.INSTANCE.analyze(capture.snapshot());
-            HumanoidSkeletonDescriptor descriptor =
-                    HumanoidSkeletonResolver.resolve(capture.snapshot(), analysis);
-            HumanoidSkinWeightResolver weights =
-                    new HumanoidSkinWeightResolver(capture.snapshot(), analysis, descriptor);
-
-            IdentityHashMap<GeoBone, String> nodeIds = new IdentityHashMap<>();
-            capture.sourceNodes().forEach((sourceId, bone) -> nodeIds.put(bone, sourceId));
-
-            IdentityHashMap<GeoBone, HumanoidJoint> directOwners = new IdentityHashMap<>();
-            for (HumanoidJoint joint : HumanoidJoint.values()) {
-                SemanticJointCandidate candidate = analysis.candidate(joint).orElse(null);
-                if (candidate == null || candidate.origin() != JointOrigin.SOURCE) {
-                    continue;
-                }
-                candidate.sourceNodeId().ifPresent(sourceId -> {
-                    GeoBone bone = capture.sourceNodes().get(sourceId);
-                    if (bone != null) {
-                        directOwners.putIfAbsent(bone, joint);
-                    }
-                });
-            }
-
-            SemanticRig created = new SemanticRig(
-                    capture.snapshot(),
-                    weights,
-                    nodeIds,
-                    directOwners
-            );
-            SEMANTIC_RIGS.put(bakedModel, created);
-            return created;
-        }
-    }
-
     private static void replayBoneLayers(
             GeoBone bone,
-            SemanticRig semanticRig,
+            GeckoResolvedHumanoidRig semanticRig,
             Armature armature,
             OpenMatrix4f[] poseMatrices,
             List<GeoRenderLayer> layers,
@@ -302,7 +229,7 @@ final class GeckoAttachmentBridge {
     private static void syncPostRenderAnchors(
             GeoBone bone,
             int inheritedJoint,
-            SemanticRig semanticRig,
+            GeckoResolvedHumanoidRig semanticRig,
             Armature armature,
             Pose efPose) {
         if (bone == null) {
@@ -393,49 +320,6 @@ final class GeckoAttachmentBridge {
 
         for (GeoBone child : bone.getChildBones()) {
             resetTreeToInitial(child);
-        }
-    }
-
-    private static final class SemanticRig {
-        private final SourceRigSnapshot snapshot;
-        private final HumanoidSkinWeightResolver weights;
-        private final IdentityHashMap<GeoBone, String> nodeIds;
-        private final IdentityHashMap<GeoBone, HumanoidJoint> directOwners;
-
-        private SemanticRig(
-                SourceRigSnapshot snapshot,
-                HumanoidSkinWeightResolver weights,
-                IdentityHashMap<GeoBone, String> nodeIds,
-                IdentityHashMap<GeoBone, HumanoidJoint> directOwners) {
-            this.snapshot = snapshot;
-            this.weights = weights;
-            this.nodeIds = new IdentityHashMap<>(nodeIds);
-            this.directOwners = new IdentityHashMap<>(directOwners);
-        }
-
-        private int deformationJointId(GeoBone bone) {
-            HumanoidJoint directOwner = directOwners.get(bone);
-            if (directOwner != null) {
-                return HumanoidSkinWeightResolver.deformationJointId(directOwner);
-            }
-
-            String nodeId = nodeIds.get(bone);
-            if (nodeId == null) {
-                return HumanoidSkinWeightResolver.ROOT;
-            }
-
-            try {
-                HumanoidSkinWeightResolver.SkinWeights skin = weights.weights(
-                        nodeId,
-                        snapshot.node(nodeId).bindModelTransform().position()
-                );
-                if (skin.count() == 1 || skin.firstWeight() >= skin.secondWeight()) {
-                    return skin.firstJoint();
-                }
-                return skin.secondJoint();
-            } catch (Throwable ignored) {
-                return HumanoidSkinWeightResolver.ROOT;
-            }
         }
     }
 
