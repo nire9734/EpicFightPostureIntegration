@@ -78,11 +78,10 @@ public final class PostureServerConfig {
                 .define("enable_vanilla_humanoid_compatibility", true);
         ENABLE_GECKOLIB_HUMANOID_COMPATIBILITY = BUILDER
                 .comment(
-                        "Enable EFPI's automatic compatibility for humanoid GeckoLib entity models.",
-                        "Default: true. This has no effect when GeckoLib is not installed.",
-                        "Restart the server after changing this option."
+                        "Enable EFPI's automatic compatibility for supported extended humanoid model backends, including ModelPart, GeckoLib, Lionfish, and AzureLib.",
+                        "Default: true. Restart the server after changing this option."
                 )
-                .define("enable_geckolib_humanoid_compatibility", true);
+                .define("enable_extended_humanoid_compatibility", true);
         ENABLE_VANILLA_SPIDER_COMPATIBILITY = BUILDER
                 .comment(
                         "Enable EFPI's automatic compatibility for unpatched entities rendered with Minecraft SpiderModel.",
