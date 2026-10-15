@@ -29,6 +29,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.Supplier;
 
 /** One-time Minecraft HierarchicalModel/ModelPart -> Epic Fight SkinnedMesh baker. */
@@ -46,8 +47,9 @@ public final class ModelPartHumanoidMeshAdapter {
             HumanoidSemanticAnalysis analysis = ConservativeHumanoidSemanticAnalyzer.INSTANCE.analyze(capture.snapshot());
             HumanoidSkeletonDescriptor descriptor = HumanoidSkeletonResolver.resolve(capture.snapshot(), analysis);
             HumanoidSkinWeightResolver weights = new HumanoidSkinWeightResolver(capture.snapshot(), analysis, descriptor);
-            SkinnedMesh mesh = bakeBody(capture, weights);
-            ModelPartAttachmentPlan attachments = bakeAttachments(capture, weights);
+            Set<String> excludedGeometry = ModelPartAlternateGeometry.excludedGeometryNodes(capture.snapshot(), analysis);
+            SkinnedMesh mesh = bakeBody(capture, weights, excludedGeometry);
+            ModelPartAttachmentPlan attachments = bakeAttachments(capture, weights, excludedGeometry);
             return mesh == null
                     ? Result.unsupported("mesh bake produced no body vertices")
                     : Result.supported(descriptor, mesh, attachments);
@@ -59,15 +61,17 @@ public final class ModelPartHumanoidMeshAdapter {
 
     private static SkinnedMesh bakeBody(
             ModelPartSourceRigAdapter.Capture capture,
-            HumanoidSkinWeightResolver weights) throws ReflectiveOperationException {
+            HumanoidSkinWeightResolver weights,
+            Set<String> excludedGeometry) throws ReflectiveOperationException {
         List<SingleGroupVertexBuilder> vertices = new ArrayList<>();
         Map<MeshPartDefinition, IntList> indices = new LinkedHashMap<>();
 
         // Attachment geometry is intentionally absent from the always-visible
-        // body mesh. It is baked into per-source-node meshes below so source
-        // visibility (weapon switching, optional trails, etc.) remains dynamic.
+        // body mesh. Mutually-exclusive alternate limb geometry is also omitted:
+        // the independent semantic limbs are the deformation source while Epic
+        // Fight owns the special-state pose.
         for (ModelPartSourceRigAdapter.CubeEntry entry : capture.cubes()) {
-            if (!entry.attachment()) {
+            if (!entry.attachment() && !excludedGeometry.contains(entry.nodeId())) {
                 bakeCube(entry, weights, vertices, indices);
             }
         }
@@ -79,10 +83,11 @@ public final class ModelPartHumanoidMeshAdapter {
 
     private static ModelPartAttachmentPlan bakeAttachments(
             ModelPartSourceRigAdapter.Capture capture,
-            HumanoidSkinWeightResolver weights) throws ReflectiveOperationException {
+            HumanoidSkinWeightResolver weights,
+            Set<String> excludedGeometry) throws ReflectiveOperationException {
         Map<String, List<ModelPartSourceRigAdapter.CubeEntry>> byNode = new LinkedHashMap<>();
         for (ModelPartSourceRigAdapter.CubeEntry entry : capture.cubes()) {
-            if (entry.attachment()) {
+            if (entry.attachment() && !excludedGeometry.contains(entry.nodeId())) {
                 byNode.computeIfAbsent(entry.nodeId(), ignored -> new ArrayList<>()).add(entry);
             }
         }
