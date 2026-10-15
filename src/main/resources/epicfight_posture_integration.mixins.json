@@ -19,6 +19,7 @@
     "client.LionfishBasicEntityModelLayerMeshMixin",
     "client.LivingEntityRendererScaleInvoker",
     "client.LivingEntityRendererLayersAccessor",
-    "client.ModelPartLayerPoseMixin"
+    "client.ModelPartLayerPoseMixin",
+    "client.MultiBufferSourceBufferSourceMixin"
   ]
 }

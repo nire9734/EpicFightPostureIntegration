@@ -86,7 +86,9 @@ public final class LivingRenderLayerBridge {
                 MathUtils.mulStack(poseStack, armature.getPoseMatrices()[armature.rootJoint.getId()]);
                 poseStack.scale(-1.0F, -1.0F, 1.0F);
 
-                try (LionfishPrimaryModelLayerBridge.Scope ignoredPrimary =
+                try (LionfishLayerRenderTargetCapture.Scope ignoredRenderTargets =
+                             LionfishLayerRenderTargetCapture.open(buffer);
+                     LionfishPrimaryModelLayerBridge.Scope ignoredPrimary =
                              LionfishPrimaryModelLayerBridge.open(model, primaryMesh, armature);
                      LionfishSecondaryModelLayerBridge.Scope ignoredSecondary =
                              LionfishSecondaryModelLayerBridge.open(model, primaryDescriptor, armature);

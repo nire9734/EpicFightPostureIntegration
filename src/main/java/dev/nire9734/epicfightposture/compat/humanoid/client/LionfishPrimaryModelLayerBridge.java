@@ -4,7 +4,6 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import org.joml.Matrix3f;
 import org.joml.Matrix4f;
-import yesman.epicfight.api.client.model.Mesh;
 import yesman.epicfight.api.client.model.SkinnedMesh;
 import yesman.epicfight.api.model.Armature;
 import yesman.epicfight.api.utils.math.OpenMatrix4f;
@@ -22,12 +21,20 @@ import java.util.Map;
  * rigid. A one-bone source limb, however, is skinned per vertex across the inferred
  * elbow/knee in the prepared body mesh. Redrawing the same source model rigidly can
  * therefore separate long limb decorations from the body. Reusing the primary mesh
- * preserves the exact body weights while still honoring the layer's VertexConsumer,
+ * preserves the exact body weights while still honoring the layer's render state,
  * light, overlay and color contract.</p>
  *
+ * <p>Lionfish source models normally emit QUADS, while Epic Fight SkinnedMesh data
+ * is triangulated. The bridge therefore requires a captured source RenderType and
+ * renders through SkinnedMesh.draw(), which asks Epic Fight for an equivalent
+ * triangulated RenderType. Feeding the triangle list directly to the source
+ * VertexConsumer would corrupt primitive assembly for QUADS render types such as
+ * emissive/eyes layers.</p>
+ *
  * <p>Only the exact primary model instance is substituted. Layers that own another
- * model, held-item paths, or layers that alter primary-part visibility continue
- * through the existing source-model replay path.</p>
+ * model, held-item paths, layers that alter primary-part visibility, or render
+ * contracts whose RenderType cannot be captured continue through the existing
+ * source-model replay path.</p>
  */
 public final class LionfishPrimaryModelLayerBridge {
     private static final float MATRIX_EPSILON = 1.0E-8F;
@@ -88,6 +95,15 @@ public final class LionfishPrimaryModelLayerBridge {
             return false;
         }
 
+        LionfishLayerRenderTargetCapture.Target target =
+                LionfishLayerRenderTargetCapture.resolve(vertexConsumer);
+        if (target == null) {
+            // Without the source RenderType we cannot safely know whether the
+            // supplied VertexConsumer expects QUADS or TRIANGLES. Keep the
+            // framework-original compatible rigid replay instead of guessing.
+            return false;
+        }
+
         poseStack.pushPose();
         try {
             // LivingRenderLayerBridge enters source layers underneath
@@ -95,10 +111,10 @@ public final class LionfishPrimaryModelLayerBridge {
             // the complete EF skin matrices, so remove only that replay basis and
             // preserve the renderer-owned/model presentation transform beneath it.
             mulPoseAndNormal(poseStack, frame.inverseExternalTransform);
-            frame.primaryMesh.drawPosed(
+            frame.primaryMesh.draw(
                     poseStack,
-                    vertexConsumer,
-                    Mesh.DrawingFunction.NEW_ENTITY,
+                    target.bufferSource(),
+                    target.renderType(),
                     packedLight,
                     red,
                     green,

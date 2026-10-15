@@ -10,7 +10,6 @@ import dev.nire9734.epicfightposture.compat.humanoid.skeleton.SkeletonKey;
 import dev.nire9734.epicfightposture.compat.humanoid.skeleton.SkeletonVec3;
 import org.joml.Matrix3f;
 import org.joml.Matrix4f;
-import yesman.epicfight.api.client.model.Mesh;
 import yesman.epicfight.api.client.model.SkinnedMesh;
 import yesman.epicfight.api.model.Armature;
 import yesman.epicfight.api.utils.math.OpenMatrix4f;
@@ -26,10 +25,15 @@ import java.util.WeakHashMap;
  * Replaces safely analyzable layer-owned Lionfish clothing/overlay models with a
  * cached skinned mesh that uses the primary humanoid descriptor.
  *
- * <p>The layer still owns texture, RenderType, VertexConsumer, light, overlay,
- * color and visibility. EFPI substitutes geometry only when the secondary model
- * contains a canonical body transition that cannot be represented by one rigid
- * joint. Rigid-only or ambiguous models fall through to LayerPoseOverrideContext.</p>
+ * <p>The layer still owns texture, RenderType, light, overlay, color and visibility.
+ * EFPI substitutes geometry only when the secondary model contains a canonical body
+ * transition that cannot be represented by one rigid joint. Rigid-only or ambiguous
+ * models fall through to LayerPoseOverrideContext.</p>
+ *
+ * <p>Like the primary Lionfish layer bridge, this path requires the source
+ * RenderType to be captured. SkinnedMesh is triangulated and must be rendered via
+ * SkinnedMesh.draw() so Epic Fight can convert a source QUADS RenderType into an
+ * equivalent TRIANGLES RenderType without changing its shader/texture/state.</p>
  */
 public final class LionfishSecondaryModelLayerBridge {
     private static final float MATRIX_EPSILON = 1.0E-8F;
@@ -89,6 +93,12 @@ public final class LionfishSecondaryModelLayerBridge {
             return false;
         }
 
+        LionfishLayerRenderTargetCapture.Target target =
+                LionfishLayerRenderTargetCapture.resolve(vertexConsumer);
+        if (target == null) {
+            return false;
+        }
+
         VisibilityKey visibility = visibilityKey(secondaryModel);
         if (visibility == null) {
             return false;
@@ -111,10 +121,10 @@ public final class LionfishSecondaryModelLayerBridge {
         poseStack.pushPose();
         try {
             mulPoseAndNormal(poseStack, frame.inverseExternalTransform);
-            cached.mesh().drawPosed(
+            cached.mesh().draw(
                     poseStack,
-                    vertexConsumer,
-                    Mesh.DrawingFunction.NEW_ENTITY,
+                    target.bufferSource(),
+                    target.renderType(),
                     packedLight,
                     red,
                     green,
