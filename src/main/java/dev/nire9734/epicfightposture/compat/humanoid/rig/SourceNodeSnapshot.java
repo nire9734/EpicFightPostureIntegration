@@ -7,7 +7,7 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * Framework-neutral snapshot of one source model node in authored bind pose.
+ * Library-independent snapshot of one source model node in authored bind pose.
  *
  * <p>The node id must be unique within a {@link SourceRigSnapshot}. Names do not
  * need to be unique. Geometry bounds are model-space bounds after authored bind
@@ -50,5 +50,10 @@ public record SourceNodeSnapshot(
                 Optional.ofNullable(geometryBounds),
                 renderable
         );
+    }
+
+    /** Readable alias used by framework diagnostics and semantic tooling. */
+    public String semanticName() {
+        return name;
     }
 }
