@@ -2,11 +2,13 @@ package dev.nire9734.epicfightposture.compat.humanoid.client;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import dev.nire9734.epicfightposture.compat.humanoid.retarget.HumanoidSkinWeightResolver;
+import dev.nire9734.epicfightposture.compat.humanoid.retarget.SecondaryDeformationPolicy;
 import dev.nire9734.epicfightposture.compat.humanoid.rig.ConservativeHumanoidSemanticAnalyzer;
 import dev.nire9734.epicfightposture.compat.humanoid.rig.HumanoidSemanticAnalysis;
-import dev.nire9734.epicfightposture.compat.humanoid.rig.HumanoidSkeletonResolver;
 import dev.nire9734.epicfightposture.compat.humanoid.rig.SourceNodeSnapshot;
 import dev.nire9734.epicfightposture.compat.humanoid.rig.SourceRigSnapshot;
+import dev.nire9734.epicfightposture.compat.humanoid.skeleton.BodyBounds;
+import dev.nire9734.epicfightposture.compat.humanoid.skeleton.HumanoidJoint;
 import dev.nire9734.epicfightposture.compat.humanoid.skeleton.HumanoidSkeletonDescriptor;
 import dev.nire9734.epicfightposture.compat.humanoid.skeleton.JointOrigin;
 import dev.nire9734.epicfightposture.compat.humanoid.skeleton.SkeletonKey;
@@ -33,11 +35,11 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.WeakHashMap;
-import java.util.IdentityHashMap;
 
 /**
  * Supplies Epic Fight transforms while EFPI replays source {@code RenderLayer}s.
@@ -49,10 +51,10 @@ import java.util.IdentityHashMap;
  * every source part through the same framework-neutral humanoid analysis used by
  * the runtime mesh and replaces only the part transform at render time.</p>
  *
- * <p>Static source-model analysis is cached per model instance. During each
- * replay frame only the current Epic Fight skin matrices are combined with the
- * cached bind transforms. No entity id, mod id, renderer class, or mob name is
- * special-cased.</p>
+ * <p>Secondary-model semantic ownership comes from the secondary source hierarchy,
+ * but all rigid ownership decisions are evaluated against the primary body's
+ * {@link HumanoidSkeletonDescriptor}. A clothing model therefore cannot invent a
+ * different elbow, knee or spine location from the body it covers.</p>
  */
 public final class LayerPoseOverrideContext {
     private static final float MATRIX_EPSILON = 1.0E-8F;
@@ -62,22 +64,25 @@ public final class LayerPoseOverrideContext {
             "dev.nire9734.epicfightposture.compat.humanoid.client.LionfishSourceRigAdapter";
 
     private static final ThreadLocal<Context> ACTIVE = new ThreadLocal<>();
-    private static final Map<Object, ModelPlan> MODEL_PLANS =
+    private static final Map<Object, Map<DescriptorCacheKey, ModelPlan>> MODEL_PLANS =
             Collections.synchronizedMap(new WeakHashMap<>());
 
     public static Scope open(
             LivingEntity entity,
             EntityModel<?> parentModel,
             Iterable<?> layers,
-            Armature armature) {
+            Armature armature,
+            HumanoidSkeletonDescriptor primaryDescriptor) {
         Context previous = ACTIVE.get();
         Context current;
         try {
-            current = new Context(entity, armature);
-            current.registerModel(parentModel);
-            if (layers != null) {
-                for (Object layer : layers) {
-                    current.registerLayerModels(layer);
+            current = primaryDescriptor == null ? null : new Context(entity, armature, primaryDescriptor);
+            if (current != null) {
+                current.registerModel(parentModel);
+                if (layers != null) {
+                    for (Object layer : layers) {
+                        current.registerLayerModels(layer);
+                    }
                 }
             }
         } catch (Throwable ignored) {
@@ -106,9 +111,6 @@ public final class LayerPoseOverrideContext {
 
         poseStack.mulPoseMatrix(new Matrix4f(local));
 
-        // Minecraft 1.20.1 PoseStack.mulPoseMatrix only changes the position
-        // matrix. translateAndRotate normally keeps normals in sync as well, so
-        // reproduce the inverse-transpose normal transform for our replacement.
         Matrix3f normalTransform = new Matrix3f(local);
         float determinant = normalTransform.determinant();
         if (Float.isFinite(determinant) && Math.abs(determinant) > MATRIX_EPSILON) {
@@ -146,6 +148,8 @@ public final class LayerPoseOverrideContext {
     private static final class Context {
         private final LivingEntity entity;
         private final Armature armature;
+        private final HumanoidSkeletonDescriptor primaryDescriptor;
+        private final DescriptorCacheKey descriptorCacheKey;
         private final OpenMatrix4f[] poseMatrices;
         private final Matrix4f inverseExternalTransform;
         private final IdentityHashMap<Object, Matrix4f> localOverrides = new IdentityHashMap<>();
@@ -153,9 +157,17 @@ public final class LayerPoseOverrideContext {
         private final Set<Object> attemptedParts = Collections.newSetFromMap(new IdentityHashMap<>());
         private final Map<Integer, Matrix4f> skinMatrices = new HashMap<>();
 
-        private Context(LivingEntity entity, Armature armature) {
+        private Context(
+                LivingEntity entity,
+                Armature armature,
+                HumanoidSkeletonDescriptor primaryDescriptor) {
             this.entity = entity;
             this.armature = armature;
+            this.primaryDescriptor = primaryDescriptor;
+            this.descriptorCacheKey = new DescriptorCacheKey(
+                    primaryDescriptor.key(),
+                    descriptorFingerprint(primaryDescriptor)
+            );
             this.poseMatrices = armature.getPoseMatrices();
 
             int rootId = armature.rootJoint.getId();
@@ -163,10 +175,6 @@ public final class LayerPoseOverrideContext {
                 throw new IllegalArgumentException("Armature exposes no usable Root pose matrix");
             }
 
-            // LivingRenderLayerBridge leaves its historical generic fallback in
-            // place: animated Root followed by the source-model axis flip. Exact
-            // per-part transforms below are expressed underneath that basis so an
-            // unsupported layer still falls back to the old behavior unchanged.
             Matrix4f external = OpenMatrix4f.exportToMojangMatrix(poseMatrices[rootId]);
             external.scale(-1.0F, -1.0F, 1.0F);
             this.inverseExternalTransform = new Matrix4f(external).invert();
@@ -212,21 +220,25 @@ public final class LayerPoseOverrideContext {
         }
 
         private ModelPlan modelPlan(Object model) throws Exception {
-            ModelPlan cached;
             synchronized (MODEL_PLANS) {
-                cached = MODEL_PLANS.get(model);
-            }
-            if (cached != null) {
-                return cached;
+                Map<DescriptorCacheKey, ModelPlan> byDescriptor = MODEL_PLANS.get(model);
+                if (byDescriptor != null) {
+                    ModelPlan cached = byDescriptor.get(descriptorCacheKey);
+                    if (cached != null) {
+                        return cached;
+                    }
+                }
             }
 
             ModelPlan built = buildModelPlan(model, keyFor(model));
             synchronized (MODEL_PLANS) {
-                ModelPlan raced = MODEL_PLANS.get(model);
+                Map<DescriptorCacheKey, ModelPlan> byDescriptor =
+                        MODEL_PLANS.computeIfAbsent(model, ignored -> new HashMap<>());
+                ModelPlan raced = byDescriptor.get(descriptorCacheKey);
                 if (raced != null) {
                     return raced;
                 }
-                MODEL_PLANS.put(model, built);
+                byDescriptor.put(descriptorCacheKey, built);
             }
             return built;
         }
@@ -239,7 +251,7 @@ public final class LayerPoseOverrideContext {
                 );
                 HumanoidSemanticAnalysis analysis = ConservativeHumanoidSemanticAnalyzer.INSTANCE
                         .analyze(capture.snapshot());
-                return buildPlan(capture.snapshot(), analysis, capture.sourceNodes());
+                return buildPlan(capture.snapshot(), analysis, capture.sourceNodes(), primaryDescriptor);
             }
 
             if (isLionfishModel(model)) {
@@ -275,7 +287,7 @@ public final class LayerPoseOverrideContext {
             SourceRigSnapshot snapshot = (SourceRigSnapshot) snapshotAccessor.invoke(capture);
             Map<String, ?> sourceNodes = (Map<String, ?>) sourceNodesAccessor.invoke(capture);
             HumanoidSemanticAnalysis analysis = ConservativeHumanoidSemanticAnalyzer.INSTANCE.analyze(snapshot);
-            return buildPlan(snapshot, analysis, sourceNodes);
+            return buildPlan(snapshot, analysis, sourceNodes, primaryDescriptor);
         }
 
         private void installPlan(ModelPlan plan) {
@@ -312,9 +324,6 @@ public final class LayerPoseOverrideContext {
                 return local;
             }
 
-            // Lionfish parts retain a model back-reference. This catches a model
-            // constructed lazily inside a layer even when it was not discoverable
-            // as an EntityModel field when the replay scope was opened.
             try {
                 Method getModel = sourcePart.getClass().getMethod("getModel");
                 Object model = getModel.invoke(sourcePart);
@@ -353,9 +362,10 @@ public final class LayerPoseOverrideContext {
     private static ModelPlan buildPlan(
             SourceRigSnapshot snapshot,
             HumanoidSemanticAnalysis analysis,
-            Map<String, ?> sourceNodes) {
-        HumanoidSkeletonDescriptor descriptor = HumanoidSkeletonResolver.resolve(snapshot, analysis);
-        HumanoidSkinWeightResolver weights = new HumanoidSkinWeightResolver(snapshot, analysis, descriptor);
+            Map<String, ?> sourceNodes,
+            HumanoidSkeletonDescriptor primaryDescriptor) {
+        HumanoidSkinWeightResolver weights =
+                new HumanoidSkinWeightResolver(snapshot, analysis, primaryDescriptor);
         Map<String, Matrix4f> bindAbsolute = buildFullBindMatrices(snapshot, sourceNodes);
         List<PlannedPart> planned = new ArrayList<>();
 
@@ -369,9 +379,7 @@ public final class LayerPoseOverrideContext {
             boolean directSemanticSource = analysis.candidates().values().stream().anyMatch(candidate ->
                     candidate.origin() == JointOrigin.SOURCE
                             && candidate.sourceNodeId().filter(node.id()::equals).isPresent());
-            SkeletonVec3 anchorPosition = rigidAnchorPosition(node, directSemanticSource);
-            HumanoidSkinWeightResolver.SkinWeights skin = weights.weights(node.id(), anchorPosition);
-            int jointId = dominantJoint(skin);
+            int jointId = rigidJointForNode(node, directSemanticSource, weights);
             planned.add(new PlannedPart(
                     new WeakReference<>(sourcePart),
                     node.id(),
@@ -383,20 +391,48 @@ public final class LayerPoseOverrideContext {
         return planned.isEmpty() ? ModelPlan.EMPTY : new ModelPlan(List.copyOf(planned));
     }
 
+    private static int rigidJointForNode(
+            SourceNodeSnapshot node,
+            boolean directSemanticSource,
+            HumanoidSkinWeightResolver weights) {
+        if (!directSemanticSource && node.geometryBounds().isPresent()) {
+            List<HumanoidSkinWeightResolver.SkinWeights> samples = new ArrayList<>();
+            for (SkeletonVec3 sample : boundsSamples(node.geometryBounds().orElseThrow())) {
+                samples.add(weights.weights(node.id(), sample));
+            }
+            var decision = SecondaryDeformationPolicy.classify(samples);
+            if (decision.isPresent() && decision.get().rigid()) {
+                return decision.get().rigidJointId();
+            }
+        }
+
+        SkeletonVec3 anchorPosition = rigidAnchorPosition(node, directSemanticSource);
+        return SecondaryDeformationPolicy.dominantJoint(weights.weights(node.id(), anchorPosition));
+    }
+
     static SkeletonVec3 rigidAnchorPosition(SourceNodeSnapshot node, boolean directSemanticSource) {
         if (directSemanticSource) {
             return node.bindModelTransform().position();
         }
         return node.geometryBounds()
-                .map(bounds -> bounds.center())
+                .map(BodyBounds::center)
                 .orElse(node.bindModelTransform().position());
     }
 
-    private static int dominantJoint(HumanoidSkinWeightResolver.SkinWeights weights) {
-        if (weights.count() == 1 || weights.firstWeight() >= weights.secondWeight()) {
-            return weights.firstJoint();
+    private static List<SkeletonVec3> boundsSamples(BodyBounds bounds) {
+        List<SkeletonVec3> samples = new ArrayList<>(9);
+        float[] xs = {bounds.min().x(), bounds.max().x()};
+        float[] ys = {bounds.min().y(), bounds.max().y()};
+        float[] zs = {bounds.min().z(), bounds.max().z()};
+        for (float x : xs) {
+            for (float y : ys) {
+                for (float z : zs) {
+                    samples.add(new SkeletonVec3(x, y, z));
+                }
+            }
         }
-        return weights.secondJoint();
+        samples.add(bounds.center());
+        return samples;
     }
 
     /** Rebuilds the same full bind matrices used by the framework adapters. */
@@ -495,6 +531,24 @@ public final class LayerPoseOverrideContext {
             type = type.getSuperclass();
         }
         return false;
+    }
+
+    private static int descriptorFingerprint(HumanoidSkeletonDescriptor descriptor) {
+        int hash = 1;
+        for (HumanoidJoint joint : HumanoidJoint.values()) {
+            try {
+                SkeletonVec3 p = descriptor.bindModelPosition(joint);
+                hash = 31 * hash + Float.floatToIntBits(p.x());
+                hash = 31 * hash + Float.floatToIntBits(p.y());
+                hash = 31 * hash + Float.floatToIntBits(p.z());
+            } catch (IllegalArgumentException ignored) {
+                hash = 31 * hash;
+            }
+        }
+        return hash;
+    }
+
+    private record DescriptorCacheKey(SkeletonKey key, int fingerprint) {
     }
 
     private record PlannedPart(

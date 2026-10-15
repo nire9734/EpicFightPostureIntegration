@@ -90,12 +90,15 @@ public final class ModelPartHumanoidClientCompat implements HumanoidRenderBacken
 
     @Override
     public synchronized void addPatchedRenderer(PatchedRenderersEvent.Add event, PreparedHumanoidModel prepared) {
-        // Forge RenderLivingEvent.Pre occurs before LivingEntityRenderer.scale(),
-        // so the same special-state renderer contract used by Lionfish applies.
         ModelPartAttachmentPlan attachments = ATTACHMENTS.get(prepared.entityType());
+        HumanoidSkeletonDescriptor descriptor = prepared.skeleton().orElse(null);
         event.addPatchedEntityRenderer(
                 prepared.entityType(),
-                type -> new SpecialStateLionfishRenderer(prepared.mesh(), event.getContext(), attachments)
+                type -> new SpecialStateLionfishRenderer(
+                        prepared.mesh(),
+                        event.getContext(),
+                        attachments,
+                        descriptor)
         );
     }
 

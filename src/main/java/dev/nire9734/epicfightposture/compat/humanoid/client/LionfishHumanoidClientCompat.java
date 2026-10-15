@@ -83,9 +83,14 @@ public final class LionfishHumanoidClientCompat implements HumanoidRenderBackend
 
     @Override
     public void addPatchedRenderer(PatchedRenderersEvent.Add event, PreparedHumanoidModel prepared) {
+        HumanoidSkeletonDescriptor descriptor = prepared.skeleton().orElse(null);
         event.addPatchedEntityRenderer(
                 prepared.entityType(),
-                type -> new SpecialStateLionfishRenderer(prepared.mesh(), event.getContext())
+                type -> new SpecialStateLionfishRenderer(
+                        prepared.mesh(),
+                        event.getContext(),
+                        null,
+                        descriptor)
         );
     }
 

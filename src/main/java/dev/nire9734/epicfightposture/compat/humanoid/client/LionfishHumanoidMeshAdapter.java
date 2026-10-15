@@ -6,6 +6,7 @@ import com.github.L_Ender.lionfishapi.client.model.tools.BasicModelPart;
 import com.github.L_Ender.lionfishapi.client.model.tools.LionfishModelRenderUtils;
 import com.mojang.blaze3d.vertex.PoseStack;
 import dev.nire9734.epicfightposture.compat.humanoid.retarget.HumanoidSkinWeightResolver;
+import dev.nire9734.epicfightposture.compat.humanoid.retarget.SecondaryDeformationPolicy;
 import dev.nire9734.epicfightposture.compat.humanoid.rig.ConservativeHumanoidSemanticAnalyzer;
 import dev.nire9734.epicfightposture.compat.humanoid.rig.HumanoidSemanticAnalysis;
 import dev.nire9734.epicfightposture.compat.humanoid.rig.HumanoidSkeletonResolver;
@@ -34,6 +35,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.function.Supplier;
 
 /** One-time Lionfish/Citadel-style humanoid -> Epic Fight SkinnedMesh baker. */
@@ -49,102 +51,220 @@ public final class LionfishHumanoidMeshAdapter {
             HumanoidSemanticAnalysis analysis = ConservativeHumanoidSemanticAnalyzer.INSTANCE.analyze(capture.snapshot());
             HumanoidSkeletonDescriptor descriptor = HumanoidSkeletonResolver.resolve(capture.snapshot(), analysis);
             HumanoidSkinWeightResolver weights = new HumanoidSkinWeightResolver(capture.snapshot(), analysis, descriptor);
-            SkinnedMesh mesh = bake(model, capture, weights);
-            return mesh == null ? Result.unsupported("mesh bake produced no vertices") : Result.supported(descriptor, mesh);
+            BakeOutput baked = bake(model, capture, weights, false);
+            return baked == null || baked.mesh() == null
+                    ? Result.unsupported("mesh bake produced no vertices")
+                    : Result.supported(descriptor, baked.mesh());
         } catch (Throwable throwable) {
             return Result.unsupported("Lionfish humanoid mesh bake failed: " + throwable.getClass().getSimpleName()
                     + (throwable.getMessage() == null ? "" : " (" + throwable.getMessage() + ")"));
         }
     }
 
-    private static SkinnedMesh bake(
+    /**
+     * Bakes a layer-owned Lionfish model against the primary body's canonical
+     * descriptor. The secondary hierarchy supplies semantic ownership only; it
+     * never creates an independent elbow/knee/spine layout.
+     *
+     * <p>Rigid-only models intentionally return unsupported so their original
+     * LayerPoseOverrideContext path remains in charge. Only models containing at
+     * least one safely classified deformable primitive are substituted.</p>
+     */
+    static SecondaryResult analyseAndBakeSecondary(
+            AdvancedEntityModel<?> model,
+            SkeletonKey key,
+            HumanoidSkeletonDescriptor primaryDescriptor) {
+        Objects.requireNonNull(model, "model");
+        Objects.requireNonNull(key, "key");
+        Objects.requireNonNull(primaryDescriptor, "primaryDescriptor");
+        try {
+            LionfishSourceRigAdapter.Capture capture = LionfishSourceRigAdapter.capture(model, key);
+            HumanoidSemanticAnalysis analysis = ConservativeHumanoidSemanticAnalyzer.INSTANCE.analyze(capture.snapshot());
+            HumanoidSkinWeightResolver weights =
+                    new HumanoidSkinWeightResolver(capture.snapshot(), analysis, primaryDescriptor);
+            BakeOutput baked = bake(model, capture, weights, true);
+            if (baked == null || baked.mesh() == null) {
+                return SecondaryResult.unsupported("secondary mesh bake produced no vertices");
+            }
+            if (!baked.deformableGeometry()) {
+                return SecondaryResult.unsupported("secondary geometry is rigid-only");
+            }
+            return SecondaryResult.supported(baked.mesh());
+        } catch (Throwable throwable) {
+            return SecondaryResult.unsupported(
+                    "Lionfish secondary mesh bake failed: " + throwable.getClass().getSimpleName()
+                            + (throwable.getMessage() == null ? "" : " (" + throwable.getMessage() + ")")
+            );
+        }
+    }
+
+    private static BakeOutput bake(
             AdvancedEntityModel<?> model,
             LionfishSourceRigAdapter.Capture capture,
-            HumanoidSkinWeightResolver weights) throws ReflectiveOperationException {
+            HumanoidSkinWeightResolver weights,
+            boolean failOnAmbiguousSecondary) throws ReflectiveOperationException {
         IdentityHashMap<AdvancedModelBox, String> nodeIds = new IdentityHashMap<>();
         capture.sourceNodes().forEach((id, node) -> nodeIds.put(node, id));
         List<SingleGroupVertexBuilder> vertices = new ArrayList<>();
         Map<MeshPartDefinition, IntList> indices = new LinkedHashMap<>();
         PoseStack stack = LionfishSourceRigAdapter.canonicalModelStack();
+        BakeStats stats = new BakeStats();
 
         for (AdvancedModelBox part : model.getAllParts()) {
             if (part != null && part.getParent() == null) {
-                bakePart(part, stack, nodeIds, weights, vertices, indices);
+                if (!bakePart(
+                        part,
+                        stack,
+                        nodeIds,
+                        weights,
+                        failOnAmbiguousSecondary,
+                        stats,
+                        vertices,
+                        indices)) {
+                    return null;
+                }
             }
         }
-        return vertices.isEmpty() ? null : SingleGroupVertexBuilder.loadVertexInformation(vertices, indices);
+        if (vertices.isEmpty()) {
+            return null;
+        }
+        return new BakeOutput(
+                SingleGroupVertexBuilder.loadVertexInformation(vertices, indices),
+                stats.deformableGeometry
+        );
     }
 
-    private static void bakePart(
+    private static boolean bakePart(
             AdvancedModelBox part,
             PoseStack stack,
             IdentityHashMap<AdvancedModelBox, String> nodeIds,
             HumanoidSkinWeightResolver weights,
+            boolean failOnAmbiguousSecondary,
+            BakeStats stats,
             List<SingleGroupVertexBuilder> vertices,
             Map<MeshPartDefinition, IntList> indices) throws ReflectiveOperationException {
-        if (part == null || !part.showModel) return;
+        if (part == null || !part.showModel) {
+            return true;
+        }
         String sourceNodeId = nodeIds.get(part);
-        if (sourceNodeId == null) return;
+        if (sourceNodeId == null) {
+            return !failOnAmbiguousSecondary;
+        }
 
         LionfishSourceRigAdapter.BindValues bind = LionfishSourceRigAdapter.bindValues(part);
         stack.pushPose();
-        stack.translate(bind.positionX() / 16.0F, bind.positionY() / 16.0F, bind.positionZ() / 16.0F);
-        stack.mulPose(new Quaternionf().rotationZYX(bind.rotationZ(), bind.rotationY(), bind.rotationX()));
-        stack.scale(bind.scaleX(), bind.scaleY(), bind.scaleZ());
+        try {
+            stack.translate(bind.positionX() / 16.0F, bind.positionY() / 16.0F, bind.positionZ() / 16.0F);
+            stack.mulPose(new Quaternionf().rotationZYX(bind.rotationZ(), bind.rotationY(), bind.rotationX()));
+            stack.scale(bind.scaleX(), bind.scaleY(), bind.scaleZ());
 
-        if (!part.isHidden() && part.cubeList != null) {
-            for (LionfishModelRenderUtils.ModelBox cube : part.cubeList) {
-                bakeCube(cube, sourceNodeId, stack, weights, vertices, indices);
-            }
-        }
-        if (part.childModels != null) {
-            for (BasicModelPart child : part.childModels) {
-                if (child instanceof AdvancedModelBox box) {
-                    bakePart(box, stack, nodeIds, weights, vertices, indices);
+            if (!part.isHidden() && part.cubeList != null) {
+                for (LionfishModelRenderUtils.ModelBox cube : part.cubeList) {
+                    if (!bakeCube(
+                            cube,
+                            sourceNodeId,
+                            stack,
+                            weights,
+                            failOnAmbiguousSecondary,
+                            stats,
+                            vertices,
+                            indices)) {
+                        return false;
+                    }
                 }
             }
+            if (part.childModels != null) {
+                for (BasicModelPart child : part.childModels) {
+                    if (child instanceof AdvancedModelBox box
+                            && !bakePart(
+                            box,
+                            stack,
+                            nodeIds,
+                            weights,
+                            failOnAmbiguousSecondary,
+                            stats,
+                            vertices,
+                            indices)) {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        } finally {
+            stack.popPose();
         }
-        stack.popPose();
     }
 
-    private static void bakeCube(
+    private static boolean bakeCube(
             LionfishModelRenderUtils.ModelBox cube,
             String sourceNodeId,
             PoseStack stack,
             HumanoidSkinWeightResolver weights,
+            boolean failOnAmbiguousSecondary,
+            BakeStats stats,
             List<SingleGroupVertexBuilder> vertices,
             Map<MeshPartDefinition, IntList> indices) throws ReflectiveOperationException {
-        if (cube == null) return;
+        if (cube == null) {
+            return true;
+        }
         ReflectionAccess access = reflection();
         Object quads = access.quadsField.get(cube);
-        if (quads == null) return;
+        if (quads == null) {
+            return true;
+        }
 
         for (int q = 0; q < Array.getLength(quads); q++) {
             Object quad = Array.get(quads, q);
-            if (quad == null) continue;
+            if (quad == null) {
+                continue;
+            }
             QuadFields qf = access.quadFields(quad.getClass());
             Object sourceVertices = qf.vertices.get(quad);
             Object normalValue = qf.normal.get(quad);
             if (sourceVertices == null || Array.getLength(sourceVertices) != 4
-                    || !(normalValue instanceof Vector3f sourceNormal)) continue;
+                    || !(normalValue instanceof Vector3f sourceNormal)) {
+                continue;
+            }
 
             SourceVertex[] corners = readQuadVertices(sourceVertices, access);
-            if (corners == null) continue;
+            if (corners == null) {
+                continue;
+            }
 
             Vector3f normal = new Vector3f(sourceNormal);
             normal.mul(stack.last().normal());
-            if (normal.lengthSquared() > 1.0E-8F) normal.normalize();
+            if (normal.lengthSquared() > 1.0E-8F) {
+                normal.normalize();
+            }
 
-            HumanoidSkinWeightResolver.SkinWeights[] cornerWeights = new HumanoidSkinWeightResolver.SkinWeights[4];
+            HumanoidSkinWeightResolver.SkinWeights[] cornerWeights =
+                    new HumanoidSkinWeightResolver.SkinWeights[4];
             for (int i = 0; i < corners.length; i++) {
                 SkeletonVec3 position = modelPosition(corners[i].position(), stack);
                 cornerWeights[i] = weights.weights(sourceNodeId, position);
             }
 
-            boolean uVaries = SkinningSubdivision.weightsDiffer(cornerWeights[0], cornerWeights[1])
-                    || SkinningSubdivision.weightsDiffer(cornerWeights[3], cornerWeights[2]);
-            boolean vVaries = SkinningSubdivision.weightsDiffer(cornerWeights[0], cornerWeights[3])
-                    || SkinningSubdivision.weightsDiffer(cornerWeights[1], cornerWeights[2]);
+            Optional<SecondaryDeformationPolicy.Decision> decision =
+                    SecondaryDeformationPolicy.classify(List.of(cornerWeights));
+            if (decision.isEmpty() && failOnAmbiguousSecondary) {
+                return false;
+            }
+
+            int rigidJoint = -1;
+            if (decision.isPresent()) {
+                if (decision.get().rigid()) {
+                    rigidJoint = decision.get().rigidJointId();
+                } else {
+                    stats.deformableGeometry = true;
+                }
+            }
+
+            boolean uVaries = rigidJoint < 0 && (
+                    SkinningSubdivision.weightsDiffer(cornerWeights[0], cornerWeights[1])
+                            || SkinningSubdivision.weightsDiffer(cornerWeights[3], cornerWeights[2]));
+            boolean vVaries = rigidJoint < 0 && (
+                    SkinningSubdivision.weightsDiffer(cornerWeights[0], cornerWeights[3])
+                            || SkinningSubdivision.weightsDiffer(cornerWeights[1], cornerWeights[2]));
 
             float uLengthPixels = Math.max(
                     corners[0].position().distance(corners[1].position()),
@@ -163,12 +283,14 @@ public final class LionfishHumanoidMeshAdapter {
                     sourceNodeId,
                     stack,
                     weights,
+                    rigidJoint,
                     uSegments,
                     vSegments,
                     vertices,
                     indices
             );
         }
+        return true;
     }
 
     private static SourceVertex[] readQuadVertices(
@@ -177,10 +299,14 @@ public final class LionfishHumanoidMeshAdapter {
         SourceVertex[] result = new SourceVertex[4];
         for (int i = 0; i < result.length; i++) {
             Object sourceVertex = Array.get(sourceVertices, i);
-            if (sourceVertex == null) return null;
+            if (sourceVertex == null) {
+                return null;
+            }
             VertexFields vf = access.vertexFields(sourceVertex.getClass());
             Object positionValue = vf.position.get(sourceVertex);
-            if (!(positionValue instanceof Vector3f sourcePosition)) return null;
+            if (!(positionValue instanceof Vector3f sourcePosition)) {
+                return null;
+            }
             result[i] = new SourceVertex(
                     new Vector3f(sourcePosition),
                     vf.textureU.getFloat(sourceVertex),
@@ -196,18 +322,21 @@ public final class LionfishHumanoidMeshAdapter {
             String sourceNodeId,
             PoseStack stack,
             HumanoidSkinWeightResolver weights,
+            int rigidJoint,
             int uSegments,
             int vSegments,
             List<SingleGroupVertexBuilder> vertices,
             Map<MeshPartDefinition, IntList> indices) {
         int first = vertices.size();
         for (int vIndex = 0; vIndex <= vSegments; vIndex++) {
-            float v = vSegments == 0 ? 0.0F : (float) vIndex / (float) vSegments;
+            float v = (float) vIndex / (float) vSegments;
             for (int uIndex = 0; uIndex <= uSegments; uIndex++) {
-                float u = uSegments == 0 ? 0.0F : (float) uIndex / (float) uSegments;
+                float u = (float) uIndex / (float) uSegments;
                 SourceVertex sample = interpolate(corners, u, v);
                 SkeletonVec3 position = modelPosition(sample.position(), stack);
-                HumanoidSkinWeightResolver.SkinWeights skin = weights.weights(sourceNodeId, position);
+                HumanoidSkinWeightResolver.SkinWeights skin = rigidJoint >= 0
+                        ? HumanoidSkinWeightResolver.SkinWeights.rigid(rigidJoint)
+                        : weights.weights(sourceNodeId, position);
                 vertices.add(new SingleGroupVertexBuilder()
                         .setPosition(new Vec3f(position.x(), position.y(), position.z()))
                         .setNormal(new Vec3f(normal.x(), normal.y(), normal.z()))
@@ -274,7 +403,9 @@ public final class LionfishHumanoidMeshAdapter {
     }
 
     private static ReflectionAccess reflection() throws ReflectiveOperationException {
-        if (reflectionAccess != null) return reflectionAccess;
+        if (reflectionAccess != null) {
+            return reflectionAccess;
+        }
         synchronized (LionfishHumanoidMeshAdapter.class) {
             if (reflectionAccess == null) {
                 Field field = LionfishModelRenderUtils.ModelBox.class.getDeclaredField("quads");
@@ -289,9 +420,27 @@ public final class LionfishHumanoidMeshAdapter {
         static Result supported(HumanoidSkeletonDescriptor descriptor, SkinnedMesh mesh) {
             return new Result(true, descriptor, mesh, "ok");
         }
+
         static Result unsupported(String reason) {
             return new Result(false, null, null, reason);
         }
+    }
+
+    record SecondaryResult(boolean supported, SkinnedMesh mesh, String reason) {
+        static SecondaryResult supported(SkinnedMesh mesh) {
+            return new SecondaryResult(true, mesh, "ok");
+        }
+
+        static SecondaryResult unsupported(String reason) {
+            return new SecondaryResult(false, null, reason);
+        }
+    }
+
+    private record BakeOutput(SkinnedMesh mesh, boolean deformableGeometry) {
+    }
+
+    private static final class BakeStats {
+        boolean deformableGeometry;
     }
 
     private static final class ReflectionAccess {
@@ -331,13 +480,27 @@ public final class LionfishHumanoidMeshAdapter {
         }
     }
 
-    private record SourceVertex(Vector3f position, float textureU, float textureV) {}
-    private record QuadFields(Field vertices, Field normal) {}
-    private record VertexFields(Field position, Field textureU, Field textureV) {}
-    private record RuntimeLionfishPart(String partName) implements MeshPartDefinition {
-        @Override public Mesh.RenderProperties renderProperties() { return null; }
-        @Override public Supplier<OpenMatrix4f> getModelPartAnimationProvider() { return () -> null; }
+    private record SourceVertex(Vector3f position, float textureU, float textureV) {
     }
 
-    private LionfishHumanoidMeshAdapter() {}
+    private record QuadFields(Field vertices, Field normal) {
+    }
+
+    private record VertexFields(Field position, Field textureU, Field textureV) {
+    }
+
+    private record RuntimeLionfishPart(String partName) implements MeshPartDefinition {
+        @Override
+        public Mesh.RenderProperties renderProperties() {
+            return null;
+        }
+
+        @Override
+        public Supplier<OpenMatrix4f> getModelPartAnimationProvider() {
+            return () -> null;
+        }
+    }
+
+    private LionfishHumanoidMeshAdapter() {
+    }
 }

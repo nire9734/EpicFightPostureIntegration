@@ -1,6 +1,7 @@
 package dev.nire9734.epicfightposture.compat.humanoid.client;
 
 import com.mojang.blaze3d.vertex.PoseStack;
+import dev.nire9734.epicfightposture.compat.humanoid.skeleton.HumanoidSkeletonDescriptor;
 import dev.nire9734.epicfightposture.mixin.client.LivingEntityRendererScaleInvoker;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.MultiBufferSource;
@@ -27,17 +28,27 @@ public final class SpecialStateLionfishRenderer extends PatchedEntityRenderer<
 
     private final AssetAccessor<SkinnedMesh> mesh;
     private final ModelPartAttachmentPlan modelPartAttachments;
+    private final HumanoidSkeletonDescriptor skeleton;
 
     public SpecialStateLionfishRenderer(AssetAccessor<SkinnedMesh> mesh, EntityRendererProvider.Context context) {
-        this(mesh, context, null);
+        this(mesh, context, null, null);
     }
 
     public SpecialStateLionfishRenderer(
             AssetAccessor<SkinnedMesh> mesh,
             EntityRendererProvider.Context context,
             ModelPartAttachmentPlan modelPartAttachments) {
+        this(mesh, context, modelPartAttachments, null);
+    }
+
+    public SpecialStateLionfishRenderer(
+            AssetAccessor<SkinnedMesh> mesh,
+            EntityRendererProvider.Context context,
+            ModelPartAttachmentPlan modelPartAttachments,
+            HumanoidSkeletonDescriptor skeleton) {
         this.mesh = mesh;
         this.modelPartAttachments = modelPartAttachments;
+        this.skeleton = skeleton;
     }
 
     @Override
@@ -59,9 +70,6 @@ public final class SpecialStateLionfishRenderer extends PatchedEntityRenderer<
         poseStack.pushPose();
         this.mulPoseStack(poseStack, armature, entity, entitypatch, partialTicks);
 
-        // Forge RenderLivingEvent.Pre fires before LivingEntityRenderer.scale().
-        // Preserve renderer-owned presentation scale while keeping EF responsible
-        // for the special-state body transform.
         if (renderer instanceof LivingEntityRenderer<?, ?> livingRenderer
                 && livingRenderer instanceof LivingEntityRendererScaleInvoker invoker) {
             invoker.efpi$invokeScale(entity, poseStack, partialTicks);
@@ -95,8 +103,6 @@ public final class SpecialStateLionfishRenderer extends PatchedEntityRenderer<
             );
         }
 
-        // ModelPart weapons/anchors/chains are kept out of the static body mesh
-        // so source runtime visibility can select the active weapon each frame.
         ModelPartDynamicAttachmentRenderer.render(
                 this.modelPartAttachments,
                 entity,
@@ -110,11 +116,6 @@ public final class SpecialStateLionfishRenderer extends PatchedEntityRenderer<
                 armature
         );
 
-        // The source render is cancelled while Epic Fight overrideRender() is
-        // active. Preserve renderer-owned translucent/emissive/held-item/rider
-        // passes instead of silently dropping them with the original body pass.
-        // Full Lionfish layers that redraw this exact parent model may reuse the
-        // same runtimeMesh so one-bone limb decorations keep body-identical skinning.
         LivingRenderLayerBridge.replay(
                 entity,
                 renderer,
@@ -123,7 +124,8 @@ public final class SpecialStateLionfishRenderer extends PatchedEntityRenderer<
                 packedLight,
                 partialTicks,
                 armature,
-                runtimeMesh
+                runtimeMesh,
+                this.skeleton
         );
 
         poseStack.popPose();

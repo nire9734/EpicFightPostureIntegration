@@ -1,7 +1,10 @@
 package dev.nire9734.epicfightposture.compat.humanoid.client;
 
 import dev.nire9734.epicfightposture.compat.humanoid.retarget.HumanoidSkinWeightResolver;
+import dev.nire9734.epicfightposture.compat.humanoid.retarget.SecondaryDeformationPolicy;
 import org.junit.jupiter.api.Test;
+
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -26,6 +29,23 @@ class SkinningSubdivisionTest {
 
         assertTrue(SkinningSubdivision.weightsDiffer(arm, hand));
         assertEquals(24, SkinningSubdivision.segmentCount(24.0F, true));
+    }
+
+    @Test
+    void secondaryPolicyOnlySubdividesDeformableGeometry() {
+        var arm = HumanoidSkinWeightResolver.SkinWeights.rigid(HumanoidSkinWeightResolver.ARM_RIGHT);
+        var hand = HumanoidSkinWeightResolver.SkinWeights.rigid(HumanoidSkinWeightResolver.HAND_RIGHT);
+
+        var rigid = SecondaryDeformationPolicy.classify(List.of(hand, hand, hand, hand)).orElseThrow();
+        var deformable = SecondaryDeformationPolicy.classify(List.of(arm, arm, hand, hand)).orElseThrow();
+
+        assertEquals(SecondaryDeformationPolicy.Mode.RIGID_ATTACHMENT, rigid.mode());
+        assertEquals(1, SkinningSubdivision.segmentCount(12.0F,
+                rigid.mode() == SecondaryDeformationPolicy.Mode.DEFORMABLE));
+
+        assertEquals(SecondaryDeformationPolicy.Mode.DEFORMABLE, deformable.mode());
+        assertEquals(12, SkinningSubdivision.segmentCount(12.0F,
+                deformable.mode() == SecondaryDeformationPolicy.Mode.DEFORMABLE));
     }
 
     @Test

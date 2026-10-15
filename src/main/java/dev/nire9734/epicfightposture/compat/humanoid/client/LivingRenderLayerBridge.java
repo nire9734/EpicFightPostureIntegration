@@ -1,6 +1,7 @@
 package dev.nire9734.epicfightposture.compat.humanoid.client;
 
 import com.mojang.blaze3d.vertex.PoseStack;
+import dev.nire9734.epicfightposture.compat.humanoid.skeleton.HumanoidSkeletonDescriptor;
 import dev.nire9734.epicfightposture.mixin.client.LivingEntityRendererLayersAccessor;
 import net.minecraft.client.model.EntityModel;
 import net.minecraft.client.model.HierarchicalModel;
@@ -29,11 +30,11 @@ import java.util.List;
  * projects supported source model parts onto the same Epic Fight pose used by the
  * runtime mesh. Unsupported layers retain the historical Root-only fallback.</p>
  *
- * <p>When a Lionfish layer redraws the exact same primary model, EFPI can reuse
- * the prepared SkinnedMesh through that layer's own VertexConsumer. This keeps
- * one-bone limb decorations on the same per-vertex Arm/Hand or Thigh/Leg weights
- * as the special-state body instead of reducing the whole source part to one
- * dominant rigid joint.</p>
+ * <p>When a Lionfish layer redraws the exact same primary model, EFPI reuses the
+ * prepared body SkinnedMesh. A safely analyzable separate Lionfish clothing or
+ * overlay model can also be baked against the primary body descriptor when its
+ * real geometry spans a canonical deformation transition. Rigid-only or unsafe
+ * layer models continue through the existing part-level fallback.</p>
  */
 @SuppressWarnings({"rawtypes", "unchecked"})
 public final class LivingRenderLayerBridge {
@@ -45,7 +46,8 @@ public final class LivingRenderLayerBridge {
             int packedLight,
             float partialTicks,
             Armature armature,
-            SkinnedMesh primaryMesh) {
+            SkinnedMesh primaryMesh,
+            HumanoidSkeletonDescriptor primaryDescriptor) {
         if (!(renderer instanceof LivingEntityRenderer livingRenderer)
                 || !(livingRenderer instanceof LivingEntityRendererLayersAccessor accessor)
                 || armature == null) {
@@ -79,9 +81,6 @@ public final class LivingRenderLayerBridge {
             float headPitch = Mth.lerp(partialTicks, entity.xRotO, entity.getXRot());
             float ageInTicks = entity.tickCount + partialTicks;
 
-            // Keep the old generic fallback basis. Exact per-part overrides are
-            // expressed underneath it; if a source model cannot be normalized,
-            // its layer behaves exactly as it did before this bridge extension.
             poseStack.pushPose();
             try {
                 MathUtils.mulStack(poseStack, armature.getPoseMatrices()[armature.rootJoint.getId()]);
@@ -89,8 +88,15 @@ public final class LivingRenderLayerBridge {
 
                 try (LionfishPrimaryModelLayerBridge.Scope ignoredPrimary =
                              LionfishPrimaryModelLayerBridge.open(model, primaryMesh, armature);
+                     LionfishSecondaryModelLayerBridge.Scope ignoredSecondary =
+                             LionfishSecondaryModelLayerBridge.open(model, primaryDescriptor, armature);
                      LayerPoseOverrideContext.Scope ignoredParts =
-                             LayerPoseOverrideContext.open(entity, model, layers, armature)) {
+                             LayerPoseOverrideContext.open(
+                                     entity,
+                                     model,
+                                     layers,
+                                     armature,
+                                     primaryDescriptor)) {
                     for (RenderLayer layer : layers) {
                         if (layer == null) {
                             continue;
