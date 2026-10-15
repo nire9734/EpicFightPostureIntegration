@@ -16,6 +16,7 @@
     "client.GeckoItemArmorLayerContextMixin",
     "client.IronsHumanoidRendererCapeMixin",
     "client.LionfishAdvancedModelBoxLayerPoseMixin",
+    "client.LionfishBasicEntityModelLayerMeshMixin",
     "client.LivingEntityRendererScaleInvoker",
     "client.LivingEntityRendererLayersAccessor",
     "client.ModelPartLayerPoseMixin"

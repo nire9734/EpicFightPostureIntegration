@@ -11,6 +11,7 @@ import net.minecraft.client.renderer.entity.LivingEntityRenderer;
 import net.minecraft.client.renderer.entity.layers.RenderLayer;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.LivingEntity;
+import yesman.epicfight.api.client.model.SkinnedMesh;
 import yesman.epicfight.api.model.Armature;
 import yesman.epicfight.api.utils.math.MathUtils;
 
@@ -27,6 +28,12 @@ import java.util.List;
  * layers therefore loses those details. During replay, LayerPoseOverrideContext
  * projects supported source model parts onto the same Epic Fight pose used by the
  * runtime mesh. Unsupported layers retain the historical Root-only fallback.</p>
+ *
+ * <p>When a Lionfish layer redraws the exact same primary model, EFPI can reuse
+ * the prepared SkinnedMesh through that layer's own VertexConsumer. This keeps
+ * one-bone limb decorations on the same per-vertex Arm/Hand or Thigh/Leg weights
+ * as the special-state body instead of reducing the whole source part to one
+ * dominant rigid joint.</p>
  */
 @SuppressWarnings({"rawtypes", "unchecked"})
 public final class LivingRenderLayerBridge {
@@ -37,7 +44,8 @@ public final class LivingRenderLayerBridge {
             PoseStack poseStack,
             int packedLight,
             float partialTicks,
-            Armature armature) {
+            Armature armature,
+            SkinnedMesh primaryMesh) {
         if (!(renderer instanceof LivingEntityRenderer livingRenderer)
                 || !(livingRenderer instanceof LivingEntityRendererLayersAccessor accessor)
                 || armature == null) {
@@ -79,7 +87,9 @@ public final class LivingRenderLayerBridge {
                 MathUtils.mulStack(poseStack, armature.getPoseMatrices()[armature.rootJoint.getId()]);
                 poseStack.scale(-1.0F, -1.0F, 1.0F);
 
-                try (LayerPoseOverrideContext.Scope ignored =
+                try (LionfishPrimaryModelLayerBridge.Scope ignoredPrimary =
+                             LionfishPrimaryModelLayerBridge.open(model, primaryMesh, armature);
+                     LayerPoseOverrideContext.Scope ignoredParts =
                              LayerPoseOverrideContext.open(entity, model, layers, armature)) {
                     for (RenderLayer layer : layers) {
                         if (layer == null) {

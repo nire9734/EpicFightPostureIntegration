@@ -113,6 +113,8 @@ public final class SpecialStateLionfishRenderer extends PatchedEntityRenderer<
         // The source render is cancelled while Epic Fight overrideRender() is
         // active. Preserve renderer-owned translucent/emissive/held-item/rider
         // passes instead of silently dropping them with the original body pass.
+        // Full Lionfish layers that redraw this exact parent model may reuse the
+        // same runtimeMesh so one-bone limb decorations keep body-identical skinning.
         LivingRenderLayerBridge.replay(
                 entity,
                 renderer,
@@ -120,7 +122,8 @@ public final class SpecialStateLionfishRenderer extends PatchedEntityRenderer<
                 poseStack,
                 packedLight,
                 partialTicks,
-                armature
+                armature,
+                runtimeMesh
         );
 
         poseStack.popPose();
