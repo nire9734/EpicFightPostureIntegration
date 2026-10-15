@@ -1,5 +1,7 @@
 package dev.nire9734.epicfightposture.compat.humanoid.client;
 
+import com.github.L_Ender.lionfishapi.client.model.tools.AdvancedEntityModel;
+import com.github.L_Ender.lionfishapi.client.model.tools.AdvancedModelBox;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import org.joml.Matrix3f;
@@ -182,6 +184,39 @@ public final class LionfishPrimaryModelLayerBridge {
     }
 
     static VisibilitySnapshot captureVisibility(Object model) {
+        if (model instanceof AdvancedEntityModel<?> lionfishModel) {
+            return captureLionfishVisibility(lionfishModel);
+        }
+        return captureReflectiveVisibility(model);
+    }
+
+    private static VisibilitySnapshot captureLionfishVisibility(AdvancedEntityModel<?> model) {
+        try {
+            IdentityHashMap<Object, PartVisibility> parts = new IdentityHashMap<>();
+            for (AdvancedModelBox part : model.getAllParts()) {
+                if (part != null) {
+                    parts.put(part, new PartVisibility(part.showModel, part.isHidden()));
+                }
+            }
+            if (parts.isEmpty()) {
+                LionfishRetargetDiagnostics.primaryBridge(
+                        model, "VISIBILITY_FAIL", "lionfish_getAllParts_empty", null);
+                return null;
+            }
+            return new VisibilitySnapshot(parts);
+        } catch (Throwable failure) {
+            LionfishRetargetDiagnostics.primaryBridge(
+                    model,
+                    "VISIBILITY_FAIL",
+                    "lionfish_getAllParts_exception=" + failure.getClass().getName()
+                            + ",message=" + String.valueOf(failure.getMessage()),
+                    null
+            );
+            return null;
+        }
+    }
+
+    private static VisibilitySnapshot captureReflectiveVisibility(Object model) {
         try {
             Method partsMethod = findMethod(model.getClass(), "parts");
             if (partsMethod == null) {
@@ -271,6 +306,9 @@ public final class LionfishPrimaryModelLayerBridge {
     private static PartVisibility readPartVisibility(Object part) {
         if (part == null) {
             return null;
+        }
+        if (part instanceof AdvancedModelBox lionfishPart) {
+            return new PartVisibility(lionfishPart.showModel, lionfishPart.isHidden());
         }
         try {
             Field showModelField = findField(part.getClass(), "showModel");
