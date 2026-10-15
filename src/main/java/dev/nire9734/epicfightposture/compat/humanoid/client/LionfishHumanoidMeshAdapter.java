@@ -41,6 +41,7 @@ import java.util.function.Supplier;
 /** One-time Lionfish/Citadel-style humanoid -> Epic Fight SkinnedMesh baker. */
 public final class LionfishHumanoidMeshAdapter {
     private static final MeshPartDefinition PART = new RuntimeLionfishPart("lionfish_humanoid");
+    private static final float PLANAR_EPSILON_PIXELS = 1.0E-4F;
     private static volatile ReflectionAccess reflectionAccess;
 
     public static Result analyseAndBake(AdvancedEntityModel<?> model, SkeletonKey key) {
@@ -212,6 +213,7 @@ public final class LionfishHumanoidMeshAdapter {
         if (quads == null) {
             return true;
         }
+        boolean surfaceAttachment = isPlanarCube(cube);
 
         for (int q = 0; q < Array.getLength(quads); q++) {
             Object quad = Array.get(quads, q);
@@ -244,17 +246,20 @@ public final class LionfishHumanoidMeshAdapter {
                 cornerWeights[i] = weights.weights(sourceNodeId, position);
             }
 
-            Optional<SecondaryDeformationPolicy.Decision> decision =
-                    SecondaryDeformationPolicy.classify(List.of(cornerWeights));
+            Optional<SecondaryDeformationPolicy.Decision> decision = surfaceAttachment
+                    ? SecondaryDeformationPolicy.classifySurfaceAttachment(List.of(cornerWeights))
+                    : SecondaryDeformationPolicy.classify(List.of(cornerWeights));
             if (decision.isEmpty() && failOnAmbiguousSecondary) {
                 return false;
             }
 
             int rigidJoint = -1;
+            boolean segmentedAttachment = false;
             if (decision.isPresent()) {
                 if (decision.get().rigid()) {
                     rigidJoint = decision.get().rigidJointId();
                 } else {
+                    segmentedAttachment = decision.get().segmented();
                     stats.deformableGeometry = true;
                 }
             }
@@ -284,6 +289,7 @@ public final class LionfishHumanoidMeshAdapter {
                     stack,
                     weights,
                     rigidJoint,
+                    segmentedAttachment,
                     uSegments,
                     vSegments,
                     vertices,
@@ -291,6 +297,14 @@ public final class LionfishHumanoidMeshAdapter {
             );
         }
         return true;
+    }
+
+    private static boolean isPlanarCube(LionfishModelRenderUtils.ModelBox cube) {
+        int collapsedAxes = 0;
+        if (Math.abs(cube.posX2 - cube.posX1) <= PLANAR_EPSILON_PIXELS) collapsedAxes++;
+        if (Math.abs(cube.posY2 - cube.posY1) <= PLANAR_EPSILON_PIXELS) collapsedAxes++;
+        if (Math.abs(cube.posZ2 - cube.posZ1) <= PLANAR_EPSILON_PIXELS) collapsedAxes++;
+        return collapsedAxes >= 1;
     }
 
     private static SourceVertex[] readQuadVertices(
@@ -323,6 +337,7 @@ public final class LionfishHumanoidMeshAdapter {
             PoseStack stack,
             HumanoidSkinWeightResolver weights,
             int rigidJoint,
+            boolean segmentedAttachment,
             int uSegments,
             int vSegments,
             List<SingleGroupVertexBuilder> vertices,
@@ -334,9 +349,16 @@ public final class LionfishHumanoidMeshAdapter {
                 float u = (float) uIndex / (float) uSegments;
                 SourceVertex sample = interpolate(corners, u, v);
                 SkeletonVec3 position = modelPosition(sample.position(), stack);
-                HumanoidSkinWeightResolver.SkinWeights skin = rigidJoint >= 0
-                        ? HumanoidSkinWeightResolver.SkinWeights.rigid(rigidJoint)
-                        : weights.weights(sourceNodeId, position);
+                HumanoidSkinWeightResolver.SkinWeights sampled = weights.weights(sourceNodeId, position);
+                HumanoidSkinWeightResolver.SkinWeights skin;
+                if (rigidJoint >= 0) {
+                    skin = HumanoidSkinWeightResolver.SkinWeights.rigid(rigidJoint);
+                } else if (segmentedAttachment) {
+                    skin = HumanoidSkinWeightResolver.SkinWeights.rigid(
+                            SecondaryDeformationPolicy.dominantJoint(sampled));
+                } else {
+                    skin = sampled;
+                }
                 vertices.add(new SingleGroupVertexBuilder()
                         .setPosition(new Vec3f(position.x(), position.y(), position.z()))
                         .setNormal(new Vec3f(normal.x(), normal.y(), normal.z()))
