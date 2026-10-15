@@ -43,6 +43,49 @@ class SecondaryDeformationPolicyTest {
     }
 
     @Test
+    void thinArmSurfaceUsesSegmentedAttachmentAtElbow() {
+        var decision = SecondaryDeformationPolicy.classifySurfaceAttachment(List.of(
+                HumanoidSkinWeightResolver.SkinWeights.rigid(HumanoidSkinWeightResolver.ARM_RIGHT),
+                HumanoidSkinWeightResolver.SkinWeights.blend(
+                        HumanoidSkinWeightResolver.ARM_RIGHT,
+                        HumanoidSkinWeightResolver.HAND_RIGHT,
+                        0.09F,
+                        0.91F),
+                HumanoidSkinWeightResolver.SkinWeights.blend(
+                        HumanoidSkinWeightResolver.ARM_RIGHT,
+                        HumanoidSkinWeightResolver.HAND_RIGHT,
+                        0.04F,
+                        0.96F)
+        )).orElseThrow();
+
+        assertEquals(SecondaryDeformationPolicy.Mode.SEGMENTED_ATTACHMENT, decision.mode());
+    }
+
+    @Test
+    void thinLegSurfaceUsesSegmentedAttachmentAtKnee() {
+        var decision = SecondaryDeformationPolicy.classifySurfaceAttachment(List.of(
+                HumanoidSkinWeightResolver.SkinWeights.rigid(HumanoidSkinWeightResolver.THIGH_RIGHT),
+                HumanoidSkinWeightResolver.SkinWeights.blend(
+                        HumanoidSkinWeightResolver.THIGH_RIGHT,
+                        HumanoidSkinWeightResolver.LEG_RIGHT,
+                        0.25F,
+                        0.75F)
+        )).orElseThrow();
+
+        assertEquals(SecondaryDeformationPolicy.Mode.SEGMENTED_ATTACHMENT, decision.mode());
+    }
+
+    @Test
+    void thinTorsoSurfaceStillDeformsContinuously() {
+        var decision = SecondaryDeformationPolicy.classifySurfaceAttachment(List.of(
+                HumanoidSkinWeightResolver.SkinWeights.rigid(HumanoidSkinWeightResolver.ROOT),
+                HumanoidSkinWeightResolver.SkinWeights.rigid(HumanoidSkinWeightResolver.CHEST)
+        )).orElseThrow();
+
+        assertEquals(SecondaryDeformationPolicy.Mode.DEFORMABLE, decision.mode());
+    }
+
+    @Test
     void rootToChestTransitionIsDeformable() {
         var decision = SecondaryDeformationPolicy.classify(List.of(
                 HumanoidSkinWeightResolver.SkinWeights.rigid(HumanoidSkinWeightResolver.ROOT),
