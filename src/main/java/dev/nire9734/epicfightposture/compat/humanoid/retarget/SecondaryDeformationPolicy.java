@@ -12,8 +12,15 @@ import java.util.Set;
  * frameworks remain responsible for extracting geometry, authored bind transforms,
  * visibility and render lifecycle. If every sampled point belongs to the same
  * canonical deformation segment, rigid replay is sufficient. If samples cross a
- * supported humanoid transition, the geometry must remain deformable and use the
- * per-vertex HumanoidSkinWeightResolver result.</p>
+ * supported humanoid transition, ordinary body/clothing geometry remains smoothly
+ * deformable.</p>
+ *
+ * <p>Thin authored surface attachments (fins, plates and similar zero-thickness
+ * decoration) need a slightly different contract. When such a surface crosses an
+ * inferred elbow or knee, each side should remain rigid with the corresponding
+ * limb segment rather than being smoothly sheared across the synthetic joint. The
+ * framework adapter opts into that behavior through {@link #classifySurfaceAttachment}.
+ * Torso transitions deliberately remain smoothly deformable.</p>
  *
  * <p>Unsupported or ambiguous multi-chain samples return {@link Optional#empty()}
  * so framework bridges can fail closed to their existing rigid/custom fallback.</p>
@@ -23,6 +30,7 @@ public final class SecondaryDeformationPolicy {
 
     public enum Mode {
         RIGID_ATTACHMENT,
+        SEGMENTED_ATTACHMENT,
         DEFORMABLE
     }
 
@@ -38,6 +46,10 @@ public final class SecondaryDeformationPolicy {
             return new Decision(Mode.RIGID_ATTACHMENT, jointId);
         }
 
+        public static Decision segmented() {
+            return new Decision(Mode.SEGMENTED_ATTACHMENT, -1);
+        }
+
         public static Decision deformable() {
             return new Decision(Mode.DEFORMABLE, -1);
         }
@@ -45,11 +57,15 @@ public final class SecondaryDeformationPolicy {
         public boolean rigid() {
             return mode == Mode.RIGID_ATTACHMENT;
         }
+
+        public boolean segmented() {
+            return mode == Mode.SEGMENTED_ATTACHMENT;
+        }
     }
 
     /**
-     * Classifies one geometry primitive from skin-weight samples at its real
-     * model-space positions.
+     * Classifies one ordinary geometry primitive from skin-weight samples at its
+     * real model-space positions.
      *
      * <p>A local accessory may contain a small amount of blend near a synthetic
      * joint but still belong entirely to one side of that joint. We therefore use
@@ -59,6 +75,27 @@ public final class SecondaryDeformationPolicy {
      */
     public static Optional<Decision> classify(
             Iterable<HumanoidSkinWeightResolver.SkinWeights> samples) {
+        return classify(samples, false);
+    }
+
+    /**
+     * Classifies a thin authored surface attachment.
+     *
+     * <p>If the surface crosses an inferred elbow or knee, the caller should keep
+     * each tessellated sample rigid to its dominant limb segment. This produces a
+     * hinge-like crease at the synthetic joint: geometry beyond the elbow/knee
+     * follows the forearm/shin exactly, while geometry before it follows the upper
+     * arm/thigh. ROOT/CHEST surfaces are not segmented because broad torso sheets
+     * and clothing commonly require continuous deformation.</p>
+     */
+    public static Optional<Decision> classifySurfaceAttachment(
+            Iterable<HumanoidSkinWeightResolver.SkinWeights> samples) {
+        return classify(samples, true);
+    }
+
+    private static Optional<Decision> classify(
+            Iterable<HumanoidSkinWeightResolver.SkinWeights> samples,
+            boolean segmentLimbSurface) {
         Objects.requireNonNull(samples, "samples");
 
         Set<Integer> dominantJoints = new LinkedHashSet<>();
@@ -98,6 +135,9 @@ public final class SecondaryDeformationPolicy {
         if (dominantJoints.size() == 2) {
             Integer[] pair = dominantJoints.toArray(Integer[]::new);
             if (isCanonicalTransition(pair[0], pair[1])) {
+                if (segmentLimbSurface && isLimbTransition(pair[0], pair[1])) {
+                    return Optional.of(Decision.segmented());
+                }
                 return Optional.of(Decision.deformable());
             }
         }
@@ -117,7 +157,11 @@ public final class SecondaryDeformationPolicy {
             return true;
         }
         return pair(first, second, HumanoidSkinWeightResolver.ROOT, HumanoidSkinWeightResolver.CHEST)
-                || pair(first, second, HumanoidSkinWeightResolver.ARM_RIGHT, HumanoidSkinWeightResolver.HAND_RIGHT)
+                || isLimbTransition(first, second);
+    }
+
+    public static boolean isLimbTransition(int first, int second) {
+        return pair(first, second, HumanoidSkinWeightResolver.ARM_RIGHT, HumanoidSkinWeightResolver.HAND_RIGHT)
                 || pair(first, second, HumanoidSkinWeightResolver.ARM_LEFT, HumanoidSkinWeightResolver.HAND_LEFT)
                 || pair(first, second, HumanoidSkinWeightResolver.THIGH_RIGHT, HumanoidSkinWeightResolver.LEG_RIGHT)
                 || pair(first, second, HumanoidSkinWeightResolver.THIGH_LEFT, HumanoidSkinWeightResolver.LEG_LEFT);
