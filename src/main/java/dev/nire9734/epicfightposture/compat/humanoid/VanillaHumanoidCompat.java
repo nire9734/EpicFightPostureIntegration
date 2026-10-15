@@ -73,13 +73,12 @@ public final class VanillaHumanoidCompat {
                 existingPatchIds.add(id);
             }
         }
-        externallyPatched = Set.copyOf(existingPatchIds);
 
         for (Map.Entry<ResourceLocation, CompatibilityKind> target : cachedDetected.entrySet()) {
             ResourceLocation entityId = target.getKey();
             CompatibilityKind kind = target.getValue();
             if (PostureServerConfig.isBlacklisted(entityId)
-                    || externallyPatched.contains(entityId)
+                    || existingPatchIds.contains(entityId)
                     || !compatibilityKindEnabled(kind)) {
                 continue;
             }
@@ -89,9 +88,20 @@ public final class VanillaHumanoidCompat {
                 continue;
             }
 
+            // Epic Fight 1.20.1 does not expose CUSTOM_CAPABILITIES through
+            // getPatchedEntities(). Respect addon-owned custom patches explicitly;
+            // replacing one can invalidate the addon's patched renderer contract.
+            if (EpicFightPatchOwnership.hasCustomPatch(entityType)) {
+                existingPatchIds.add(entityId);
+                LOGGER.debug("EFPI skipped automatic compatibility for {} because an Epic Fight custom patch is already registered",
+                        entityId);
+                continue;
+            }
+
             registerIntoEvent(event, entityType, kind);
             registeredByEfpi.put(entityId, kind);
         }
+        externallyPatched = Set.copyOf(existingPatchIds);
     }
 
     /** True only when EFPI actually owns the active lightweight registration in this JVM. */
@@ -149,6 +159,19 @@ public final class VanillaHumanoidCompat {
         // policy. Prepare every safe renderer target now; synchronized settings
         // decide whether the lightweight patch is allowed to act after login.
         if (id == null || externallyPatched.contains(id)) {
+            return false;
+        }
+
+        // A custom patch supplied by an Epic Fight addon has ownership priority.
+        // Never overwrite it with EFPI's lightweight patch. This check is repeated
+        // here because custom registrations are not included in EF's public
+        // getPatchedEntities() result and may appear after the registry snapshot.
+        if (!registeredByEfpi.containsKey(id) && EpicFightPatchOwnership.hasCustomPatch(entityType)) {
+            Set<ResourceLocation> updatedExternal = new HashSet<>(externallyPatched);
+            updatedExternal.add(id);
+            externallyPatched = Set.copyOf(updatedExternal);
+            LOGGER.info("EFPI skipped automatic compatibility for {} because an Epic Fight custom patch is already registered",
+                    id);
             return false;
         }
 
