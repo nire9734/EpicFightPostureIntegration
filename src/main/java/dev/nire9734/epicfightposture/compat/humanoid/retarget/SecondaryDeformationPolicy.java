@@ -46,7 +46,7 @@ public final class SecondaryDeformationPolicy {
             return new Decision(Mode.RIGID_ATTACHMENT, jointId);
         }
 
-        public static Decision segmented() {
+        public static Decision segmentedAttachment() {
             return new Decision(Mode.SEGMENTED_ATTACHMENT, -1);
         }
 
@@ -136,7 +136,7 @@ public final class SecondaryDeformationPolicy {
             Integer[] pair = dominantJoints.toArray(Integer[]::new);
             if (isCanonicalTransition(pair[0], pair[1])) {
                 if (segmentLimbSurface && isLimbTransition(pair[0], pair[1])) {
-                    return Optional.of(Decision.segmented());
+                    return Optional.of(Decision.segmentedAttachment());
                 }
                 return Optional.of(Decision.deformable());
             }
