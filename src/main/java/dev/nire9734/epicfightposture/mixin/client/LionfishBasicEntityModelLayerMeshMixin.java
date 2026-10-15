@@ -16,7 +16,11 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(targets = "com.github.L_Ender.lionfishapi.client.model.tools.BasicEntityModel", remap = false)
 public abstract class LionfishBasicEntityModelLayerMeshMixin {
     @Inject(
-            method = "renderToBuffer",
+            // BasicEntityModel overrides Minecraft's Model#renderToBuffer. Lionfish is
+            // distributed against the SRG namespace, where this method is m_7695_.
+            // Keep both selectors because @Pseudo targets the optional Lionfish class
+            // without remapping its class name, while dev runs use the named method.
+            method = {"renderToBuffer", "m_7695_"},
             at = @At("HEAD"),
             cancellable = true,
             remap = false,
