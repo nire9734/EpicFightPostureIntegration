@@ -8,7 +8,7 @@ version="${mod_version}"
 displayName="${mod_name}"
 authors="${mod_authors}"
 description='''
-Adds server-authoritative posture, guard breaks, and Combat Evolution execution support to compatible Epic Fight entities while preserving their existing AI and normal rendering. Includes automatic compatibility for Minecraft HumanoidModel and supported GeckoLib humanoid mobs, multiplayer synchronization, configurable posture scaling, and server-side compatibility switches.
+Adds server-authoritative posture, guard breaks, and Combat Evolution execution support to compatible Epic Fight entities while preserving their existing AI and normal rendering. Includes conservative automatic humanoid compatibility for Minecraft model layouts and supported GeckoLib, Lionfish/Citadel-style, and AzureLib-backed humanoid models, plus multiplayer synchronization, configurable posture scaling, and server-side compatibility switches. Framework-specific secondary rendering support varies and unsupported layouts fail closed.
 '''
 
 [[dependencies.${mod_id}]]

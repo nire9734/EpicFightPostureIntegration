@@ -1,5 +1,51 @@
 # Changelog
 
+## 2.1.0
+
+Generalized humanoid retargeting and special-state rendering reliability update.
+
+### Added
+
+- Added shared framework-neutral humanoid rig, semantic, skeleton, topology, body-metric, and skin-weight processing for supported source-model backends.
+- Added conservative automatic humanoid preparation for supported Minecraft `HierarchicalModel`/`ModelPart`, Lionfish/Citadel-style `AdvancedEntityModel`, and AzureLib model layouts in addition to the existing vanilla `HumanoidModel` and GeckoLib paths.
+- Added target-proportioned runtime Epic Fight humanoid armatures derived from each accepted source skeleton.
+- Added structural shoulder-carrier support for layouts where a shoulder/clavicle node sits directly between the body and upper arm.
+- Added officially tested compatibility targets for supported humanoid mobs from Iron's Spells 'n Spellbooks and L_Ender's Cataclysm. This does not imply support for every mob or custom render path in either mod.
+- Added shared semantic resolution for Gecko body, attachment, and post-render anchor handling.
+- Added full-model Lionfish layer replay through the already-prepared skinned body mesh when the layer redraws the exact same parent model without changing part visibility.
+
+### Changed
+
+- Improved automatic humanoid compatibility while keeping conservative fail-closed acceptance for ambiguous, unsafe, or unbakeable models.
+- Improved GeckoLib armor rendering with target-aware bind transforms, visibility/model-state-aware cache keys, source-bone identity separation, and non-sticky transient conversion failures.
+- Improved GeckoLib attachment and secondary-part retargeting so body, layer, and post-render paths share the same semantic rig resolution.
+- Improved hybrid GeckoLib/vanilla renderer compatibility for runtime delegates such as ordinary `HumanoidModel` renderers.
+- Runtime humanoid armatures are now refreshed from the latest prepared skeleton when renderer/model discovery is repeated instead of keeping a stale earlier armature.
+- Runtime armature generation now fails closed instead of pairing a target-weighted mesh with the canonical BIPED armature when target armature creation fails.
+- Lionfish full-parent-model secondary passes now preserve the same per-vertex one-bone limb deformation as the prepared body mesh instead of reducing the entire source limb to one rigid dominant joint.
+- Portable humanoid rig/skeleton code no longer depends on Minecraft `ResourceLocation`; CI now rejects platform/framework imports from those core packages.
+- Epic Fight runtime armature construction was moved out of the portable retargeting package into the runtime Epic Fight compatibility layer.
+- Existing Epic Fight or third-party entity patches continue to take priority over EFPI automatic compatibility.
+
+### Fixed
+
+- Fixed L_Ender's Cataclysm Deepling-family arm/leg secondary geometry appearing offset from the correctly retargeted limbs during full-model secondary/emissive layer rendering.
+- Fixed stale Gecko armor meshes when visibility or prepared model transforms change while the same baked model instance is reused.
+- Fixed potential Gecko armor cache collisions between different source bones with the same name.
+- Fixed hybrid Gecko fallback renderers being reused across different entity types that happen to share one `HumanoidModel` instance.
+- Fixed Gecko post-render attachment anchoring depending on a literal `torso` source-bone name.
+
+### Compatibility / Requirements
+
+- Minecraft 1.20.1
+- Forge 47.4.10 through the 47.x series
+- Epic Fight 20.14.17 through compatible 20.14.x releases
+- Combat Evolution 2.2.8 through compatible 2.3.x releases; development build target remains 2.3.1
+- GeckoLib remains optional; the development compatibility target is GeckoLib 4.8.4
+- Iron's Spells 'n Spellbooks and L_Ender's Cataclysm remain optional third-party compatibility targets and are not hard dependencies
+
+No posture balance changes are included in 2.1.0.
+
 ## 2.0.0
 
 Major automatic renderer compatibility update based on the public 1.1.0 release.
