@@ -21,6 +21,10 @@ import java.util.Objects;
  * elbow/knee. The torso is also split per vertex across the inferred spine so a
  * single source {@code body}/{@code torso} node can still participate in Epic
  * Fight's independent lower-body (Root) and upper-body (Chest) motion.</p>
+ *
+ * <p>The static semantic helpers are also the canonical weighting contract for
+ * deformable secondary geometry such as armor. This keeps body and attachment
+ * meshes on one set of Root/Chest and limb transition rules.</p>
  */
 public final class HumanoidSkinWeightResolver {
     private static final float EPSILON = 1.0E-6F;
@@ -86,57 +90,104 @@ public final class HumanoidSkinWeightResolver {
         }
 
         return switch (owner) {
-            // Do not make the torso split depend on source-node boundaries. A
-            // large number of Gecko/Blockbench models put the complete abdomen
-            // and chest in one source bone. Vertex-space weighting preserves the
-            // BIPED Root/Chest separation for those rigs without model-specific
-            // names or hard-coded dimensions.
+            // Explicit segmented source limbs stay rigid per source segment. A
+            // one-bone limb uses the same semanticWeights helper as secondary
+            // meshes so their inferred bend transition cannot drift apart.
+            case SHOULDER_RIGHT -> explicitRightElbow
+                    ? SkinWeights.rigid(ARM_RIGHT)
+                    : semanticWeights(descriptor, owner, position);
+            case SHOULDER_LEFT -> explicitLeftElbow
+                    ? SkinWeights.rigid(ARM_LEFT)
+                    : semanticWeights(descriptor, owner, position);
+            case HIP_RIGHT -> explicitRightKnee
+                    ? SkinWeights.rigid(THIGH_RIGHT)
+                    : semanticWeights(descriptor, owner, position);
+            case HIP_LEFT -> explicitLeftKnee
+                    ? SkinWeights.rigid(THIGH_LEFT)
+                    : semanticWeights(descriptor, owner, position);
+            default -> semanticWeights(descriptor, owner, position);
+        };
+    }
+
+    /**
+     * Canonical skinning rule for geometry whose semantic owner is already known.
+     * Secondary/deformable meshes should call this rather than duplicating the
+     * torso or limb transition math.
+     */
+    public static SkinWeights semanticWeights(
+            HumanoidSkeletonDescriptor descriptor,
+            HumanoidJoint owner,
+            SkeletonVec3 position) {
+        Objects.requireNonNull(descriptor, "descriptor");
+        Objects.requireNonNull(owner, "owner");
+        Objects.requireNonNull(position, "position");
+
+        return switch (owner) {
             case ROOT, SPINE, CHEST -> torsoWeights(descriptor, position);
             case NECK, HEAD -> SkinWeights.rigid(HEAD);
 
-            case SHOULDER_RIGHT -> explicitRightElbow
-                    ? SkinWeights.rigid(ARM_RIGHT)
-                    : chainBlend(
-                            position,
-                            HumanoidJoint.SHOULDER_RIGHT,
-                            HumanoidJoint.ELBOW_RIGHT,
-                            HumanoidJoint.WRIST_RIGHT,
-                            ARM_RIGHT,
-                            HAND_RIGHT);
+            case SHOULDER_RIGHT -> chainBlend(
+                    descriptor,
+                    position,
+                    HumanoidJoint.SHOULDER_RIGHT,
+                    HumanoidJoint.ELBOW_RIGHT,
+                    HumanoidJoint.WRIST_RIGHT,
+                    ARM_RIGHT,
+                    HAND_RIGHT);
             case ELBOW_RIGHT, WRIST_RIGHT -> SkinWeights.rigid(HAND_RIGHT);
 
-            case SHOULDER_LEFT -> explicitLeftElbow
-                    ? SkinWeights.rigid(ARM_LEFT)
-                    : chainBlend(
-                            position,
-                            HumanoidJoint.SHOULDER_LEFT,
-                            HumanoidJoint.ELBOW_LEFT,
-                            HumanoidJoint.WRIST_LEFT,
-                            ARM_LEFT,
-                            HAND_LEFT);
+            case SHOULDER_LEFT -> chainBlend(
+                    descriptor,
+                    position,
+                    HumanoidJoint.SHOULDER_LEFT,
+                    HumanoidJoint.ELBOW_LEFT,
+                    HumanoidJoint.WRIST_LEFT,
+                    ARM_LEFT,
+                    HAND_LEFT);
             case ELBOW_LEFT, WRIST_LEFT -> SkinWeights.rigid(HAND_LEFT);
 
-            case HIP_RIGHT -> explicitRightKnee
-                    ? SkinWeights.rigid(THIGH_RIGHT)
-                    : chainBlend(
-                            position,
-                            HumanoidJoint.HIP_RIGHT,
-                            HumanoidJoint.KNEE_RIGHT,
-                            HumanoidJoint.ANKLE_RIGHT,
-                            THIGH_RIGHT,
-                            LEG_RIGHT);
+            case HIP_RIGHT -> chainBlend(
+                    descriptor,
+                    position,
+                    HumanoidJoint.HIP_RIGHT,
+                    HumanoidJoint.KNEE_RIGHT,
+                    HumanoidJoint.ANKLE_RIGHT,
+                    THIGH_RIGHT,
+                    LEG_RIGHT);
             case KNEE_RIGHT, ANKLE_RIGHT -> SkinWeights.rigid(LEG_RIGHT);
 
-            case HIP_LEFT -> explicitLeftKnee
-                    ? SkinWeights.rigid(THIGH_LEFT)
-                    : chainBlend(
-                            position,
-                            HumanoidJoint.HIP_LEFT,
-                            HumanoidJoint.KNEE_LEFT,
-                            HumanoidJoint.ANKLE_LEFT,
-                            THIGH_LEFT,
-                            LEG_LEFT);
+            case HIP_LEFT -> chainBlend(
+                    descriptor,
+                    position,
+                    HumanoidJoint.HIP_LEFT,
+                    HumanoidJoint.KNEE_LEFT,
+                    HumanoidJoint.ANKLE_LEFT,
+                    THIGH_LEFT,
+                    LEG_LEFT);
             case KNEE_LEFT, ANKLE_LEFT -> SkinWeights.rigid(LEG_LEFT);
+        };
+    }
+
+    /**
+     * Rigid BIPED deformation joint corresponding to a semantic source anchor.
+     * This is used by attachment bridges for bones that the shared semantic
+     * analyzer identified directly; descendants without a direct semantic anchor
+     * can still choose a joint from {@link #weights(String, SkeletonVec3)}.
+     */
+    public static int deformationJointId(HumanoidJoint owner) {
+        Objects.requireNonNull(owner, "owner");
+        return switch (owner) {
+            case ROOT -> ROOT;
+            case SPINE, CHEST -> CHEST;
+            case NECK, HEAD -> HEAD;
+            case SHOULDER_RIGHT -> ARM_RIGHT;
+            case ELBOW_RIGHT, WRIST_RIGHT -> HAND_RIGHT;
+            case SHOULDER_LEFT -> ARM_LEFT;
+            case ELBOW_LEFT, WRIST_LEFT -> HAND_LEFT;
+            case HIP_RIGHT -> THIGH_RIGHT;
+            case KNEE_RIGHT, ANKLE_RIGHT -> LEG_RIGHT;
+            case HIP_LEFT -> THIGH_LEFT;
+            case KNEE_LEFT, ANKLE_LEFT -> LEG_LEFT;
         };
     }
 
@@ -180,7 +231,8 @@ public final class HumanoidSkinWeightResolver {
         }
     }
 
-    private SkinWeights chainBlend(
+    private static SkinWeights chainBlend(
+            HumanoidSkeletonDescriptor descriptor,
             SkeletonVec3 position,
             HumanoidJoint startJoint,
             HumanoidJoint bendJoint,
