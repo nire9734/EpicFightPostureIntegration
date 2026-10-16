@@ -46,8 +46,9 @@ public final class ModelPartHumanoidClientCompat implements HumanoidRenderBacken
 
         try {
             SkeletonKey key = new SkeletonKey(entityId.toString(), hierarchicalModel.getClass().getName());
-            ModelPartHumanoidMeshAdapter.Result result =
-                    ModelPartHumanoidMeshAdapter.analyseAndBake(hierarchicalModel, key);
+            ModelPartHumanoidMeshAdapter.Result result = RuntimeMeshOwnership.callOwned(
+                    () -> ModelPartHumanoidMeshAdapter.analyseAndBake(hierarchicalModel, key)
+            );
             if (!result.supported() || result.descriptor() == null || result.mesh() == null) {
                 LOGGER.debug("EFPI ModelPart humanoid rejected {}: {}", entityId, result.reason());
                 return Inspection.rejected();

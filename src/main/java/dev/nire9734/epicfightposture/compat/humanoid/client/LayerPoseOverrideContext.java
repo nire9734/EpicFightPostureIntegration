@@ -66,6 +66,20 @@ public final class LayerPoseOverrideContext {
     private static final ThreadLocal<Context> ACTIVE = new ThreadLocal<>();
     private static final Map<Object, Map<DescriptorCacheKey, ModelPlan>> MODEL_PLANS =
             Collections.synchronizedMap(new WeakHashMap<>());
+    private static final ClassValue<Field[]> DECLARED_FIELDS = new ClassValue<>() {
+        @Override
+        protected Field[] computeValue(Class<?> type) {
+            Field[] fields = type.getDeclaredFields();
+            for (Field field : fields) {
+                try {
+                    field.trySetAccessible();
+                } catch (Throwable ignored) {
+                    // Optional private layer fields are handled conservatively below.
+                }
+            }
+            return fields;
+        }
+    };
 
     public static Scope open(
             LivingEntity entity,
@@ -186,7 +200,7 @@ public final class LayerPoseOverrideContext {
             }
             Class<?> type = layer.getClass();
             while (type != null && type != Object.class) {
-                for (Field field : type.getDeclaredFields()) {
+                for (Field field : DECLARED_FIELDS.get(type)) {
                     if (Modifier.isStatic(field.getModifiers())) {
                         continue;
                     }

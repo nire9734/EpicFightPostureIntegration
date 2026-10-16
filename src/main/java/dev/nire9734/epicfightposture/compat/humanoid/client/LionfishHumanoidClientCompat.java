@@ -41,7 +41,9 @@ public final class LionfishHumanoidClientCompat implements HumanoidRenderBackend
 
         try {
             SkeletonKey key = new SkeletonKey(entityId.toString(), advancedModel.getClass().getName());
-            LionfishHumanoidMeshAdapter.Result result = LionfishHumanoidMeshAdapter.analyseAndBake(advancedModel, key);
+            LionfishHumanoidMeshAdapter.Result result = RuntimeMeshOwnership.callOwned(
+                    () -> LionfishHumanoidMeshAdapter.analyseAndBake(advancedModel, key)
+            );
             if (!result.supported() || result.descriptor() == null || result.mesh() == null) {
                 LOGGER.debug("EFPI Lionfish humanoid resolver rejected {}: {}", entityId, result.reason());
                 return Inspection.rejected();

@@ -67,8 +67,9 @@ public final class GeckoHumanoidClientCompat implements HumanoidRenderBackend {
                     geoModel.getClass().getName() + "|" + modelLocation
             );
 
-            GeckoHumanoidMeshAdapter.Result result =
-                    GeckoHumanoidMeshAdapter.analyseAndBake(bakedModel, key);
+            GeckoHumanoidMeshAdapter.Result result = RuntimeMeshOwnership.callOwned(
+                    () -> GeckoHumanoidMeshAdapter.analyseAndBake(bakedModel, key)
+            );
             if (!result.supported() || result.descriptor() == null || result.mesh() == null) {
                 LOGGER.warn("EFPI Gecko humanoid rejected {}: {}", entityId, result.reason());
                 return Inspection.rejected();

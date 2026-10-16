@@ -27,13 +27,13 @@ The main 3.0.0 development combination uses Forge 47.4.10, Epic Fight 20.14.17, 
 
 ## Posture balance
 
-Maximum posture is based on effective health (EHP), using maximum health and, when enabled, armor/toughness:
+Maximum posture is based on effective health (EHP), using maximum health and armor/toughness:
 
 ```text
 maximum posture = 3.2 * (EHP / 20)^0.7
 ```
 
-The configured maximum-posture multiplier and minimum are then applied. An `entity_multipliers` entry replaces `global_multiplier` for that entity and affects maximum posture only.
+`maximum_posture_multiplier` is then applied. A per-entity `posture_multipliers` entry replaces that global multiplier for the specified entity. Maximum posture has an internal minimum of 1.0.
 
 Direct Epic Fight attacks use real Impact and scale with final dealt damage:
 
@@ -41,7 +41,7 @@ Direct Epic Fight attacks use real Impact and scale with final dealt damage:
 attack posture scale = (dealt damage / 8)^0.7
 ```
 
-The default Impact-derived posture multiplier is `0.55`. Eligible non-Epic-Fight direct player attacks use a bounded damage-derived fallback Impact before the same dealt-damage scaling.
+The internal Impact-derived base posture multiplier is `0.55`. The public `posture_damage_multiplier` scales that established balance, so `1.0` is normal, `0.5` is half, and `2.0` is double. Eligible non-Epic-Fight direct player attacks use a bounded damage-derived fallback Impact before the same dealt-damage scaling.
 
 Successful parries use an EHP-scaled percentage of target maximum posture:
 
@@ -49,7 +49,7 @@ Successful parries use an EHP-scaled percentage of target maximum posture:
 effective parry fraction = base parry fraction * (1 + (20 / EHP)^0.7)
 ```
 
-With the default `parry_posture_percent = 8.0`, lower-EHP mobs receive a larger effective parry percentage while very high-EHP enemies approach the 8% baseline. No absolute minimum parry damage is used.
+The default `parry_percent = 6.0`. Lower-EHP mobs receive a larger effective parry percentage while very high-EHP enemies approach the configured baseline. No absolute minimum parry damage is used.
 
 Direct hits and parries both use the same health/EHP finisher modifier. At full finisher strength:
 
@@ -57,9 +57,9 @@ Direct hits and parries both use the same health/EHP finisher modifier. At full 
 multiplier = 0.25 + 0.75 * (1 - health fraction)^2
 ```
 
-The finisher curve is disabled at 40 EHP or below, smoothly blended from 40 to 200 EHP, and fully active at 200 EHP or above.
+The finisher curve is disabled at 40 EHP or below, smoothly blended from 40 to 200 EHP, and fully active at 200 EHP or above. These lower-level balance constants are intentionally kept internal so the server config remains compact.
 
-Ordinary regeneration starts after 10 seconds without posture damage/parry and restores 2% of maximum posture per second. Posture-break recovery is a separate state.
+Ordinary regeneration starts after the configured delay and restores the configured percentage of maximum posture per second. Posture-break recovery is a separate state.
 
 ## Server configuration
 
@@ -73,60 +73,82 @@ config/epicfight_posture_integration/server.toml
 
 ```toml
 [posture]
-global_multiplier = 1.0
-posture_damage_multiplier = 0.55
-attack_damage_reference = 8.0
-attack_damage_scaling_exponent = 0.7
-parry_posture_percent = 8.0
-full_health_posture_damage_multiplier = 0.25
-zero_health_posture_damage_multiplier = 1.0
-health_posture_curve_exponent = 2.0
-health_scaling_ehp_start = 40.0
-health_scaling_ehp_end = 200.0
-minimum_posture = 1.0
-use_armor_scaling = true
-entity_blacklist = []
 
-[posture.regeneration]
+# Multiplier for the maximum Posture of all entities.
+# Default: 1.0 | Range: 0.1-100.0
+maximum_posture_multiplier = 1.0
+
+# Multiplier for Posture damage dealt by attacks.
+# 1.0 = EFPI default balance, 0.5 = half, 2.0 = double.
+# Default: 1.0 | Range: 0.0-100.0
+posture_damage_multiplier = 1.0
+
+# Posture damage dealt by a parry, as a percentage of maximum Posture.
+# Default: 6.0 | Range: 0.0-100.0
+parry_percent = 6.0
+
+
+[regeneration]
+
+# Seconds before Posture regeneration starts.
+# Default: 10.0 | Range: 0.0-60.0
 delay_seconds = 10.0
+
+# Percentage of maximum Posture regenerated per second.
+# Default: 2.0 | Range: 0.0-100.0
 percent_per_second = 2.0
 
-[posture.overrides]
-entity_multipliers = []
+
+[entities]
+
+# Per-entity maximum Posture multipliers.
+# Overrides maximum_posture_multiplier for the specified entity.
+# Default: [] | Multiplier range: 0.01-100.0
+# Example: ["cataclysm:ignis=0.25"]
+posture_multipliers = []
+
+# Entities completely excluded from EFPI.
+# Default: []
+# Example: ["minecraft:zombie"]
+entity_blacklist = []
+
 
 [compatibility]
-enable_vanilla_humanoid_compatibility = true
-enable_extended_humanoid_compatibility = true
-enable_vanilla_spider_compatibility = true
-mod_filter_mode = "DENYLIST"
+
+# Automatically add EFPI compatibility to supported mobs that do not already
+# have an Epic Fight patch.
+# false = only mobs already patched by Epic Fight or another mod are supported.
+# Default: true
+automatic_compatibility = true
+
+# If non-empty, automatic compatibility is limited to these mod IDs.
+# Default: []
+# Example: ["cataclysm", "irons_spellbooks"]
 mod_allowlist = []
+
+# Mod IDs excluded from automatic compatibility.
+# Denylist takes priority over allowlist.
+# Default: []
+# Example: ["some_mod"]
 mod_denylist = []
 ```
 
-Example per-entity maximum-posture overrides:
+`posture_multipliers` replaces `maximum_posture_multiplier` for the specified entity rather than multiplying it again.
 
-```toml
-[posture.overrides]
-entity_multipliers = [
-    "cataclysm:ignis=1.25",
-    "minecraft:zombie=0.8"
-]
-```
+Automatic compatibility policy works as follows:
 
-These values replace `global_multiplier` for the specified entity rather than multiplying it.
-
-Automatic compatibility filtering applies to third-party mod namespaces only:
-
-- `DENYLIST`: keep normal automatic compatibility except for mod IDs in `mod_denylist`.
-- `ALLOWLIST`: only mod IDs in `mod_allowlist` receive EFPI automatic compatibility.
-- Vanilla `minecraft` entities remain controlled by the vanilla compatibility switches.
-- Explicit Epic Fight patches supplied by other mods are not disabled by this filter.
+- `automatic_compatibility = false`: EFPI does not add lightweight patches to new mobs. Mobs already patched by Epic Fight or another addon can still use EFPI posture when otherwise eligible.
+- An empty `mod_allowlist` imposes no allowlist restriction.
+- A non-empty `mod_allowlist` limits third-party automatic compatibility to those mod IDs.
+- `mod_denylist` always excludes listed third-party mod IDs and takes priority over the allowlist.
+- Vanilla `minecraft` entities are not filtered by the mod allow/deny lists.
+- Existing Epic Fight/third-party patches are never removed by these automatic-compatibility filters.
 
 Restart after changing automatic compatibility policy so patch ownership is rebuilt consistently.
 
 ## Multiplayer and dedicated servers
 
-Posture state and compatibility policy are server-authoritative. EFPI 3.0.0 uses network protocol `3`; older protocol-2 builds are intentionally rejected.
+Posture state and compatibility policy are server-authoritative. EFPI 3.0.0 uses network protocol `3`; incompatible older protocol builds are rejected.
 
 Dedicated-server renderer discovery is stored at:
 
@@ -136,11 +158,11 @@ config/epicfight_posture_integration/cache/renderer-discovery.json
 
 The cache uses schema version `2`. It is generated state, not a user configuration file. A trusted operator client reports renderer compatibility; when pending discovery data changes, restart the server to promote it to active data.
 
-## Upgrading from 2.0.0
+## Upgrading from 2.0.0 / development builds
 
-3.0.0 intentionally does not migrate older server config or renderer-discovery cache layouts. Back up any values you want to keep, then regenerate the config/cache and reapply desired settings.
+3.0.0 intentionally does not migrate older server config or renderer-discovery cache layouts. Back up any values you want to keep, delete/regenerate the old config/cache, and reapply desired settings using the final 3.0.0 keys above.
 
-The old GeckoLib-only compatibility terminology is replaced by `enable_extended_humanoid_compatibility` for supported ModelPart, GeckoLib, and Lionfish humanoid backends.
+The old GeckoLib-only compatibility terminology is replaced by the shared automatic compatibility pipeline for supported ModelPart, GeckoLib, and Lionfish humanoid backends.
 
 ## Client configuration
 
@@ -154,7 +176,7 @@ They can also be changed from `Mods -> Epic Fight Posture Integration -> Config`
 
 ## Client rendering performance
 
-EFPI-generated runtime compatibility meshes stay on Epic Fight's CPU skinning path instead of allocating per-mesh compute-shader resources. Native Epic Fight meshes and meshes created by other mods keep their normal compute-shader behavior.
+EFPI-generated runtime compatibility meshes stay on Epic Fight's CPU skinning path instead of allocating per-mesh compute-shader resources. Ownership is marked explicitly around EFPI mesh-bake operations; native Epic Fight meshes and meshes created by other mods keep their normal compute-shader behavior.
 
 On affected Epic Fight compute-shader + AMD OpenGL configurations, Minecraft can receive a very high volume of the same OpenGL debug callback. EFPI filters only the observed `API / ERROR / id 1005 / HIGH` signature before it reaches Minecraft's debug-message buffer and Log4j. Compute-shader rendering itself remains enabled, and all other OpenGL debug messages remain visible.
 

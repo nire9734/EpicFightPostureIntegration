@@ -8,22 +8,28 @@ Major automatic-compatibility and posture-balance update.
 
 - Extended humanoid compatibility for supported ModelPart, GeckoLib, and Lionfish/Citadel-style humanoid layouts.
 - Target-proportioned humanoid retargeting and improved special-state secondary rendering.
-- Per-entity maximum-posture overrides via `posture.overrides.entity_multipliers`.
-- Mod-level automatic-compatibility filtering with `DENYLIST` / `ALLOWLIST`, `mod_denylist`, and `mod_allowlist`.
+- Per-entity maximum-posture overrides via `entities.posture_multipliers`.
+- Compact automatic-compatibility controls with `automatic_compatibility`, `mod_allowlist`, and `mod_denylist`.
 - EHP-aware health/finisher posture scaling, constant delayed regeneration, and dealt-damage scaling for direct attacks.
 
 ### Changed
 
 - Maximum posture remains EHP-based: `3.2 * (EHP / 20)^0.7` by default.
-- Direct attack posture pressure scales with final dealt damage using `(damage / 8)^0.7` by default.
-- Default parry baseline is 8%, with effective parry percentage increased automatically for lower-EHP targets: `base * (1 + (20 / EHP)^0.7)`.
+- `posture.maximum_posture_multiplier` replaces the old global maximum-posture multiplier key.
+- `posture.posture_damage_multiplier = 1.0` now represents EFPI's established attack-posture balance; the internal base coefficient remains `0.55`.
+- Default parry baseline is 6%, with effective parry percentage increased automatically for lower-EHP targets: `base * (1 + (20 / EHP)^0.7)`.
+- Lower-level balance formula constants are internal instead of being exposed as individual server config keys.
+- A single `automatic_compatibility` switch replaces separate vanilla/extended/spider automatic-compatibility switches.
+- An empty `mod_allowlist` imposes no restriction; a non-empty allowlist limits third-party automatic compatibility, while `mod_denylist` always takes priority.
 - Removed the old absolute minimum parry posture damage.
 - Direct hits and parries use the same EHP-aware health finisher modifier.
-- Ordinary regeneration waits 10 seconds and then restores 2% of maximum posture per second.
-- Generic prepared-humanoid terminology now uses `extended humanoid` instead of GeckoLib-specific legacy naming.
-- Network protocol is now `3`; older protocol-2 builds are rejected.
-- Dedicated-server renderer-discovery cache schema is now `2` and older layouts are not migrated.
-- 3.0.0 does not retain config/cache migration shims from 2.0.0.
+- Ordinary regeneration waits 10 seconds and then restores 2% of maximum posture per second by default.
+- Generic prepared-humanoid terminology uses `extended humanoid` instead of GeckoLib-specific legacy naming.
+- EFPI runtime-mesh ownership is marked directly in EFPI code instead of using self-targeting Mixins or StackWalker inspection.
+- Portable humanoid dependency checks now cover `rig`, `retarget`, and `skeleton` core packages.
+- Network protocol is `3`; incompatible older protocol builds are rejected.
+- Dedicated-server renderer-discovery cache schema is `2` and older layouts are not migrated.
+- 3.0.0 does not retain config/cache migration shims from 2.0.0 or intermediate development builds.
 
 ### Fixed
 
@@ -31,6 +37,8 @@ Major automatic-compatibility and posture-balance update.
 - Fixed Illager crossed-arm special-state geometry handling.
 - Fixed parry detection ordering by detecting the successful parried transition directly.
 - Fixed multiple GeckoLib/Lionfish attachment, armor, layer, cache, and Deepling-family deformation issues.
+- GeckoLib startup inspection now fails closed when a model requires a live entity instead of invoking entity-dependent model resolution unsafely.
+- Reduced client render overhead from EFPI runtime meshes and repeated OpenGL debug callback logging on affected Epic Fight compute-shader configurations.
 
 ### Requirements
 

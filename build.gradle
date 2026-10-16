@@ -106,11 +106,12 @@ tasks.named('test', Test).configure {
 
 tasks.register('checkHumanoidCoreDependencies') {
     group = 'verification'
-    description = 'Rejects platform/framework imports from the portable humanoid rig and skeleton core.'
+    description = 'Rejects platform/framework imports from the portable humanoid rig, retarget, and skeleton core.'
 
     doLast {
         def coreDirectories = [
             file('src/main/java/dev/nire9734/epicfightposture/compat/humanoid/rig'),
+            file('src/main/java/dev/nire9734/epicfightposture/compat/humanoid/retarget'),
             file('src/main/java/dev/nire9734/epicfightposture/compat/humanoid/skeleton')
         ]
         def forbiddenPrefixes = [

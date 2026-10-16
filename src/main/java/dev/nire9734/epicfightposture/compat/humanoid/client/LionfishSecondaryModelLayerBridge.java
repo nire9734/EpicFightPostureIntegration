@@ -155,12 +155,13 @@ public final class LionfishSecondaryModelLayerBridge {
                 cacheKey.primaryKey().modelSignature()
                         + "|secondary|" + model.getClass().getName()
         );
-        LionfishHumanoidMeshAdapter.SecondaryResult result =
-                LionfishHumanoidMeshAdapter.analyseAndBakeSecondary(
+        LionfishHumanoidMeshAdapter.SecondaryResult result = RuntimeMeshOwnership.callOwned(
+                () -> LionfishHumanoidMeshAdapter.analyseAndBakeSecondary(
                         model,
                         secondaryKey,
                         primaryDescriptor
-                );
+                )
+        );
         return result.supported() && result.mesh() != null
                 ? CachedSecondary.supported(result.mesh())
                 : CachedSecondary.unsupported();

@@ -10,8 +10,7 @@ import net.minecraftforge.network.PacketDistributor;
 import net.minecraftforge.network.simple.SimpleChannel;
 
 public final class BridgeNetwork {
-    // Protocol 3 is the clean 2.1.0 contract. It intentionally does not accept
-    // clients using the earlier renderer-discovery/server-settings packet contract.
+    // Network protocol version is intentionally independent from the mod version.
     private static final String VERSION = "3";
     private static SimpleChannel channel;
     private static boolean initialized;

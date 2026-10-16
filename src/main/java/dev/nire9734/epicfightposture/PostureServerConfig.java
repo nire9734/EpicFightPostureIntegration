@@ -11,8 +11,8 @@ import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.common.ForgeConfigSpec;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.LogicalSide;
-import net.minecraftforge.fml.event.config.ModConfigEvent;
 import net.minecraftforge.fml.common.Mod;
+import net.minecraftforge.fml.event.config.ModConfigEvent;
 import net.minecraftforge.fml.loading.FMLEnvironment;
 import net.minecraftforge.fml.util.thread.EffectiveSide;
 import net.minecraftforge.server.ServerLifecycleHooks;
@@ -30,39 +30,47 @@ public final class PostureServerConfig {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final ForgeConfigSpec.Builder BUILDER = new ForgeConfigSpec.Builder();
 
+    /*
+     * Internal 3.0.0 balance constants. These were previously exposed as config
+     * keys. Keeping the established defaults here preserves the current balance
+     * while presenting only useful high-level controls to users.
+     */
+    private static final float BASE_IMPACT_POSTURE_DAMAGE_MULTIPLIER = 0.55F;
+    private static final float ATTACK_DAMAGE_REFERENCE = 8.0F;
+    private static final float ATTACK_DAMAGE_SCALING_EXPONENT = 0.7F;
+    private static final float FULL_HEALTH_POSTURE_DAMAGE_MULTIPLIER = 0.25F;
+    private static final float ZERO_HEALTH_POSTURE_DAMAGE_MULTIPLIER = 1.0F;
+    private static final float HEALTH_POSTURE_CURVE_EXPONENT = 2.0F;
+    private static final float HEALTH_SCALING_EHP_START = 40.0F;
+    private static final float HEALTH_SCALING_EHP_END = 200.0F;
+    private static final float MINIMUM_POSTURE = 1.0F;
+    private static final boolean USE_ARMOR_SCALING = true;
+
+    /**
+     * Retained as an internal network representation for protocol 3. The public
+     * config no longer exposes a filter mode; an empty allowlist means unrestricted.
+     */
     public enum CompatibilityFilterMode {
         DENYLIST,
         ALLOWLIST
     }
 
-    public static final ForgeConfigSpec.DoubleValue GLOBAL_MULTIPLIER;
+    public static final ForgeConfigSpec.DoubleValue MAXIMUM_POSTURE_MULTIPLIER;
     public static final ForgeConfigSpec.DoubleValue POSTURE_DAMAGE_MULTIPLIER;
-    public static final ForgeConfigSpec.DoubleValue ATTACK_DAMAGE_REFERENCE;
-    public static final ForgeConfigSpec.DoubleValue ATTACK_DAMAGE_SCALING_EXPONENT;
-    public static final ForgeConfigSpec.DoubleValue PARRY_POSTURE_PERCENT;
-    public static final ForgeConfigSpec.DoubleValue FULL_HEALTH_POSTURE_DAMAGE_MULTIPLIER;
-    public static final ForgeConfigSpec.DoubleValue ZERO_HEALTH_POSTURE_DAMAGE_MULTIPLIER;
-    public static final ForgeConfigSpec.DoubleValue HEALTH_POSTURE_CURVE_EXPONENT;
-    public static final ForgeConfigSpec.DoubleValue HEALTH_SCALING_EHP_START;
-    public static final ForgeConfigSpec.DoubleValue HEALTH_SCALING_EHP_END;
-    public static final ForgeConfigSpec.DoubleValue MINIMUM_POSTURE;
-    public static final ForgeConfigSpec.BooleanValue USE_ARMOR_SCALING;
+    public static final ForgeConfigSpec.DoubleValue PARRY_PERCENT;
     public static final ForgeConfigSpec.DoubleValue REGEN_DELAY_SECONDS;
     public static final ForgeConfigSpec.DoubleValue REGEN_RATE_PERCENT;
-    public static final ForgeConfigSpec.ConfigValue<List<? extends String>> ENTITY_MULTIPLIERS;
+    public static final ForgeConfigSpec.ConfigValue<List<? extends String>> POSTURE_MULTIPLIERS;
     public static final ForgeConfigSpec.ConfigValue<List<? extends String>> ENTITY_BLACKLIST;
-    public static final ForgeConfigSpec.BooleanValue ENABLE_VANILLA_HUMANOID_COMPATIBILITY;
-    public static final ForgeConfigSpec.BooleanValue ENABLE_EXTENDED_HUMANOID_COMPATIBILITY;
-    public static final ForgeConfigSpec.BooleanValue ENABLE_VANILLA_SPIDER_COMPATIBILITY;
-    public static final ForgeConfigSpec.EnumValue<CompatibilityFilterMode> MOD_FILTER_MODE;
+    public static final ForgeConfigSpec.BooleanValue AUTOMATIC_COMPATIBILITY;
     public static final ForgeConfigSpec.ConfigValue<List<? extends String>> MOD_ALLOWLIST;
     public static final ForgeConfigSpec.ConfigValue<List<? extends String>> MOD_DENYLIST;
     public static final ForgeConfigSpec SPEC;
 
     private static final Snapshot CLIENT_FAIL_CLOSED_DEFAULTS = new Snapshot(
             1.0D,
-            1.0D,
-            true,
+            (double) MINIMUM_POSTURE,
+            USE_ARMOR_SCALING,
             Set.of(),
             false,
             false,
@@ -80,142 +88,80 @@ public final class PostureServerConfig {
 
     static {
         BUILDER.push("posture");
-        GLOBAL_MULTIPLIER = BUILDER
-                .comment("Global maximum posture multiplier. 1.0 = default.")
-                .defineInRange("global_multiplier", 1.0D, 0.1D, 100.0D);
+        MAXIMUM_POSTURE_MULTIPLIER = BUILDER
+                .comment(
+                        "Multiplier for the maximum Posture of all entities.",
+                        "Default: 1.0 | Range: 0.1-100.0"
+                )
+                .defineInRange("maximum_posture_multiplier", 1.0D, 0.1D, 100.0D);
         POSTURE_DAMAGE_MULTIPLIER = BUILDER
                 .comment(
-                        "Base multiplier applied to Impact-derived posture damage from direct player attacks.",
-                        "Default: 0.55. Final posture damage is also multiplied by dealt-damage scaling and target-health scaling below."
+                        "Multiplier for Posture damage dealt by attacks.",
+                        "1.0 = EFPI default balance, 0.5 = half, 2.0 = double.",
+                        "Default: 1.0 | Range: 0.0-100.0"
                 )
-                .defineInRange("posture_damage_multiplier", 0.55D, 0.0D, 100.0D);
-        ATTACK_DAMAGE_REFERENCE = BUILDER
+                .defineInRange("posture_damage_multiplier", 1.0D, 0.0D, 100.0D);
+        PARRY_PERCENT = BUILDER
                 .comment(
-                        "Final dealt damage at which direct-attack posture scaling is x1.0.",
-                        "Default: 8.0, matching EFPI's reference damage used for maximum-posture EHP scaling."
+                        "Posture damage dealt by a parry, as a percentage of maximum Posture.",
+                        "Default: 6.0 | Range: 0.0-100.0"
                 )
-                .defineInRange("attack_damage_reference", 8.0D, 0.1D, 100000.0D);
-        ATTACK_DAMAGE_SCALING_EXPONENT = BUILDER
-                .comment(
-                        "Exponent for direct-attack dealt-damage scaling: (dealtDamage / reference)^exponent.",
-                        "Default: 0.7, matching the exponent used by maximum-posture EHP scaling.",
-                        "Set to 0.0 to ignore dealt-damage scaling while still using Impact."
-                )
-                .defineInRange("attack_damage_scaling_exponent", 0.7D, 0.0D, 4.0D);
-        PARRY_POSTURE_PERCENT = BUILDER
-                .comment(
-                        "Parry posture damage as a percentage of the target's maximum posture.",
-                        "Default: 8.0. No absolute minimum is applied before target-health scaling."
-                )
-                .defineInRange("parry_posture_percent", 8.0D, 0.0D, 100.0D);
-        FULL_HEALTH_POSTURE_DAMAGE_MULTIPLIER = BUILDER
-                .comment(
-                        "Posture-damage multiplier applied at 100% target health when the EHP-based finisher curve is fully active.",
-                        "Default: 0.25. High-EHP enemies are deliberately difficult to posture-break at high health."
-                )
-                .defineInRange("full_health_posture_damage_multiplier", 0.25D, 0.0D, 100.0D);
-        ZERO_HEALTH_POSTURE_DAMAGE_MULTIPLIER = BUILDER
-                .comment(
-                        "Posture-damage multiplier approached as target health falls toward 0% when the finisher curve is active.",
-                        "Default: 1.0."
-                )
-                .defineInRange("zero_health_posture_damage_multiplier", 1.0D, 0.0D, 100.0D);
-        HEALTH_POSTURE_CURVE_EXPONENT = BUILDER
-                .comment(
-                        "Exponent controlling how strongly posture vulnerability is delayed toward low health.",
-                        "1.0 = linear. Values above 1.0 keep posture damage lower until later in the fight. Default: 2.0."
-                )
-                .defineInRange("health_posture_curve_exponent", 2.0D, 0.01D, 100.0D);
-        HEALTH_SCALING_EHP_START = BUILDER
-                .comment(
-                        "Effective health at or below which the health-based finisher posture modifier is disabled.",
-                        "Low-EHP mobs use a neutral x1.0 posture-damage multiplier. Default: 40.0."
-                )
-                .defineInRange("health_scaling_ehp_start", 40.0D, 0.0D, 1000000.0D);
-        HEALTH_SCALING_EHP_END = BUILDER
-                .comment(
-                        "Effective health at or above which the configured health-based finisher curve is fully applied.",
-                        "Between the start and end values, curve strength is smoothly interpolated. Default: 200.0."
-                )
-                .defineInRange("health_scaling_ehp_end", 200.0D, 0.0D, 1000000.0D);
-        MINIMUM_POSTURE = BUILDER
-                .comment("Minimum maximum posture an eligible mob can have.")
-                .defineInRange("minimum_posture", 1.0D, 0.1D, 10000.0D);
-        USE_ARMOR_SCALING = BUILDER
-                .comment("Whether armor and armor toughness affect maximum posture and EHP-based finisher scaling.")
-                .define("use_armor_scaling", true);
+                .defineInRange("parry_percent", 6.0D, 0.0D, 100.0D);
+        BUILDER.pop();
 
         BUILDER.push("regeneration");
         REGEN_DELAY_SECONDS = BUILDER
                 .comment(
-                        "Seconds after posture damage or a parry before posture regeneration starts.",
-                        "Default: 10.0 seconds, so ordinary boss attack gaps and long telegraphs usually do not trigger regeneration."
+                        "Seconds before Posture regeneration starts.",
+                        "Default: 10.0 | Range: 0.0-60.0"
                 )
                 .defineInRange("delay_seconds", 10.0D, 0.0D, 60.0D);
         REGEN_RATE_PERCENT = BUILDER
                 .comment(
-                        "Maximum-posture percentage regenerated per second after the delay.",
-                        "Default: 2.0. Regeneration is constant and does not vary with target health."
+                        "Percentage of maximum Posture regenerated per second.",
+                        "Default: 2.0 | Range: 0.0-100.0"
                 )
                 .defineInRange("percent_per_second", 2.0D, 0.0D, 100.0D);
         BUILDER.pop();
 
-        BUILDER.push("overrides");
-        ENTITY_MULTIPLIERS = BUILDER
+        BUILDER.push("entities");
+        POSTURE_MULTIPLIERS = BUILDER
                 .comment(
-                        "Per-entity maximum-posture multiplier overrides.",
-                        "Format: namespace:entity=multiplier. The value replaces global_multiplier for that entity instead of multiplying it.",
-                        "Example: [\"cataclysm:ignis=1.25\", \"minecraft:zombie=0.8\"]"
+                        "Per-entity maximum Posture multipliers.",
+                        "Overrides maximum_posture_multiplier for the specified entity.",
+                        "Default: [] | Multiplier range: 0.01-100.0",
+                        "Example: [\"cataclysm:ignis=0.25\"]"
                 )
-                .defineListAllowEmpty("entity_multipliers", List.of(), value -> value instanceof String);
-        BUILDER.pop();
-
+                .defineListAllowEmpty("posture_multipliers", List.of(), value -> value instanceof String);
         ENTITY_BLACKLIST = BUILDER
                 .comment(
-                        "Entities excluded from EFPI posture and automatic compatibility behavior.",
-                        "Use namespace:entity IDs."
+                        "Entities completely excluded from EFPI.",
+                        "Default: []",
+                        "Example: [\"minecraft:zombie\"]"
                 )
                 .defineListAllowEmpty("entity_blacklist", List.of(), value -> value instanceof String);
         BUILDER.pop();
 
         BUILDER.push("compatibility");
-        ENABLE_VANILLA_HUMANOID_COMPATIBILITY = BUILDER
+        AUTOMATIC_COMPATIBILITY = BUILDER
                 .comment(
-                        "Enable EFPI's automatic compatibility for entities rendered with Minecraft HumanoidModel.",
-                        "Default: true. Restart the server after changing this option."
+                        "Automatically add EFPI compatibility to supported mobs that do not already have an Epic Fight patch.",
+                        "false = only mobs already patched by Epic Fight or another mod are supported.",
+                        "Default: true"
                 )
-                .define("enable_vanilla_humanoid_compatibility", true);
-        ENABLE_EXTENDED_HUMANOID_COMPATIBILITY = BUILDER
-                .comment(
-                        "Enable EFPI's automatic compatibility for supported extended humanoid model backends, including ModelPart, GeckoLib, Lionfish, and AzureLib.",
-                        "Default: true. Restart the server after changing this option."
-                )
-                .define("enable_extended_humanoid_compatibility", true);
-        ENABLE_VANILLA_SPIDER_COMPATIBILITY = BUILDER
-                .comment(
-                        "Enable EFPI's automatic compatibility for unpatched entities rendered with Minecraft SpiderModel.",
-                        "The source mob keeps its original AI; EFPI uses a lightweight SPIDER patch only for posture/execution states.",
-                        "Default: true. Restart the server after changing this option."
-                )
-                .define("enable_vanilla_spider_compatibility", true);
-        MOD_FILTER_MODE = BUILDER
-                .comment(
-                        "How automatic compatibility is filtered for third-party mod namespaces.",
-                        "DENYLIST = keep normal automatic compatibility except for namespaces in mod_denylist.",
-                        "ALLOWLIST = only namespaces in mod_allowlist receive automatic compatibility.",
-                        "Minecraft vanilla entities are not affected by this namespace filter. Restart after changing this option."
-                )
-                .defineEnum("mod_filter_mode", CompatibilityFilterMode.DENYLIST);
+                .define("automatic_compatibility", true);
         MOD_ALLOWLIST = BUILDER
                 .comment(
-                        "Mod IDs allowed when mod_filter_mode is ALLOWLIST. Ignored in DENYLIST mode.",
+                        "If non-empty, automatic compatibility is limited to these mod IDs.",
+                        "Default: []",
                         "Example: [\"cataclysm\", \"irons_spellbooks\"]"
                 )
                 .defineListAllowEmpty("mod_allowlist", List.of(), value -> value instanceof String);
         MOD_DENYLIST = BUILDER
                 .comment(
-                        "Mod IDs excluded when mod_filter_mode is DENYLIST. Ignored in ALLOWLIST mode.",
-                        "Example: [\"some_problematic_mod\"]"
+                        "Mod IDs excluded from automatic compatibility. Denylist takes priority over allowlist.",
+                        "Default: []",
+                        "Example: [\"some_mod\"]"
                 )
                 .defineListAllowEmpty("mod_denylist", List.of(), value -> value instanceof String);
         BUILDER.pop();
@@ -223,53 +169,57 @@ public final class PostureServerConfig {
         SPEC = BUILDER.build();
     }
 
+    /** Alias retained for internal callers that only need the global maximum-posture multiplier. */
     public static float globalMultiplier() {
         Snapshot snapshot = effectiveClientSnapshot();
-        return (snapshot != null ? snapshot.globalMultiplier() : GLOBAL_MULTIPLIER.get()).floatValue();
+        return (snapshot != null ? snapshot.globalMultiplier() : MAXIMUM_POSTURE_MULTIPLIER.get()).floatValue();
     }
 
     /** Server-side maximum-posture multiplier with an entity override replacing the global value. */
     public static float maximumPostureMultiplier(ResourceLocation entityId) {
         Float override = entityId == null ? null : entityMultipliers.get(entityId);
-        return override != null ? override : GLOBAL_MULTIPLIER.get().floatValue();
+        return override != null ? override : MAXIMUM_POSTURE_MULTIPLIER.get().floatValue();
     }
 
-    /** Server-side tuning for Impact-derived posture damage. */
+    /**
+     * Effective Impact-derived posture multiplier. The public config is a simple
+     * scale around the established 3.0.0 base coefficient of 0.55.
+     */
     public static float postureDamageMultiplier() {
-        return POSTURE_DAMAGE_MULTIPLIER.get().floatValue();
+        return BASE_IMPACT_POSTURE_DAMAGE_MULTIPLIER * POSTURE_DAMAGE_MULTIPLIER.get().floatValue();
     }
 
     public static float attackDamageReference() {
-        return ATTACK_DAMAGE_REFERENCE.get().floatValue();
+        return ATTACK_DAMAGE_REFERENCE;
     }
 
     public static float attackDamageScalingExponent() {
-        return ATTACK_DAMAGE_SCALING_EXPONENT.get().floatValue();
+        return ATTACK_DAMAGE_SCALING_EXPONENT;
     }
 
     /** Base parry posture damage as a fraction of target maximum posture. */
     public static float parryPostureFraction() {
-        return PARRY_POSTURE_PERCENT.get().floatValue() / 100.0F;
+        return PARRY_PERCENT.get().floatValue() / 100.0F;
     }
 
     public static float fullHealthPostureDamageMultiplier() {
-        return FULL_HEALTH_POSTURE_DAMAGE_MULTIPLIER.get().floatValue();
+        return FULL_HEALTH_POSTURE_DAMAGE_MULTIPLIER;
     }
 
     public static float zeroHealthPostureDamageMultiplier() {
-        return ZERO_HEALTH_POSTURE_DAMAGE_MULTIPLIER.get().floatValue();
+        return ZERO_HEALTH_POSTURE_DAMAGE_MULTIPLIER;
     }
 
     public static float healthPostureCurveExponent() {
-        return HEALTH_POSTURE_CURVE_EXPONENT.get().floatValue();
+        return HEALTH_POSTURE_CURVE_EXPONENT;
     }
 
     public static float healthScalingEhpStart() {
-        return HEALTH_SCALING_EHP_START.get().floatValue();
+        return HEALTH_SCALING_EHP_START;
     }
 
     public static float healthScalingEhpEnd() {
-        return HEALTH_SCALING_EHP_END.get().floatValue();
+        return HEALTH_SCALING_EHP_END;
     }
 
     /** Server-side delay before ordinary posture regeneration begins. */
@@ -284,38 +234,39 @@ public final class PostureServerConfig {
 
     public static float minimumPosture() {
         Snapshot snapshot = effectiveClientSnapshot();
-        return (snapshot != null ? snapshot.minimumPosture() : MINIMUM_POSTURE.get()).floatValue();
+        return snapshot != null ? snapshot.minimumPosture().floatValue() : MINIMUM_POSTURE;
     }
 
     public static boolean useArmorScaling() {
         Snapshot snapshot = effectiveClientSnapshot();
-        return snapshot != null ? snapshot.useArmorScaling() : USE_ARMOR_SCALING.get();
+        return snapshot != null ? snapshot.useArmorScaling() : USE_ARMOR_SCALING;
+    }
+
+    public static boolean automaticCompatibilityEnabled() {
+        Snapshot snapshot = effectiveClientSnapshot();
+        if (snapshot != null) {
+            return snapshot.enableVanillaHumanoidCompatibility()
+                    && snapshot.enableExtendedHumanoidCompatibility()
+                    && snapshot.enableVanillaSpiderCompatibility();
+        }
+        return AUTOMATIC_COMPATIBILITY.get();
     }
 
     public static boolean vanillaHumanoidCompatibilityEnabled() {
-        Snapshot snapshot = effectiveClientSnapshot();
-        return snapshot != null
-                ? snapshot.enableVanillaHumanoidCompatibility()
-                : ENABLE_VANILLA_HUMANOID_COMPATIBILITY.get();
+        return automaticCompatibilityEnabled();
     }
 
     public static boolean extendedHumanoidCompatibilityEnabled() {
-        Snapshot snapshot = effectiveClientSnapshot();
-        return snapshot != null
-                ? snapshot.enableExtendedHumanoidCompatibility()
-                : ENABLE_EXTENDED_HUMANOID_COMPATIBILITY.get();
+        return automaticCompatibilityEnabled();
     }
 
     public static boolean vanillaSpiderCompatibilityEnabled() {
-        Snapshot snapshot = effectiveClientSnapshot();
-        return snapshot != null
-                ? snapshot.enableVanillaSpiderCompatibility()
-                : ENABLE_VANILLA_SPIDER_COMPATIBILITY.get();
+        return automaticCompatibilityEnabled();
     }
 
-    /** Namespace filtering applies only to EFPI automatic compatibility, not to third-party explicit patches. */
+    /** Namespace filtering applies only to EFPI automatic compatibility, not to existing third-party patches. */
     public static boolean isAutomaticCompatibilityAllowed(ResourceLocation entityId) {
-        if (entityId == null) {
+        if (entityId == null || !automaticCompatibilityEnabled()) {
             return false;
         }
         if ("minecraft".equals(entityId.getNamespace())) {
@@ -323,15 +274,14 @@ public final class PostureServerConfig {
         }
 
         Snapshot snapshot = effectiveClientSnapshot();
-        CompatibilityFilterMode mode = snapshot != null
-                ? snapshot.compatibilityFilterMode()
-                : MOD_FILTER_MODE.get();
         Set<String> allow = snapshot != null ? snapshot.modAllowlist() : modAllowlist;
         Set<String> deny = snapshot != null ? snapshot.modDenylist() : modDenylist;
+        String namespace = entityId.getNamespace();
 
-        return mode == CompatibilityFilterMode.ALLOWLIST
-                ? allow.contains(entityId.getNamespace())
-                : !deny.contains(entityId.getNamespace());
+        if (deny.contains(namespace)) {
+            return false;
+        }
+        return allow.isEmpty() || allow.contains(namespace);
     }
 
     public static boolean isExplicitlyBlacklisted(ResourceLocation entityId) {
@@ -344,7 +294,7 @@ public final class PostureServerConfig {
                 : blacklist.contains(entityId);
     }
 
-    /** Treat an EFPI-owned automatic compatibility target as disabled when its switch/filter is off. */
+    /** Treat an EFPI-owned automatic compatibility target as disabled when its current policy is off. */
     public static boolean isBlacklisted(ResourceLocation entityId) {
         if (entityId == null) {
             return false;
@@ -358,15 +308,16 @@ public final class PostureServerConfig {
 
     /** Snapshot of the local authoritative compatibility policy, used for login synchronization. */
     public static Snapshot localSnapshot() {
+        boolean automatic = AUTOMATIC_COMPATIBILITY.get();
         return new Snapshot(
-                GLOBAL_MULTIPLIER.get(),
-                MINIMUM_POSTURE.get(),
-                USE_ARMOR_SCALING.get(),
+                MAXIMUM_POSTURE_MULTIPLIER.get(),
+                (double) MINIMUM_POSTURE,
+                USE_ARMOR_SCALING,
                 blacklist,
-                ENABLE_VANILLA_HUMANOID_COMPATIBILITY.get(),
-                ENABLE_EXTENDED_HUMANOID_COMPATIBILITY.get(),
-                ENABLE_VANILLA_SPIDER_COMPATIBILITY.get(),
-                MOD_FILTER_MODE.get(),
+                automatic,
+                automatic,
+                automatic,
+                modAllowlist.isEmpty() ? CompatibilityFilterMode.DENYLIST : CompatibilityFilterMode.ALLOWLIST,
                 modAllowlist,
                 modDenylist
         );
@@ -413,7 +364,7 @@ public final class PostureServerConfig {
         for (String rawId : ENTITY_BLACKLIST.get()) {
             ResourceLocation entityId = ResourceLocation.tryParse(rawId == null ? "" : rawId.trim());
             if (entityId == null) {
-                LOGGER.warn("Ignoring invalid entity ID '{}' in posture.entity_blacklist", rawId);
+                LOGGER.warn("Ignoring invalid entity ID '{}' in entities.entity_blacklist", rawId);
                 continue;
             }
             parsed.add(entityId);
@@ -423,11 +374,11 @@ public final class PostureServerConfig {
 
     private static Map<ResourceLocation, Float> parseEntityMultipliers() {
         Map<ResourceLocation, Float> parsed = new HashMap<>();
-        for (String rawEntry : ENTITY_MULTIPLIERS.get()) {
+        for (String rawEntry : POSTURE_MULTIPLIERS.get()) {
             String entry = rawEntry == null ? "" : rawEntry.trim();
             int separator = entry.lastIndexOf('=');
             if (separator <= 0 || separator == entry.length() - 1) {
-                LOGGER.warn("Ignoring invalid entity multiplier '{}' in posture.overrides.entity_multipliers", rawEntry);
+                LOGGER.warn("Ignoring invalid entity multiplier '{}' in entities.posture_multipliers", rawEntry);
                 continue;
             }
 
@@ -438,8 +389,8 @@ public final class PostureServerConfig {
             } catch (NumberFormatException exception) {
                 multiplier = Float.NaN;
             }
-            if (entityId == null || !Float.isFinite(multiplier) || multiplier < 0.1F || multiplier > 100.0F) {
-                LOGGER.warn("Ignoring invalid entity multiplier '{}' in posture.overrides.entity_multipliers", rawEntry);
+            if (entityId == null || !Float.isFinite(multiplier) || multiplier < 0.01F || multiplier > 100.0F) {
+                LOGGER.warn("Ignoring invalid entity multiplier '{}' in entities.posture_multipliers", rawEntry);
                 continue;
             }
             parsed.put(entityId, multiplier);
@@ -506,7 +457,7 @@ public final class PostureServerConfig {
             Set<String> modDenylist) {
         public Snapshot {
             globalMultiplier = globalMultiplier == null ? 1.0D : globalMultiplier;
-            minimumPosture = minimumPosture == null ? 1.0D : minimumPosture;
+            minimumPosture = minimumPosture == null ? (double) MINIMUM_POSTURE : minimumPosture;
             entityBlacklist = entityBlacklist == null ? Set.of() : Set.copyOf(entityBlacklist);
             compatibilityFilterMode = compatibilityFilterMode == null
                     ? CompatibilityFilterMode.DENYLIST

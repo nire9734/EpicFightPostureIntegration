@@ -4,6 +4,7 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import dev.nire9734.epicfightposture.compat.humanoid.client.GeckoArmorBakeTransformContext;
 import dev.nire9734.epicfightposture.compat.humanoid.client.GeckoArmorSkinnedMeshBridge;
+import dev.nire9734.epicfightposture.compat.humanoid.client.RuntimeMeshOwnership;
 import dev.nire9734.epicfightposture.compat.humanoid.client.SpecialRenderHooks;
 import net.minecraft.client.model.HumanoidModel;
 import net.minecraft.client.model.geom.ModelPart;
@@ -146,18 +147,20 @@ public abstract class GeckoItemArmorLayerContextMixin {
         boolean rendered;
         try (GeckoArmorBakeTransformContext.Scope ignored =
                      GeckoArmorBakeTransformContext.open(bone, fitScale)) {
-            rendered = GeckoArmorSkinnedMeshBridge.renderIfSupported(
-                    animatable,
-                    bone,
-                    armorStack,
-                    reportedSlot,
-                    armorModel,
-                    armorPart,
-                    fitScale,
-                    bufferSource,
-                    packedLight,
-                    packedOverlay,
-                    partialTick
+            rendered = RuntimeMeshOwnership.callOwned(() ->
+                    GeckoArmorSkinnedMeshBridge.renderIfSupported(
+                            animatable,
+                            bone,
+                            armorStack,
+                            reportedSlot,
+                            armorModel,
+                            armorPart,
+                            fitScale,
+                            bufferSource,
+                            packedLight,
+                            packedOverlay,
+                            partialTick
+                    )
             );
         }
 
