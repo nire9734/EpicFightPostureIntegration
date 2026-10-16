@@ -161,9 +161,19 @@ public final class PostureManager {
             return true;
         }
 
-        float regenPerTick = state.max
-                * PostureBalance.regenFractionPerSecond(PostureServerConfig.postureRegenFractionPerSecond())
-                / 20.0F;
+        float maxHealth = finiteOr(entity.getMaxHealth(), EHP_REFERENCE_HEALTH);
+        if (maxHealth <= 0.0F) {
+            maxHealth = EHP_REFERENCE_HEALTH;
+        }
+        float currentHealth = finiteOr(entity.getHealth(), maxHealth);
+        float healthFraction = clamp(currentHealth / maxHealth, 0.0F, 1.0F);
+        float regenPerTick = state.max * PostureBalance.regenFractionPerSecond(
+                healthFraction,
+                PostureServerConfig.postureRegen25HealthFractionPerSecond(),
+                PostureServerConfig.postureRegen50HealthFractionPerSecond(),
+                PostureServerConfig.postureRegen75HealthFractionPerSecond(),
+                PostureServerConfig.postureRegenFullHealthFractionPerSecond()
+        ) / 20.0F;
         state.current = Math.min(state.max, state.current + regenPerTick);
         return true;
     }
@@ -498,7 +508,9 @@ public final class PostureManager {
         float healthFraction = clamp(currentHealth / maxHealth, 0.0F, 1.0F);
         return PostureBalance.healthPostureDamageMultiplier(
                 healthFraction,
-                PostureServerConfig.lowHealthPostureDamageBonusFraction()
+                PostureServerConfig.fullHealthPostureDamageMultiplier(),
+                PostureServerConfig.zeroHealthPostureDamageMultiplier(),
+                PostureServerConfig.healthPostureCurveExponent()
         );
     }
 

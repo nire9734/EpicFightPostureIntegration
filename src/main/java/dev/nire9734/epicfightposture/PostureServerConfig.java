@@ -31,11 +31,16 @@ public final class PostureServerConfig {
     public static final ForgeConfigSpec.DoubleValue GLOBAL_MULTIPLIER;
     public static final ForgeConfigSpec.DoubleValue POSTURE_DAMAGE_MULTIPLIER;
     public static final ForgeConfigSpec.DoubleValue PARRY_POSTURE_PERCENT;
-    public static final ForgeConfigSpec.DoubleValue LOW_HEALTH_POSTURE_DAMAGE_BONUS_PERCENT;
+    public static final ForgeConfigSpec.DoubleValue FULL_HEALTH_POSTURE_DAMAGE_MULTIPLIER;
+    public static final ForgeConfigSpec.DoubleValue ZERO_HEALTH_POSTURE_DAMAGE_MULTIPLIER;
+    public static final ForgeConfigSpec.DoubleValue HEALTH_POSTURE_CURVE_EXPONENT;
     public static final ForgeConfigSpec.DoubleValue MINIMUM_POSTURE;
     public static final ForgeConfigSpec.BooleanValue USE_ARMOR_SCALING;
     public static final ForgeConfigSpec.DoubleValue REGEN_DELAY_SECONDS;
-    public static final ForgeConfigSpec.DoubleValue REGEN_RATE_PERCENT;
+    public static final ForgeConfigSpec.DoubleValue REGEN_RATE_FULL_HEALTH_PERCENT;
+    public static final ForgeConfigSpec.DoubleValue REGEN_RATE_75_HEALTH_PERCENT;
+    public static final ForgeConfigSpec.DoubleValue REGEN_RATE_50_HEALTH_PERCENT;
+    public static final ForgeConfigSpec.DoubleValue REGEN_RATE_25_HEALTH_PERCENT;
     public static final ForgeConfigSpec.ConfigValue<List<? extends String>> ENTITY_BLACKLIST;
     public static final ForgeConfigSpec.BooleanValue ENABLE_VANILLA_HUMANOID_COMPATIBILITY;
     public static final ForgeConfigSpec.BooleanValue ENABLE_GECKOLIB_HUMANOID_COMPATIBILITY;
@@ -69,17 +74,27 @@ public final class PostureServerConfig {
         PARRY_POSTURE_PERCENT = BUILDER
                 .comment(
                         "Base parry posture damage as a percentage of the target's maximum posture.",
-                        "Default: 6.0. A minimum raw parry posture damage of 0.5 is retained for low-posture mobs.",
-                        "Target-health scaling is applied after this base parry value is calculated."
+                        "Default: 6.0. A minimum raw parry posture damage of 0.5 is retained before target-health scaling."
                 )
                 .defineInRange("parry_posture_percent", 6.0D, 0.0D, 100.0D);
-        LOW_HEALTH_POSTURE_DAMAGE_BONUS_PERCENT = BUILDER
+        FULL_HEALTH_POSTURE_DAMAGE_MULTIPLIER = BUILDER
                 .comment(
-                        "Maximum bonus to posture damage from both direct attacks and parries as target health falls.",
-                        "The bonus scales linearly from 0% at full health to this value at 0 health.",
-                        "Default: 50.0, giving x1.0 at full health, x1.25 at 50% health, and x1.5 near 0 health."
+                        "Posture-damage multiplier applied at 100% target health.",
+                        "Default: 0.25. High-health enemies are deliberately difficult to posture-break."
                 )
-                .defineInRange("low_health_posture_damage_bonus_percent", 50.0D, 0.0D, 1000.0D);
+                .defineInRange("full_health_posture_damage_multiplier", 0.25D, 0.0D, 100.0D);
+        ZERO_HEALTH_POSTURE_DAMAGE_MULTIPLIER = BUILDER
+                .comment(
+                        "Posture-damage multiplier approached as target health falls toward 0%.",
+                        "Default: 1.0."
+                )
+                .defineInRange("zero_health_posture_damage_multiplier", 1.0D, 0.0D, 100.0D);
+        HEALTH_POSTURE_CURVE_EXPONENT = BUILDER
+                .comment(
+                        "Exponent controlling how strongly posture vulnerability is delayed toward low health.",
+                        "1.0 = linear. Values above 1.0 keep posture damage lower until later in the fight. Default: 2.0."
+                )
+                .defineInRange("health_posture_curve_exponent", 2.0D, 0.01D, 100.0D);
         MINIMUM_POSTURE = BUILDER
                 .comment("Minimum maximum posture an eligible mob can have.")
                 .defineInRange("minimum_posture", 1.0D, 0.1D, 10000.0D);
@@ -91,15 +106,33 @@ public final class PostureServerConfig {
         REGEN_DELAY_SECONDS = BUILDER
                 .comment(
                         "Seconds after posture damage or a parry before posture regeneration starts.",
-                        "Default: 5.0 seconds."
+                        "Default: 10.0 seconds, so ordinary boss attack gaps and long telegraphs usually do not trigger regeneration."
                 )
-                .defineInRange("delay_seconds", 5.0D, 0.0D, 60.0D);
-        REGEN_RATE_PERCENT = BUILDER
+                .defineInRange("delay_seconds", 10.0D, 0.0D, 60.0D);
+        REGEN_RATE_FULL_HEALTH_PERCENT = BUILDER
                 .comment(
-                        "Maximum-posture percentage regenerated per second after the delay.",
-                        "This rate is independent of target health. Default: 4.0 (% per second)."
+                        "Maximum-posture percentage regenerated per second at 100% health after the delay.",
+                        "Default: 8.0."
                 )
-                .defineInRange("percent_per_second", 4.0D, 0.0D, 100.0D);
+                .defineInRange("full_health_percent_per_second", 8.0D, 0.0D, 100.0D);
+        REGEN_RATE_75_HEALTH_PERCENT = BUILDER
+                .comment(
+                        "Maximum-posture percentage regenerated per second at 75% health after the delay.",
+                        "Rates between health anchors are linearly interpolated. Default: 6.0."
+                )
+                .defineInRange("health_75_percent_per_second", 6.0D, 0.0D, 100.0D);
+        REGEN_RATE_50_HEALTH_PERCENT = BUILDER
+                .comment(
+                        "Maximum-posture percentage regenerated per second at 50% health after the delay.",
+                        "Rates between health anchors are linearly interpolated. Default: 3.0."
+                )
+                .defineInRange("health_50_percent_per_second", 3.0D, 0.0D, 100.0D);
+        REGEN_RATE_25_HEALTH_PERCENT = BUILDER
+                .comment(
+                        "Maximum-posture percentage regenerated per second at 25% health or below after the delay.",
+                        "Default: 1.0."
+                )
+                .defineInRange("health_25_percent_per_second", 1.0D, 0.0D, 100.0D);
         BUILDER.pop();
 
         ENTITY_BLACKLIST = BUILDER
@@ -150,9 +183,16 @@ public final class PostureServerConfig {
         return PARRY_POSTURE_PERCENT.get().floatValue() / 100.0F;
     }
 
-    /** Maximum extra posture-damage multiplier contribution at zero target health. */
-    public static float lowHealthPostureDamageBonusFraction() {
-        return LOW_HEALTH_POSTURE_DAMAGE_BONUS_PERCENT.get().floatValue() / 100.0F;
+    public static float fullHealthPostureDamageMultiplier() {
+        return FULL_HEALTH_POSTURE_DAMAGE_MULTIPLIER.get().floatValue();
+    }
+
+    public static float zeroHealthPostureDamageMultiplier() {
+        return ZERO_HEALTH_POSTURE_DAMAGE_MULTIPLIER.get().floatValue();
+    }
+
+    public static float healthPostureCurveExponent() {
+        return HEALTH_POSTURE_CURVE_EXPONENT.get().floatValue();
     }
 
     /** Server-side delay before ordinary posture regeneration begins. */
@@ -160,9 +200,20 @@ public final class PostureServerConfig {
         return REGEN_DELAY_SECONDS.get().floatValue();
     }
 
-    /** Constant ordinary posture regeneration rate as a fraction of maximum posture per second. */
-    public static float postureRegenFractionPerSecond() {
-        return REGEN_RATE_PERCENT.get().floatValue() / 100.0F;
+    public static float postureRegenFullHealthFractionPerSecond() {
+        return REGEN_RATE_FULL_HEALTH_PERCENT.get().floatValue() / 100.0F;
+    }
+
+    public static float postureRegen75HealthFractionPerSecond() {
+        return REGEN_RATE_75_HEALTH_PERCENT.get().floatValue() / 100.0F;
+    }
+
+    public static float postureRegen50HealthFractionPerSecond() {
+        return REGEN_RATE_50_HEALTH_PERCENT.get().floatValue() / 100.0F;
+    }
+
+    public static float postureRegen25HealthFractionPerSecond() {
+        return REGEN_RATE_25_HEALTH_PERCENT.get().floatValue() / 100.0F;
     }
 
     public static float minimumPosture() {
