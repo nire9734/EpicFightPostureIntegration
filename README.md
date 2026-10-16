@@ -65,7 +65,13 @@ attack posture scale = (dealt damage / 8)^0.7
 
 The default Impact-derived posture multiplier is `0.55`. Eligible non-Epic-Fight direct player attacks use a bounded damage-derived fallback Impact before the same dealt-damage scaling is applied.
 
-Successful Epic Fight-style parries damage the attacker's posture. By default the raw parry value is 8% of the target's maximum posture, with a minimum raw value of 0.5.
+Successful Epic Fight-style parries damage the attacker's posture. The configured `parry_posture_percent` is the high-EHP baseline. Lower-EHP targets receive a larger effective percentage derived from the same 20-EHP reference and 0.7 scaling exponent used by maximum posture:
+
+```text
+effective parry fraction = base parry fraction * (1 + (20 / EHP)^0.7)
+```
+
+The result is then multiplied by the target's maximum posture. No absolute minimum parry damage is used.
 
 Both direct-hit and parry posture damage then use the health/EHP finisher modifier. For a sufficiently high-EHP target, the default health curve is:
 
@@ -78,94 +84,6 @@ That gives approximately x0.25 posture damage at full health, x0.4375 at 50% hea
 Ordinary posture regeneration starts after 10 seconds without posture damage or a parry and then restores 2% of maximum posture per second. This rate is constant and does not vary with health. Posture-break recovery is a separate state and is not controlled by the ordinary regeneration rate.
 
 When posture reaches zero, EFPI attempts to apply the entity's neutralize/guard-break animation. During execution, posture remains locked at zero. If the entity is not executed, it enters recovery and returns to normal behavior.
-
-Entities already managed by Combat Evolution's own native posture implementation are left to Combat Evolution to avoid duplicate posture systems.
-
-## Automatic Renderer Compatibility
-
-Version 2.0.0 introduced EFPI's renderer-discovery architecture. Version 2.1.0 extends that architecture with a shared humanoid rig/semantic/skeleton pipeline and additional model backends while retaining the same conservative acceptance policy.
-
-Automatic renderer compatibility is intentionally conservative: a target that cannot be classified and prepared safely is skipped instead of being guessed. Existing Epic Fight patches always take priority over EFPI's automatic lightweight patches.
-
-### Shared Humanoid Conversion Pipeline
-
-Supported non-vanilla humanoid backends are normalized through the same general pipeline:
-
-```text
-source model
--> SourceRigSnapshot
--> conservative semantic analysis
--> resolved humanoid skeleton
--> target body metrics / inferred joints
--> shared skin-weight resolution
--> Epic Fight runtime armature + skinned mesh
-```
-
-This is structural rather than entity-ID based. Major joints are accepted from source names only when hierarchy, topology, left/right structure, and renderable geometry remain consistent with a supported humanoid layout. One-bone limbs can receive inferred elbow/knee joints and continuous per-vertex deformation. Ambiguous layouts fail closed.
-
-### Minecraft HumanoidModel
-
-EFPI inspects registered entity renderers and detects living entities whose renderer model is a Minecraft `HumanoidModel`.
-
-For compatible targets, EFPI registers a lightweight BIPED Epic Fight patch. The original renderer remains active during normal gameplay. Epic Fight's patched renderer is used only when EFPI needs special posture-state rendering.
-
-The source `HumanoidModel` is converted through Epic Fight's vanilla humanoid model transformer. If conversion fails, automatic compatibility is not installed for that target.
-
-### Generic Minecraft ModelPart / HierarchicalModel
-
-EFPI can conservatively inspect supported non-`HumanoidModel` Minecraft hierarchical models and build a humanoid skeleton from their source `ModelPart` hierarchy.
-
-Body geometry is converted to a skinned mesh. Recognized dynamic attachment branches are kept out of the static body mesh and can be replayed separately so source visibility can continue selecting active weapons or attachments.
-
-This does not imply that every custom `ModelPart` renderer is compatible. Models that cannot be classified safely are rejected.
-
-### GeckoLib Humanoids
-
-When GeckoLib is installed, EFPI also inspects supported `GeoEntityRenderer` models.
-
-A Gecko model is accepted only when its source hierarchy, semantic names, topology, left/right structure, and major-limb geometry can be classified as a supported humanoid layout. Detection is not tied to one specific entity ID.
-
-For accepted models EFPI can:
-
-- register the same lightweight BIPED patch used for generic humanoid compatibility;
-- convert supported Geo model geometry into an Epic Fight `SkinnedMesh`;
-- split suitable one-bone arms and legs so Epic Fight elbow and knee joints can animate them;
-- convert supported `GeoArmorRenderer` armor into the same target armature space;
-- replay supported per-bone item, equipment, and attachment layers using the Epic Fight joint pose;
-- share the same semantic source binding between body, layer, and post-render attachment handling; and
-- fall back to a native Minecraft humanoid conversion when a hybrid Gecko renderer delegates to an ordinary `HumanoidModel` renderer at runtime.
-
-Normal GeckoLib animation and rendering remain untouched outside EFPI's special posture states.
-
-Not every GeckoLib model is guaranteed to be compatible. Non-humanoid, ambiguous, highly custom, dynamically selected, or otherwise unsupported models fail closed instead of being forced through the BIPED path.
-
-### Lionfish / Citadel-style Humanoids
-
-EFPI can conservatively inspect supported Lionfish `AdvancedEntityModel` / `AdvancedModelBox` humanoid layouts through the same semantic and skin-weight pipeline.
-
-For full-model secondary layers that redraw the exact same parent model without changing source-part visibility, EFPI 2.1.0 can reuse the prepared skinned body mesh through the layer's own render buffer. This keeps long one-bone arm/leg decorations on the same per-vertex deformation as the body. Layers that use a separate model or change source visibility continue through the existing source-model replay fallback.
-
-This path is intentionally generic and does not special-case Cataclysm entity IDs.
-
-### AzureLib Humanoids
-
-EFPI can conservatively inspect supported AzureLib humanoid source models and convert accepted body geometry through the shared semantic/skeleton/weight pipeline.
-
-AzureLib secondary rendering support is currently less complete than the GeckoLib path. Custom armor, attachment, or render-layer behavior may therefore fail closed or remain unsupported even when the body model itself can be converted safely.
-
-### Minecraft SpiderModel
-
-EFPI can also detect unpatched living entities rendered with Minecraft `SpiderModel`.
-
-For compatible targets, EFPI registers a lightweight SPIDER Epic Fight patch while leaving the source mob's normal AI, movement, attacks, targeting, and ordinary renderer unchanged. Epic Fight rendering is used only for posture-related special states.
-
-Supported spider targets use Epic Fight's spider neutralized animation and EFPI's spider execution-victim animation when the entity uses a compatible Epic Fight `SpiderArmature`.
-
-This path is intended for standard Minecraft-style spider renderer/model layouts. Highly custom spider renderers or unrelated arthropod models are not assumed to be compatible.
-
-### Existing Epic Fight Patches Take Priority
-
-EFPI does not overwrite a patch already supplied by Epic Fight, another compatibility addon, or another earlier patch-registry subscriber.
 
 Entities with an existing Epic Fight patch are excluded from EFPI automatic renderer discovery entirely. Automatic compatibility switches apply only to lightweight patches owned by EFPI; they do not disable explicit Epic Fight compatibility supplied by another mod.
 
@@ -327,60 +245,3 @@ Renderer discovery and runtime mesh preparation happen during renderer-registrat
 - Execution compatibility ultimately depends on Combat Evolution's execution behavior and a compatible Epic Fight armature.
 - Existing third-party Epic Fight patches take priority over EFPI's automatic lightweight patches.
 - Dedicated servers require a trusted operator client to discover renderer-based compatibility targets, followed by a restart when the pending set changes.
-
-## Building From Source
-
-Java 17 is required.
-
-Windows:
-
-```powershell
-.\gradlew.bat clean build
-```
-
-Linux/macOS:
-
-```bash
-./gradlew clean build
-```
-
-The generated JAR is placed in `build/libs/`. For version 2.1.0 the release JAR is named `epicfight-posture-integration-2.1.0.jar`.
-
-GitHub Actions performs the same project build and uploads the generated JAR as an artifact.
-
-## Reporting Issues
-
-For compatibility issues, include:
-
-- Minecraft version
-- Forge version
-- Epic Fight version
-- Combat Evolution version
-- model framework version (GeckoLib, Lionfish API, AzureLib, if applicable)
-- Epic Fight Posture Integration version
-- affected entity ID
-- mod that adds the entity
-- any Epic Fight compatibility addon in use
-- relevant logs
-
-For performance issues, a Spark profiler result is also useful.
-
-## Credits
-
-Epic Fight Posture Integration is an unofficial third-party addon.
-
-- **Epic Fight** — Antikythera Studios
-- **Combat Evolution** — ShelMarow
-- **GeckoLib** — optional compatibility target/API
-- **Lionfish API** — optional model compatibility API
-- **AzureLib** — optional model compatibility API
-- **Iron's Spells 'n Spellbooks** — officially tested compatibility target for supported humanoid mobs
-- **L_Ender's Cataclysm** — officially tested compatibility target for supported humanoid mobs
-
-This project is not affiliated with or endorsed by the developers of Epic Fight, Combat Evolution, GeckoLib, Lionfish API, AzureLib, Iron's Spells 'n Spellbooks, or L_Ender's Cataclysm. Those projects remain separate and are distributed under their respective licenses.
-
-## License
-
-Epic Fight Posture Integration is licensed under the **GNU General Public License v3.0 only (GPL-3.0-only)**.
-
-See the `LICENSE` file for the full license text.
