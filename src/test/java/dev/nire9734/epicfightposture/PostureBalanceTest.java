@@ -6,16 +6,29 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class PostureBalanceTest {
     private static final float EPSILON = 0.0001F;
-    private static final float LOW_REGEN = 0.015F;
-    private static final float MID_REGEN = 0.04F;
-    private static final float HIGH_REGEN = 0.06F;
-    private static final float FULL_REGEN = 0.08F;
 
     @Test
-    void parryDamageUsesTenPercentWithHalfPointMinimum() {
-        assertEquals(0.5F, PostureBalance.parryDamage(3.2F), EPSILON);
-        assertEquals(1.0F, PostureBalance.parryDamage(10.0F), EPSILON);
-        assertEquals(10.0F, PostureBalance.parryDamage(100.0F), EPSILON);
+    void parryDamageUsesConfiguredFractionWithHalfPointMinimum() {
+        assertEquals(0.5F, PostureBalance.parryDamage(3.2F, 0.06F), EPSILON);
+        assertEquals(0.6F, PostureBalance.parryDamage(10.0F, 0.06F), EPSILON);
+        assertEquals(6.0F, PostureBalance.parryDamage(100.0F, 0.06F), EPSILON);
+    }
+
+    @Test
+    void healthPostureDamageMultiplierScalesLinearlyFromFullToZeroHealth() {
+        assertEquals(1.0F, PostureBalance.healthPostureDamageMultiplier(1.00F, 0.50F), EPSILON);
+        assertEquals(1.125F, PostureBalance.healthPostureDamageMultiplier(0.75F, 0.50F), EPSILON);
+        assertEquals(1.25F, PostureBalance.healthPostureDamageMultiplier(0.50F, 0.50F), EPSILON);
+        assertEquals(1.375F, PostureBalance.healthPostureDamageMultiplier(0.25F, 0.50F), EPSILON);
+        assertEquals(1.50F, PostureBalance.healthPostureDamageMultiplier(0.00F, 0.50F), EPSILON);
+    }
+
+    @Test
+    void healthPostureDamageMultiplierClampsHealthAndSanitizesBonus() {
+        assertEquals(1.0F, PostureBalance.healthPostureDamageMultiplier(2.0F, 0.50F), EPSILON);
+        assertEquals(1.50F, PostureBalance.healthPostureDamageMultiplier(-1.0F, 0.50F), EPSILON);
+        assertEquals(1.0F, PostureBalance.healthPostureDamageMultiplier(Float.NaN, 0.50F), EPSILON);
+        assertEquals(1.0F, PostureBalance.healthPostureDamageMultiplier(0.0F, -1.0F), EPSILON);
     }
 
     @Test
@@ -26,34 +39,10 @@ class PostureBalanceTest {
     }
 
     @Test
-    void regenCurveMatchesHealthAnchors() {
-        assertEquals(FULL_REGEN, regen(1.00F), EPSILON);
-        assertEquals(HIGH_REGEN, regen(0.75F), EPSILON);
-        assertEquals(MID_REGEN, regen(0.50F), EPSILON);
-        assertEquals(LOW_REGEN, regen(0.25F), EPSILON);
-        assertEquals(LOW_REGEN, regen(0.00F), EPSILON);
-    }
-
-    @Test
-    void regenCurveInterpolatesContinuouslyBetweenAnchors() {
-        assertEquals(0.07F, regen(0.875F), EPSILON);
-        assertEquals(0.05F, regen(0.625F), EPSILON);
-        assertEquals(0.0275F, regen(0.375F), EPSILON);
-    }
-
-    @Test
-    void regenCurveClampsOutOfRangeHealth() {
-        assertEquals(FULL_REGEN, regen(2.0F), EPSILON);
-        assertEquals(LOW_REGEN, regen(-1.0F), EPSILON);
-    }
-
-    private static float regen(float healthFraction) {
-        return PostureBalance.regenFractionPerSecond(
-                healthFraction,
-                LOW_REGEN,
-                MID_REGEN,
-                HIGH_REGEN,
-                FULL_REGEN
-        );
+    void regenUsesOneConfiguredConstantRate() {
+        assertEquals(0.04F, PostureBalance.regenFractionPerSecond(0.04F), EPSILON);
+        assertEquals(0.0F, PostureBalance.regenFractionPerSecond(-1.0F), EPSILON);
+        assertEquals(1.0F, PostureBalance.regenFractionPerSecond(2.0F), EPSILON);
+        assertEquals(0.0F, PostureBalance.regenFractionPerSecond(Float.NaN), EPSILON);
     }
 }
