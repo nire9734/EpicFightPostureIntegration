@@ -77,7 +77,7 @@ public final class LionfishHumanoidClientCompat implements HumanoidRenderBackend
                     Optional.of(descriptor)
             ));
         } catch (Throwable throwable) {
-            LOGGER.warn("EFPI could not inspect Lionfish humanoid model for {}; skipping automatic compatibility",
+            LOGGER.debug("EFPI could not inspect Lionfish humanoid model for {}; skipping automatic compatibility",
                     entityId, throwable);
             return Inspection.rejected();
         }

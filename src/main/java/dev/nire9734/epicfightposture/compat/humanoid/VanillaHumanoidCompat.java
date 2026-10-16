@@ -172,7 +172,7 @@ public final class VanillaHumanoidCompat {
             Set<ResourceLocation> updatedExternal = new HashSet<>(externallyPatched);
             updatedExternal.add(id);
             externallyPatched = Set.copyOf(updatedExternal);
-            LOGGER.info("EFPI skipped automatic compatibility for {} because an Epic Fight custom patch is already registered",
+            LOGGER.debug("EFPI skipped automatic compatibility for {} because an Epic Fight custom patch is already registered",
                     id);
             return false;
         }
@@ -185,7 +185,7 @@ public final class VanillaHumanoidCompat {
             Map<ResourceLocation, CompatibilityKind> updated = new HashMap<>(cachedDetected);
             CompatibilityKind previous = updated.put(id, kind);
             if (previous != null && previous != kind) {
-                LOGGER.warn("EFPI renderer compatibility kind changed for {} from {} to {}; using the latest scan",
+                LOGGER.debug("EFPI renderer compatibility kind changed for {} from {} to {}; using the latest scan",
                         id, previous, kind);
             }
             cachedDetected = Map.copyOf(updated);

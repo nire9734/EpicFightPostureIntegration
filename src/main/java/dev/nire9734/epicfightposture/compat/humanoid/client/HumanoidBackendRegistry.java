@@ -53,6 +53,8 @@ public final class HumanoidBackendRegistry {
         Set<ResourceLocation> inspected = new HashSet<>();
         Set<ResourceLocation> compatible = new HashSet<>();
         Set<EntityType<?>> compatibleTypes = new HashSet<>();
+        int backendInspectionFailures = 0;
+        int ambiguousTargets = 0;
 
         for (Map.Entry<EntityType<?>, EntityRenderer<?>> entry : renderers.entrySet()) {
             EntityType<?> entityType = entry.getKey();
@@ -72,7 +74,8 @@ public final class HumanoidBackendRegistry {
                 try {
                     inspection = backend.inspect(entityType, renderer);
                 } catch (Throwable throwable) {
-                    LOGGER.warn("EFPI humanoid backend {} failed while inspecting {}", backend.id(), entityId, throwable);
+                    backendInspectionFailures++;
+                    LOGGER.debug("EFPI humanoid backend {} failed while inspecting {}", backend.id(), entityId, throwable);
                     continue;
                 }
                 if (!inspection.matched()) {
@@ -90,12 +93,21 @@ public final class HumanoidBackendRegistry {
                 compatible.add(entityId);
                 compatibleTypes.add(entityType);
             } else if (candidates.size() > 1) {
-                LOGGER.warn(
+                ambiguousTargets++;
+                LOGGER.debug(
                         "EFPI rejected {} because multiple humanoid backends prepared it: {}",
                         entityId,
                         candidates.stream().map(PreparedHumanoidModel::backendId).toList()
                 );
             }
+        }
+
+        if (backendInspectionFailures > 0 || ambiguousTargets > 0) {
+            LOGGER.warn(
+                    "EFPI automatic compatibility scan skipped {} backend inspection failure(s) and {} ambiguous target(s); enable debug logging for details",
+                    backendInspectionFailures,
+                    ambiguousTargets
+            );
         }
 
         return new ScanResult(Set.copyOf(inspected), Set.copyOf(compatible), Set.copyOf(compatibleTypes));
@@ -108,6 +120,8 @@ public final class HumanoidBackendRegistry {
         Set<EntityType<?>> verified = new HashSet<>();
         Map<String, Integer> verifiedByBackend = new LinkedHashMap<>();
         int retargetedArmatures = 0;
+        int armaturePreparationFailures = 0;
+        int rendererInstallationFailures = 0;
 
         for (EntityType<?> entityType : entityTypes) {
             PreparedHumanoidModel prepared = PREPARED.get(entityType);
@@ -145,11 +159,12 @@ public final class HumanoidBackendRegistry {
                     armatureOverride = HumanoidArmatureFactory.accessor(runtimeArmatureId, targetArmature);
                     retargetedArmatures++;
                 } catch (Throwable throwable) {
+                    armaturePreparationFailures++;
                     if (oursAlready) {
                         VanillaHumanoidCompat.rejectRuntimeCompatibility(entityType);
                     }
-                    LOGGER.warn(
-                            "EFPI rejected automatic humanoid compatibility for {} because target-proportioned runtime armature generation failed; canonical BIPED fallback would not match the prepared mesh/descriptor",
+                    LOGGER.debug(
+                            "EFPI rejected automatic humanoid compatibility for {} because target-proportioned runtime armature generation failed",
                             entityId,
                             throwable
                     );
@@ -182,7 +197,8 @@ public final class HumanoidBackendRegistry {
             try {
                 backend.addPatchedRenderer(event, prepared);
             } catch (Throwable throwable) {
-                LOGGER.warn("EFPI backend {} could not install special renderer for {}",
+                rendererInstallationFailures++;
+                LOGGER.debug("EFPI backend {} could not install special renderer for {}",
                         prepared.backendId(), entityId, throwable);
                 continue;
             }
@@ -199,6 +215,14 @@ public final class HumanoidBackendRegistry {
             }
         }
         lastVerifiedByBackend = Collections.unmodifiableMap(orderedCounts);
+
+        if (armaturePreparationFailures > 0 || rendererInstallationFailures > 0) {
+            LOGGER.warn(
+                    "EFPI automatic compatibility skipped {} runtime armature target(s) and {} renderer target(s) due preparation errors; enable debug logging for details",
+                    armaturePreparationFailures,
+                    rendererInstallationFailures
+            );
+        }
 
         LOGGER.debug(
                 "EFPI prepared humanoid registration: {} verified target(s), {} target-proportioned armature(s), by backend {}",

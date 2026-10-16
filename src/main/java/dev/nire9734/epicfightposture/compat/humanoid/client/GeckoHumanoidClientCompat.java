@@ -71,7 +71,7 @@ public final class GeckoHumanoidClientCompat implements HumanoidRenderBackend {
                     () -> GeckoHumanoidMeshAdapter.analyseAndBake(bakedModel, key)
             );
             if (!result.supported() || result.descriptor() == null || result.mesh() == null) {
-                LOGGER.warn("EFPI Gecko humanoid rejected {}: {}", entityId, result.reason());
+                LOGGER.debug("EFPI Gecko humanoid rejected {}: {}", entityId, result.reason());
                 return Inspection.rejected();
             }
 
@@ -99,7 +99,7 @@ public final class GeckoHumanoidClientCompat implements HumanoidRenderBackend {
                     Optional.of(descriptor)
             ));
         } catch (Throwable throwable) {
-            LOGGER.warn(
+            LOGGER.debug(
                     "EFPI Gecko humanoid inspection failed for {}; skipping automatic compatibility",
                     entityId,
                     throwable

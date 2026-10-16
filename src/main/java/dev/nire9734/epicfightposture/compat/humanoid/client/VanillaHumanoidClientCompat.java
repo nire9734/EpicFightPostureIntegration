@@ -181,8 +181,8 @@ public final class VanillaHumanoidClientCompat {
             Object sourceRenderer = event.getContext().getEntityRenderDispatcher().renderers.get(entityType);
             if (!(sourceRenderer instanceof LivingEntityRenderer<?, ?> livingRenderer)
                     || !(livingRenderer.getModel() instanceof HumanoidModel<?> humanoidModel)) {
-                LOGGER.warn(
-                        "Humanoid compatibility target {} no longer exposes HumanoidModel; skipping automatic compatibility",
+                LOGGER.debug(
+                        "EFPI HumanoidModel target {} changed renderer/model before preparation; skipping automatic compatibility",
                         entityId
                 );
                 return null;
@@ -190,8 +190,8 @@ public final class VanillaHumanoidClientCompat {
 
             SkinnedMesh baked = HumanoidModelBaker.VANILLA_TRANSFORMER.transformArmorModel(humanoidModel);
             if (baked == null) {
-                LOGGER.warn(
-                        "Epic Fight could not transform HumanoidModel for {}; skipping automatic compatibility",
+                LOGGER.debug(
+                        "EFPI could not transform HumanoidModel for {}; skipping automatic compatibility",
                         entityId
                 );
                 return null;
@@ -203,8 +203,8 @@ public final class VanillaHumanoidClientCompat {
             );
             return SelfAccessor.create(runtimeMeshId, baked);
         } catch (Throwable throwable) {
-            LOGGER.warn(
-                    "Failed to prepare Epic Fight runtime mesh for {}; skipping automatic compatibility",
+            LOGGER.debug(
+                    "EFPI failed to prepare HumanoidModel runtime mesh for {}; skipping automatic compatibility",
                     entityId,
                     throwable
             );
