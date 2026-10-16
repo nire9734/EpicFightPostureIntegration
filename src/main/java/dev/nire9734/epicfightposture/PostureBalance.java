@@ -6,6 +6,9 @@ final class PostureBalance {
     private static final float LOW_HEALTH_THRESHOLD = 0.25F;
     private static final float MID_HEALTH_THRESHOLD = 0.50F;
     private static final float HIGH_HEALTH_THRESHOLD = 0.75F;
+    private static final float DEFAULT_ATTACK_DAMAGE_REFERENCE = 8.0F;
+    private static final float DEFAULT_ATTACK_DAMAGE_EXPONENT = 0.7F;
+    private static final float MAX_ATTACK_DAMAGE_SCALE = 100.0F;
 
     static float parryDamage(float maxPosture, float maxPostureFraction) {
         float fraction = sanitizeFraction(maxPostureFraction);
@@ -13,6 +16,21 @@ final class PostureBalance {
             return PARRY_MIN_DAMAGE;
         }
         return Math.max(PARRY_MIN_DAMAGE, maxPosture * fraction);
+    }
+
+    static float attackDamageScale(float damageAmount, float referenceDamage, float exponent) {
+        if (!Float.isFinite(damageAmount) || damageAmount <= 0.0F) {
+            return 0.0F;
+        }
+        float reference = sanitizePositive(referenceDamage, DEFAULT_ATTACK_DAMAGE_REFERENCE);
+        float scalingExponent = Float.isFinite(exponent)
+                ? clamp(exponent, 0.0F, 4.0F)
+                : DEFAULT_ATTACK_DAMAGE_EXPONENT;
+        double scaled = Math.pow(damageAmount / reference, scalingExponent);
+        if (!Double.isFinite(scaled)) {
+            return MAX_ATTACK_DAMAGE_SCALE;
+        }
+        return clamp((float) scaled, 0.0F, MAX_ATTACK_DAMAGE_SCALE);
     }
 
     static float healthPostureDamageMultiplier(

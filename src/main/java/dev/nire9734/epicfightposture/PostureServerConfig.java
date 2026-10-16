@@ -30,6 +30,8 @@ public final class PostureServerConfig {
 
     public static final ForgeConfigSpec.DoubleValue GLOBAL_MULTIPLIER;
     public static final ForgeConfigSpec.DoubleValue POSTURE_DAMAGE_MULTIPLIER;
+    public static final ForgeConfigSpec.DoubleValue ATTACK_DAMAGE_REFERENCE;
+    public static final ForgeConfigSpec.DoubleValue ATTACK_DAMAGE_SCALING_EXPONENT;
     public static final ForgeConfigSpec.DoubleValue PARRY_POSTURE_PERCENT;
     public static final ForgeConfigSpec.DoubleValue FULL_HEALTH_POSTURE_DAMAGE_MULTIPLIER;
     public static final ForgeConfigSpec.DoubleValue ZERO_HEALTH_POSTURE_DAMAGE_MULTIPLIER;
@@ -68,9 +70,22 @@ public final class PostureServerConfig {
         POSTURE_DAMAGE_MULTIPLIER = BUILDER
                 .comment(
                         "Base multiplier applied to Impact-derived posture damage from direct player attacks.",
-                        "Default: 0.55. Final posture damage is also multiplied by the target-health scaling below."
+                        "Default: 0.55. Final posture damage is also multiplied by dealt-damage scaling and target-health scaling below."
                 )
                 .defineInRange("posture_damage_multiplier", 0.55D, 0.0D, 100.0D);
+        ATTACK_DAMAGE_REFERENCE = BUILDER
+                .comment(
+                        "Final dealt damage at which direct-attack posture scaling is x1.0.",
+                        "Default: 8.0, matching EFPI's reference damage used for maximum-posture EHP scaling."
+                )
+                .defineInRange("attack_damage_reference", 8.0D, 0.1D, 100000.0D);
+        ATTACK_DAMAGE_SCALING_EXPONENT = BUILDER
+                .comment(
+                        "Exponent for direct-attack dealt-damage scaling: (dealtDamage / reference)^exponent.",
+                        "Default: 0.7, matching the exponent used by maximum-posture EHP scaling.",
+                        "Set to 0.0 to ignore dealt-damage scaling while still using Impact."
+                )
+                .defineInRange("attack_damage_scaling_exponent", 0.7D, 0.0D, 4.0D);
         PARRY_POSTURE_PERCENT = BUILDER
                 .comment(
                         "Base parry posture damage as a percentage of the target's maximum posture.",
@@ -176,6 +191,14 @@ public final class PostureServerConfig {
     /** Server-side tuning for Impact-derived posture damage. */
     public static float postureDamageMultiplier() {
         return POSTURE_DAMAGE_MULTIPLIER.get().floatValue();
+    }
+
+    public static float attackDamageReference() {
+        return ATTACK_DAMAGE_REFERENCE.get().floatValue();
+    }
+
+    public static float attackDamageScalingExponent() {
+        return ATTACK_DAMAGE_SCALING_EXPONENT.get().floatValue();
     }
 
     /** Base parry posture damage as a fraction of target maximum posture. */

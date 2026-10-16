@@ -19,6 +19,23 @@ class PostureBalanceTest {
     }
 
     @Test
+    void attackDamageScaleMatchesEhpStyleSublinearScaling() {
+        assertEquals(1.0F, PostureBalance.attackDamageScale(8.0F, 8.0F, 0.7F), EPSILON);
+        assertEquals((float) Math.pow(2.0D, 0.7D),
+                PostureBalance.attackDamageScale(16.0F, 8.0F, 0.7F), EPSILON);
+        assertEquals((float) Math.pow(4.0D, 0.7D),
+                PostureBalance.attackDamageScale(32.0F, 8.0F, 0.7F), EPSILON);
+    }
+
+    @Test
+    void attackDamageScaleCanBeDisabledAndSanitizesInvalidInputs() {
+        assertEquals(1.0F, PostureBalance.attackDamageScale(64.0F, 8.0F, 0.0F), EPSILON);
+        assertEquals(0.0F, PostureBalance.attackDamageScale(0.0F, 8.0F, 0.7F), EPSILON);
+        assertEquals(0.0F, PostureBalance.attackDamageScale(Float.NaN, 8.0F, 0.7F), EPSILON);
+        assertEquals(1.0F, PostureBalance.attackDamageScale(8.0F, Float.NaN, 0.7F), EPSILON);
+    }
+
+    @Test
     void healthPostureDamageMultiplierUsesConfiguredQuadraticCurve() {
         assertEquals(0.25F, damageMultiplier(1.00F), EPSILON);
         assertEquals(0.296875F, damageMultiplier(0.75F), EPSILON);
