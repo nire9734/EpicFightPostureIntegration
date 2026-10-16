@@ -16,23 +16,23 @@ class PostureBalanceTest {
 
     @Test
     void regenCurveMatchesHealthAnchors() {
-        assertEquals(0.15F, PostureBalance.regenFractionPerSecond(1.00F), EPSILON);
-        assertEquals(0.12F, PostureBalance.regenFractionPerSecond(0.75F), EPSILON);
-        assertEquals(0.08F, PostureBalance.regenFractionPerSecond(0.50F), EPSILON);
-        assertEquals(0.04F, PostureBalance.regenFractionPerSecond(0.25F), EPSILON);
-        assertEquals(0.04F, PostureBalance.regenFractionPerSecond(0.00F), EPSILON);
+        assertEquals(0.12F, PostureBalance.regenFractionPerSecond(1.00F), EPSILON);
+        assertEquals(0.10F, PostureBalance.regenFractionPerSecond(0.75F), EPSILON);
+        assertEquals(0.07F, PostureBalance.regenFractionPerSecond(0.50F), EPSILON);
+        assertEquals(0.03F, PostureBalance.regenFractionPerSecond(0.25F), EPSILON);
+        assertEquals(0.03F, PostureBalance.regenFractionPerSecond(0.00F), EPSILON);
     }
 
     @Test
     void regenCurveInterpolatesContinuouslyBetweenAnchors() {
-        assertEquals(0.135F, PostureBalance.regenFractionPerSecond(0.875F), EPSILON);
-        assertEquals(0.10F, PostureBalance.regenFractionPerSecond(0.625F), EPSILON);
-        assertEquals(0.06F, PostureBalance.regenFractionPerSecond(0.375F), EPSILON);
+        assertEquals(0.11F, PostureBalance.regenFractionPerSecond(0.875F), EPSILON);
+        assertEquals(0.085F, PostureBalance.regenFractionPerSecond(0.625F), EPSILON);
+        assertEquals(0.05F, PostureBalance.regenFractionPerSecond(0.375F), EPSILON);
     }
 
     @Test
     void regenCurveClampsOutOfRangeHealth() {
-        assertEquals(0.15F, PostureBalance.regenFractionPerSecond(2.0F), EPSILON);
-        assertEquals(0.04F, PostureBalance.regenFractionPerSecond(-1.0F), EPSILON);
+        assertEquals(0.12F, PostureBalance.regenFractionPerSecond(2.0F), EPSILON);
+        assertEquals(0.03F, PostureBalance.regenFractionPerSecond(-1.0F), EPSILON);
     }
 }

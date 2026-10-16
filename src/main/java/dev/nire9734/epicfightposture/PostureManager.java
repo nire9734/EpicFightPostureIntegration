@@ -25,7 +25,7 @@ import java.util.WeakHashMap;
 
 /** Owns server-authoritative posture state for eligible Epic Fight entity patches. */
 public final class PostureManager {
-    private static final int REGEN_DELAY_TICKS = 50;
+    private static final int REGEN_DELAY_TICKS = 80;
     private static final int MAX_POSTURE_REFRESH_INTERVAL_TICKS = 10;
     private static final int BREAK_RECOVERY_TICKS = 60;
 
