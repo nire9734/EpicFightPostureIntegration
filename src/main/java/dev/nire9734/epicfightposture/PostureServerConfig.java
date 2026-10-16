@@ -41,10 +41,7 @@ public final class PostureServerConfig {
     public static final ForgeConfigSpec.DoubleValue MINIMUM_POSTURE;
     public static final ForgeConfigSpec.BooleanValue USE_ARMOR_SCALING;
     public static final ForgeConfigSpec.DoubleValue REGEN_DELAY_SECONDS;
-    public static final ForgeConfigSpec.DoubleValue REGEN_RATE_FULL_HEALTH_PERCENT;
-    public static final ForgeConfigSpec.DoubleValue REGEN_RATE_75_HEALTH_PERCENT;
-    public static final ForgeConfigSpec.DoubleValue REGEN_RATE_50_HEALTH_PERCENT;
-    public static final ForgeConfigSpec.DoubleValue REGEN_RATE_25_HEALTH_PERCENT;
+    public static final ForgeConfigSpec.DoubleValue REGEN_RATE_PERCENT;
     public static final ForgeConfigSpec.ConfigValue<List<? extends String>> ENTITY_BLACKLIST;
     public static final ForgeConfigSpec.BooleanValue ENABLE_VANILLA_HUMANOID_COMPATIBILITY;
     public static final ForgeConfigSpec.BooleanValue ENABLE_GECKOLIB_HUMANOID_COMPATIBILITY;
@@ -91,9 +88,9 @@ public final class PostureServerConfig {
         PARRY_POSTURE_PERCENT = BUILDER
                 .comment(
                         "Base parry posture damage as a percentage of the target's maximum posture.",
-                        "Default: 6.0. A minimum raw parry posture damage of 0.5 is retained before target-health scaling."
+                        "Default: 8.0. A minimum raw parry posture damage of 0.5 is retained before target-health scaling."
                 )
-                .defineInRange("parry_posture_percent", 6.0D, 0.0D, 100.0D);
+                .defineInRange("parry_posture_percent", 8.0D, 0.0D, 100.0D);
         FULL_HEALTH_POSTURE_DAMAGE_MULTIPLIER = BUILDER
                 .comment(
                         "Posture-damage multiplier applied at 100% target health when the EHP-based finisher curve is fully active.",
@@ -138,30 +135,12 @@ public final class PostureServerConfig {
                         "Default: 10.0 seconds, so ordinary boss attack gaps and long telegraphs usually do not trigger regeneration."
                 )
                 .defineInRange("delay_seconds", 10.0D, 0.0D, 60.0D);
-        REGEN_RATE_FULL_HEALTH_PERCENT = BUILDER
+        REGEN_RATE_PERCENT = BUILDER
                 .comment(
-                        "Maximum-posture percentage regenerated per second at 100% health after the delay.",
-                        "Default: 8.0."
+                        "Maximum-posture percentage regenerated per second after the delay.",
+                        "Default: 2.0. Regeneration is constant and does not vary with target health."
                 )
-                .defineInRange("full_health_percent_per_second", 8.0D, 0.0D, 100.0D);
-        REGEN_RATE_75_HEALTH_PERCENT = BUILDER
-                .comment(
-                        "Maximum-posture percentage regenerated per second at 75% health after the delay.",
-                        "Rates between health anchors are linearly interpolated. Default: 6.0."
-                )
-                .defineInRange("health_75_percent_per_second", 6.0D, 0.0D, 100.0D);
-        REGEN_RATE_50_HEALTH_PERCENT = BUILDER
-                .comment(
-                        "Maximum-posture percentage regenerated per second at 50% health after the delay.",
-                        "Rates between health anchors are linearly interpolated. Default: 3.0."
-                )
-                .defineInRange("health_50_percent_per_second", 3.0D, 0.0D, 100.0D);
-        REGEN_RATE_25_HEALTH_PERCENT = BUILDER
-                .comment(
-                        "Maximum-posture percentage regenerated per second at 25% health or below after the delay.",
-                        "Default: 1.0."
-                )
-                .defineInRange("health_25_percent_per_second", 1.0D, 0.0D, 100.0D);
+                .defineInRange("percent_per_second", 2.0D, 0.0D, 100.0D);
         BUILDER.pop();
 
         ENTITY_BLACKLIST = BUILDER
@@ -245,20 +224,27 @@ public final class PostureServerConfig {
         return REGEN_DELAY_SECONDS.get().floatValue();
     }
 
+    /** Constant fraction of maximum posture regenerated per second after the delay. */
+    public static float postureRegenFractionPerSecond() {
+        return REGEN_RATE_PERCENT.get().floatValue() / 100.0F;
+    }
+
+    // Internal compatibility adapters: the runtime still asks for health anchors,
+    // but all anchors intentionally resolve to the same constant regeneration rate.
     public static float postureRegenFullHealthFractionPerSecond() {
-        return REGEN_RATE_FULL_HEALTH_PERCENT.get().floatValue() / 100.0F;
+        return postureRegenFractionPerSecond();
     }
 
     public static float postureRegen75HealthFractionPerSecond() {
-        return REGEN_RATE_75_HEALTH_PERCENT.get().floatValue() / 100.0F;
+        return postureRegenFractionPerSecond();
     }
 
     public static float postureRegen50HealthFractionPerSecond() {
-        return REGEN_RATE_50_HEALTH_PERCENT.get().floatValue() / 100.0F;
+        return postureRegenFractionPerSecond();
     }
 
     public static float postureRegen25HealthFractionPerSecond() {
-        return REGEN_RATE_25_HEALTH_PERCENT.get().floatValue() / 100.0F;
+        return postureRegenFractionPerSecond();
     }
 
     public static float minimumPosture() {
