@@ -71,10 +71,14 @@ public final class PostureManager {
             return;
         }
 
+        float targetEffectiveHealth = targetEffectiveHealth(target);
         float postureDamage = PostureBalance.parryDamage(
                 state.max,
-                PostureServerConfig.parryPostureFraction()
-        ) * healthPostureDamageMultiplier(target);
+                PostureServerConfig.parryPostureFraction(),
+                targetEffectiveHealth,
+                EHP_REFERENCE_HEALTH,
+                (float) EHP_EXPONENT
+        ) * healthPostureDamageMultiplier(target, targetEffectiveHealth);
         state.current = Math.max(0.0F, state.current - postureDamage);
         state.regenDelay = regenDelayTicks();
 
@@ -489,28 +493,42 @@ public final class PostureManager {
         return PostureBalance.regenDelayTicks(PostureServerConfig.postureRegenDelaySeconds());
     }
 
+    private static float targetEffectiveHealth(LivingEntity entity) {
+        float maxHealth = finiteOr(entity.getMaxHealth(), EHP_REFERENCE_HEALTH);
+        if (maxHealth <= 0.0F) {
+            maxHealth = EHP_REFERENCE_HEALTH;
+        }
+
+        boolean useArmor = PostureServerConfig.useArmorScaling();
+        float armor = useArmor ? finiteOr((float) entity.getAttributeValue(Attributes.ARMOR), 0.0F) : 0.0F;
+        float toughness = useArmor ? finiteOr((float) entity.getAttributeValue(Attributes.ARMOR_TOUGHNESS), 0.0F) : 0.0F;
+        float targetEffectiveHealth = effectiveHealth(maxHealth, armor, toughness, EHP_REFERENCE_DAMAGE);
+        return Float.isFinite(targetEffectiveHealth) && targetEffectiveHealth > 0.0F
+                ? targetEffectiveHealth
+                : EHP_REFERENCE_HEALTH;
+    }
+
     private static float healthPostureDamageMultiplier(LivingEntity entity) {
+        return healthPostureDamageMultiplier(entity, targetEffectiveHealth(entity));
+    }
+
+    private static float healthPostureDamageMultiplier(LivingEntity entity, float targetEffectiveHealth) {
         float maxHealth = finiteOr(entity.getMaxHealth(), EHP_REFERENCE_HEALTH);
         if (maxHealth <= 0.0F) {
             maxHealth = EHP_REFERENCE_HEALTH;
         }
         float currentHealth = finiteOr(entity.getHealth(), maxHealth);
         float healthFraction = clamp(currentHealth / maxHealth, 0.0F, 1.0F);
-
-        boolean useArmor = PostureServerConfig.useArmorScaling();
-        float armor = useArmor ? finiteOr((float) entity.getAttributeValue(Attributes.ARMOR), 0.0F) : 0.0F;
-        float toughness = useArmor ? finiteOr((float) entity.getAttributeValue(Attributes.ARMOR_TOUGHNESS), 0.0F) : 0.0F;
-        float targetEffectiveHealth = effectiveHealth(maxHealth, armor, toughness, EHP_REFERENCE_DAMAGE);
-        if (!Float.isFinite(targetEffectiveHealth) || targetEffectiveHealth <= 0.0F) {
-            targetEffectiveHealth = EHP_REFERENCE_HEALTH;
-        }
+        float effectiveHealth = Float.isFinite(targetEffectiveHealth) && targetEffectiveHealth > 0.0F
+                ? targetEffectiveHealth
+                : EHP_REFERENCE_HEALTH;
 
         return PostureBalance.healthPostureDamageMultiplier(
                 healthFraction,
                 PostureServerConfig.fullHealthPostureDamageMultiplier(),
                 PostureServerConfig.zeroHealthPostureDamageMultiplier(),
                 PostureServerConfig.healthPostureCurveExponent(),
-                targetEffectiveHealth,
+                effectiveHealth,
                 PostureServerConfig.healthScalingEhpStart(),
                 PostureServerConfig.healthScalingEhpEnd()
         );

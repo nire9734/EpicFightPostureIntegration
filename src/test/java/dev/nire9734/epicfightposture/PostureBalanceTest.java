@@ -8,12 +8,37 @@ class PostureBalanceTest {
     private static final float EPSILON = 0.0001F;
 
     @Test
-    void parryDamageUsesConfiguredFractionWithoutAbsoluteMinimum() {
-        assertEquals(0.256F, PostureBalance.parryDamage(3.2F, 0.08F), EPSILON);
-        assertEquals(0.8F, PostureBalance.parryDamage(10.0F, 0.08F), EPSILON);
-        assertEquals(8.0F, PostureBalance.parryDamage(100.0F, 0.08F), EPSILON);
-        assertEquals(0.0F, PostureBalance.parryDamage(0.0F, 0.08F), EPSILON);
-        assertEquals(0.0F, PostureBalance.parryDamage(Float.NaN, 0.08F), EPSILON);
+    void parryFractionIncreasesContinuouslyTowardLowEhp() {
+        assertEquals(0.160000F,
+                PostureBalance.parryPostureFraction(0.08F, 20.0F, 20.0F, 0.7F), EPSILON);
+        assertEquals(0.129246F,
+                PostureBalance.parryPostureFraction(0.08F, 40.0F, 20.0F, 0.7F), EPSILON);
+        assertEquals(0.105931F,
+                PostureBalance.parryPostureFraction(0.08F, 100.0F, 20.0F, 0.7F), EPSILON);
+        assertEquals(0.095962F,
+                PostureBalance.parryPostureFraction(0.08F, 200.0F, 20.0F, 0.7F), EPSILON);
+        assertEquals(0.088405F,
+                PostureBalance.parryPostureFraction(0.08F, 500.0F, 20.0F, 0.7F), EPSILON);
+    }
+
+    @Test
+    void parryDamageUsesEhpDerivedFractionWithoutAbsoluteMinimum() {
+        assertEquals(0.512F,
+                PostureBalance.parryDamage(3.2F, 0.08F, 20.0F, 20.0F, 0.7F), EPSILON);
+        assertEquals(0.0F,
+                PostureBalance.parryDamage(0.0F, 0.08F, 20.0F, 20.0F, 0.7F), EPSILON);
+        assertEquals(0.0F,
+                PostureBalance.parryDamage(Float.NaN, 0.08F, 20.0F, 20.0F, 0.7F), EPSILON);
+    }
+
+    @Test
+    void parryScalingSanitizesInvalidEhpInputs() {
+        assertEquals(0.16F,
+                PostureBalance.parryPostureFraction(0.08F, Float.NaN, 20.0F, 0.7F), EPSILON);
+        assertEquals(0.16F,
+                PostureBalance.parryPostureFraction(0.08F, 20.0F, Float.NaN, 0.7F), EPSILON);
+        assertEquals(0.16F,
+                PostureBalance.parryPostureFraction(0.08F, 20.0F, 20.0F, Float.NaN), EPSILON);
     }
 
     @Test

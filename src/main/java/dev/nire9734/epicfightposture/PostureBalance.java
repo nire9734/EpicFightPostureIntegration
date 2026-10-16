@@ -4,16 +4,48 @@ package dev.nire9734.epicfightposture;
 final class PostureBalance {
     private static final float DEFAULT_ATTACK_DAMAGE_REFERENCE = 8.0F;
     private static final float DEFAULT_ATTACK_DAMAGE_EXPONENT = 0.7F;
+    private static final float DEFAULT_EHP_REFERENCE = 20.0F;
     private static final float DEFAULT_HEALTH_SCALING_EHP_START = 40.0F;
     private static final float DEFAULT_HEALTH_SCALING_EHP_END = 200.0F;
+    private static final float MIN_EHP_RATIO = 0.01F;
     private static final float MAX_ATTACK_DAMAGE_SCALE = 100.0F;
 
-    static float parryDamage(float maxPosture, float maxPostureFraction) {
-        float fraction = sanitizeFraction(maxPostureFraction);
+    static float parryPostureFraction(
+            float baseMaxPostureFraction,
+            float effectiveHealth,
+            float referenceEffectiveHealth,
+            float scalingExponent) {
+        float baseFraction = sanitizeFraction(baseMaxPostureFraction);
+        float reference = sanitizePositive(referenceEffectiveHealth, DEFAULT_EHP_REFERENCE);
+        float ehp = sanitizePositive(effectiveHealth, reference);
+        float exponent = Float.isFinite(scalingExponent)
+                ? clamp(scalingExponent, 0.0F, 4.0F)
+                : DEFAULT_ATTACK_DAMAGE_EXPONENT;
+
+        float ehpRatio = Math.max(MIN_EHP_RATIO, ehp / reference);
+        double lowEhpBonus = Math.pow(1.0D / ehpRatio, exponent);
+        double scaledFraction = baseFraction * (1.0D + lowEhpBonus);
+        if (!Double.isFinite(scaledFraction)) {
+            return baseFraction;
+        }
+        return (float) Math.max(0.0D, scaledFraction);
+    }
+
+    static float parryDamage(
+            float maxPosture,
+            float baseMaxPostureFraction,
+            float effectiveHealth,
+            float referenceEffectiveHealth,
+            float scalingExponent) {
         if (!Float.isFinite(maxPosture) || maxPosture <= 0.0F) {
             return 0.0F;
         }
-        return maxPosture * fraction;
+        return maxPosture * parryPostureFraction(
+                baseMaxPostureFraction,
+                effectiveHealth,
+                referenceEffectiveHealth,
+                scalingExponent
+        );
     }
 
     static float attackDamageScale(float damageAmount, float referenceDamage, float exponent) {
