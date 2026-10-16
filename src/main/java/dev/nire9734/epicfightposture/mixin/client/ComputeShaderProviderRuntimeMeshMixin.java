@@ -14,9 +14,9 @@ import yesman.epicfight.client.renderer.shader.compute.loader.ComputeShaderProvi
  *
  * <p>Epic Fight allocates a ComputeShaderSetup from the SkinnedMesh constructor
  * whenever the GPU supports compute shaders, even when the client option is
- * currently disabled. EFPI creates many transient/runtime meshes while probing
- * compatibility, so those setups are both unnecessary for this diagnostic build
- * and a useful isolation point for the AMD/OpenGL stutter investigation.</p>
+ * currently disabled. EFPI runtime compatibility meshes do not need dedicated
+ * compute resources, and avoiding those allocations reduces unnecessary GL
+ * resource churn on affected OpenGL drivers.</p>
  *
  * <p>The guard is deliberately scoped to mesh construction initiated from
  * EFPI's humanoid client compatibility package. Native Epic Fight meshes and

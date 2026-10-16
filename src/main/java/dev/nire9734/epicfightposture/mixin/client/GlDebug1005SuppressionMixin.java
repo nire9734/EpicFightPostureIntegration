@@ -7,21 +7,24 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
- * Diagnostic compatibility workaround for the extremely noisy OpenGL debug
- * message emitted by Epic Fight's compute-shader path on the affected AMD
- * OpenGL setup.
+ * Filters one known high-volume OpenGL debug callback observed on affected
+ * Epic Fight compute-shader + AMD OpenGL configurations.
  *
- * <p>This does not change compute-shader rendering or suppress any other OpenGL
- * debug message. It only drops message id 1005 before Minecraft converts the
- * native message to a String, updates GlDebug's message buffer, and sends the
- * entry through Log4j.</p>
+ * <p>The workaround is intentionally narrow: it suppresses only the exact
+ * API / ERROR / id 1005 / HIGH signature before Minecraft converts the native
+ * message to a String, updates GlDebug's message buffer, and sends the entry
+ * through Log4j. Compute-shader rendering itself is left unchanged and every
+ * other OpenGL debug message remains visible.</p>
  */
 @Mixin(GlDebug.class)
 public abstract class GlDebug1005SuppressionMixin {
-    private static final int EFPI_NOISY_GL_MESSAGE_ID = 1005;
+    private static final int EFPI_GL_SOURCE_API = 33350;
+    private static final int EFPI_GL_TYPE_ERROR = 33356;
+    private static final int EFPI_GL_MESSAGE_ID = 1005;
+    private static final int EFPI_GL_SEVERITY_HIGH = 37190;
 
     @Inject(method = "printDebugLog", at = @At("HEAD"), cancellable = true)
-    private static void efpi$suppressNoisyComputeDebugMessage(
+    private static void efpi$suppressKnownComputeDebugNoise(
             int source,
             int type,
             int id,
@@ -30,7 +33,10 @@ public abstract class GlDebug1005SuppressionMixin {
             long messagePointer,
             long userParam,
             CallbackInfo ci) {
-        if (id == EFPI_NOISY_GL_MESSAGE_ID) {
+        if (source == EFPI_GL_SOURCE_API
+                && type == EFPI_GL_TYPE_ERROR
+                && id == EFPI_GL_MESSAGE_ID
+                && severity == EFPI_GL_SEVERITY_HIGH) {
             ci.cancel();
         }
     }

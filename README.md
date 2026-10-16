@@ -152,6 +152,12 @@ config/epicfight_posture_integration/client.toml
 
 They can also be changed from `Mods -> Epic Fight Posture Integration -> Config`. Execution Sound Volume is client-side only and defaults to 70%.
 
+## Client rendering performance
+
+EFPI-generated runtime compatibility meshes stay on Epic Fight's CPU skinning path instead of allocating per-mesh compute-shader resources. Native Epic Fight meshes and meshes created by other mods keep their normal compute-shader behavior.
+
+On affected Epic Fight compute-shader + AMD OpenGL configurations, Minecraft can receive a very high volume of the same OpenGL debug callback. EFPI filters only the observed `API / ERROR / id 1005 / HIGH` signature before it reaches Minecraft's debug-message buffer and Log4j. Compute-shader rendering itself remains enabled, and all other OpenGL debug messages remain visible.
+
 ## Compatibility notes
 
 Iron's Spells 'n Spellbooks and L_Ender's Cataclysm are tested compatibility targets for supported humanoid mobs. This does not imply universal support for every entity, renderer, armor implementation, custom layer, or framework-specific render path.
