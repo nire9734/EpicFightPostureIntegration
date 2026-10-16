@@ -18,15 +18,22 @@ import net.minecraftforge.fml.util.thread.EffectiveSide;
 import net.minecraftforge.server.ServerLifecycleHooks;
 import org.slf4j.Logger;
 
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
-/** Server-authoritative posture tuning and cached blacklist lookups. */
+/** Server-authoritative posture tuning and cached compatibility policy. */
 @Mod.EventBusSubscriber(modid = EpicFightPostureIntegration.MODID, bus = Mod.EventBusSubscriber.Bus.MOD)
 public final class PostureServerConfig {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final ForgeConfigSpec.Builder BUILDER = new ForgeConfigSpec.Builder();
+
+    public enum CompatibilityFilterMode {
+        DENYLIST,
+        ALLOWLIST
+    }
 
     public static final ForgeConfigSpec.DoubleValue GLOBAL_MULTIPLIER;
     public static final ForgeConfigSpec.DoubleValue POSTURE_DAMAGE_MULTIPLIER;
@@ -42,10 +49,14 @@ public final class PostureServerConfig {
     public static final ForgeConfigSpec.BooleanValue USE_ARMOR_SCALING;
     public static final ForgeConfigSpec.DoubleValue REGEN_DELAY_SECONDS;
     public static final ForgeConfigSpec.DoubleValue REGEN_RATE_PERCENT;
+    public static final ForgeConfigSpec.ConfigValue<List<? extends String>> ENTITY_MULTIPLIERS;
     public static final ForgeConfigSpec.ConfigValue<List<? extends String>> ENTITY_BLACKLIST;
     public static final ForgeConfigSpec.BooleanValue ENABLE_VANILLA_HUMANOID_COMPATIBILITY;
     public static final ForgeConfigSpec.BooleanValue ENABLE_EXTENDED_HUMANOID_COMPATIBILITY;
     public static final ForgeConfigSpec.BooleanValue ENABLE_VANILLA_SPIDER_COMPATIBILITY;
+    public static final ForgeConfigSpec.EnumValue<CompatibilityFilterMode> MOD_FILTER_MODE;
+    public static final ForgeConfigSpec.ConfigValue<List<? extends String>> MOD_ALLOWLIST;
+    public static final ForgeConfigSpec.ConfigValue<List<? extends String>> MOD_DENYLIST;
     public static final ForgeConfigSpec SPEC;
 
     private static final Snapshot CLIENT_FAIL_CLOSED_DEFAULTS = new Snapshot(
@@ -55,10 +66,16 @@ public final class PostureServerConfig {
             Set.of(),
             false,
             false,
-            false
+            false,
+            CompatibilityFilterMode.DENYLIST,
+            Set.of(),
+            Set.of()
     );
 
     private static volatile Set<ResourceLocation> blacklist = Set.of();
+    private static volatile Map<ResourceLocation, Float> entityMultipliers = Map.of();
+    private static volatile Set<String> modAllowlist = Set.of();
+    private static volatile Set<String> modDenylist = Set.of();
     private static volatile Snapshot remoteSnapshot;
 
     static {
@@ -87,8 +104,8 @@ public final class PostureServerConfig {
                 .defineInRange("attack_damage_scaling_exponent", 0.7D, 0.0D, 4.0D);
         PARRY_POSTURE_PERCENT = BUILDER
                 .comment(
-                        "Base parry posture damage as a percentage of the target's maximum posture.",
-                        "Default: 8.0. A minimum raw parry posture damage of 0.5 is retained before target-health scaling."
+                        "Parry posture damage as a percentage of the target's maximum posture.",
+                        "Default: 8.0. No absolute minimum is applied before target-health scaling."
                 )
                 .defineInRange("parry_posture_percent", 8.0D, 0.0D, 100.0D);
         FULL_HEALTH_POSTURE_DAMAGE_MULTIPLIER = BUILDER
@@ -143,6 +160,16 @@ public final class PostureServerConfig {
                 .defineInRange("percent_per_second", 2.0D, 0.0D, 100.0D);
         BUILDER.pop();
 
+        BUILDER.push("overrides");
+        ENTITY_MULTIPLIERS = BUILDER
+                .comment(
+                        "Per-entity maximum-posture multiplier overrides.",
+                        "Format: namespace:entity=multiplier. The value replaces global_multiplier for that entity instead of multiplying it.",
+                        "Example: [\"cataclysm:ignis=1.25\", \"minecraft:zombie=0.8\"]"
+                )
+                .defineListAllowEmpty("entity_multipliers", List.of(), value -> value instanceof String);
+        BUILDER.pop();
+
         ENTITY_BLACKLIST = BUILDER
                 .comment(
                         "Entities excluded from EFPI posture and automatic compatibility behavior.",
@@ -171,6 +198,26 @@ public final class PostureServerConfig {
                         "Default: true. Restart the server after changing this option."
                 )
                 .define("enable_vanilla_spider_compatibility", true);
+        MOD_FILTER_MODE = BUILDER
+                .comment(
+                        "How automatic compatibility is filtered for third-party mod namespaces.",
+                        "DENYLIST = keep normal automatic compatibility except for namespaces in mod_denylist.",
+                        "ALLOWLIST = only namespaces in mod_allowlist receive automatic compatibility.",
+                        "Minecraft vanilla entities are not affected by this namespace filter. Restart after changing this option."
+                )
+                .defineEnum("mod_filter_mode", CompatibilityFilterMode.DENYLIST);
+        MOD_ALLOWLIST = BUILDER
+                .comment(
+                        "Mod IDs allowed when mod_filter_mode is ALLOWLIST. Ignored in DENYLIST mode.",
+                        "Example: [\"cataclysm\", \"irons_spellbooks\"]"
+                )
+                .defineListAllowEmpty("mod_allowlist", List.of(), value -> value instanceof String);
+        MOD_DENYLIST = BUILDER
+                .comment(
+                        "Mod IDs excluded when mod_filter_mode is DENYLIST. Ignored in ALLOWLIST mode.",
+                        "Example: [\"some_problematic_mod\"]"
+                )
+                .defineListAllowEmpty("mod_denylist", List.of(), value -> value instanceof String);
         BUILDER.pop();
 
         SPEC = BUILDER.build();
@@ -179,6 +226,12 @@ public final class PostureServerConfig {
     public static float globalMultiplier() {
         Snapshot snapshot = effectiveClientSnapshot();
         return (snapshot != null ? snapshot.globalMultiplier() : GLOBAL_MULTIPLIER.get()).floatValue();
+    }
+
+    /** Server-side maximum-posture multiplier with an entity override replacing the global value. */
+    public static float maximumPostureMultiplier(ResourceLocation entityId) {
+        Float override = entityId == null ? null : entityMultipliers.get(entityId);
+        return override != null ? override : GLOBAL_MULTIPLIER.get().floatValue();
     }
 
     /** Server-side tuning for Impact-derived posture damage. */
@@ -260,6 +313,27 @@ public final class PostureServerConfig {
                 : ENABLE_VANILLA_SPIDER_COMPATIBILITY.get();
     }
 
+    /** Namespace filtering applies only to EFPI automatic compatibility, not to third-party explicit patches. */
+    public static boolean isAutomaticCompatibilityAllowed(ResourceLocation entityId) {
+        if (entityId == null) {
+            return false;
+        }
+        if ("minecraft".equals(entityId.getNamespace())) {
+            return true;
+        }
+
+        Snapshot snapshot = effectiveClientSnapshot();
+        CompatibilityFilterMode mode = snapshot != null
+                ? snapshot.compatibilityFilterMode()
+                : MOD_FILTER_MODE.get();
+        Set<String> allow = snapshot != null ? snapshot.modAllowlist() : modAllowlist;
+        Set<String> deny = snapshot != null ? snapshot.modDenylist() : modDenylist;
+
+        return mode == CompatibilityFilterMode.ALLOWLIST
+                ? allow.contains(entityId.getNamespace())
+                : !deny.contains(entityId.getNamespace());
+    }
+
     public static boolean isExplicitlyBlacklisted(ResourceLocation entityId) {
         if (entityId == null) {
             return false;
@@ -270,7 +344,7 @@ public final class PostureServerConfig {
                 : blacklist.contains(entityId);
     }
 
-    /** Treat an EFPI-owned automatic compatibility target as disabled when its switch is off. */
+    /** Treat an EFPI-owned automatic compatibility target as disabled when its switch/filter is off. */
     public static boolean isBlacklisted(ResourceLocation entityId) {
         if (entityId == null) {
             return false;
@@ -282,7 +356,7 @@ public final class PostureServerConfig {
                 && !VanillaHumanoidCompat.isCompatibilityEnabled(entityId);
     }
 
-    /** Snapshot of the local authoritative config, used for login synchronization. */
+    /** Snapshot of the local authoritative compatibility policy, used for login synchronization. */
     public static Snapshot localSnapshot() {
         return new Snapshot(
                 GLOBAL_MULTIPLIER.get(),
@@ -291,7 +365,10 @@ public final class PostureServerConfig {
                 blacklist,
                 ENABLE_VANILLA_HUMANOID_COMPATIBILITY.get(),
                 ENABLE_EXTENDED_HUMANOID_COMPATIBILITY.get(),
-                ENABLE_VANILLA_SPIDER_COMPATIBILITY.get()
+                ENABLE_VANILLA_SPIDER_COMPATIBILITY.get(),
+                MOD_FILTER_MODE.get(),
+                modAllowlist,
+                modDenylist
         );
     }
 
@@ -312,29 +389,79 @@ public final class PostureServerConfig {
     @SubscribeEvent
     public static void onConfigLoading(ModConfigEvent.Loading event) {
         if (event.getConfig().getSpec() == SPEC) {
-            refreshBlacklist();
+            refreshCachedSettings();
         }
     }
 
     @SubscribeEvent
     public static void onConfigReloading(ModConfigEvent.Reloading event) {
         if (event.getConfig().getSpec() == SPEC) {
-            refreshBlacklist();
+            refreshCachedSettings();
             synchronizeReloadedSettings();
         }
     }
 
-    public static void refreshBlacklist() {
+    private static void refreshCachedSettings() {
+        blacklist = parseEntityBlacklist();
+        entityMultipliers = parseEntityMultipliers();
+        modAllowlist = parseModIds(MOD_ALLOWLIST.get(), "compatibility.mod_allowlist");
+        modDenylist = parseModIds(MOD_DENYLIST.get(), "compatibility.mod_denylist");
+    }
+
+    private static Set<ResourceLocation> parseEntityBlacklist() {
         Set<ResourceLocation> parsed = new HashSet<>();
         for (String rawId : ENTITY_BLACKLIST.get()) {
-            ResourceLocation entityId = ResourceLocation.tryParse(rawId);
+            ResourceLocation entityId = ResourceLocation.tryParse(rawId == null ? "" : rawId.trim());
             if (entityId == null) {
                 LOGGER.warn("Ignoring invalid entity ID '{}' in posture.entity_blacklist", rawId);
                 continue;
             }
             parsed.add(entityId);
         }
-        blacklist = Set.copyOf(parsed);
+        return Set.copyOf(parsed);
+    }
+
+    private static Map<ResourceLocation, Float> parseEntityMultipliers() {
+        Map<ResourceLocation, Float> parsed = new HashMap<>();
+        for (String rawEntry : ENTITY_MULTIPLIERS.get()) {
+            String entry = rawEntry == null ? "" : rawEntry.trim();
+            int separator = entry.lastIndexOf('=');
+            if (separator <= 0 || separator == entry.length() - 1) {
+                LOGGER.warn("Ignoring invalid entity multiplier '{}' in posture.overrides.entity_multipliers", rawEntry);
+                continue;
+            }
+
+            ResourceLocation entityId = ResourceLocation.tryParse(entry.substring(0, separator).trim());
+            float multiplier;
+            try {
+                multiplier = Float.parseFloat(entry.substring(separator + 1).trim());
+            } catch (NumberFormatException exception) {
+                multiplier = Float.NaN;
+            }
+            if (entityId == null || !Float.isFinite(multiplier) || multiplier < 0.1F || multiplier > 100.0F) {
+                LOGGER.warn("Ignoring invalid entity multiplier '{}' in posture.overrides.entity_multipliers", rawEntry);
+                continue;
+            }
+            parsed.put(entityId, multiplier);
+        }
+        return Map.copyOf(parsed);
+    }
+
+    private static Set<String> parseModIds(List<? extends String> rawIds, String configPath) {
+        Set<String> parsed = new HashSet<>();
+        for (String rawId : rawIds) {
+            String modId = rawId == null ? "" : rawId.trim();
+            ResourceLocation probe = ResourceLocation.tryParse(modId + ":efpi_probe");
+            if (modId.isEmpty()
+                    || probe == null
+                    || !modId.equals(probe.getNamespace())
+                    || !"efpi_probe".equals(probe.getPath())) {
+                LOGGER.warn("Ignoring invalid mod ID '{}' in {}", rawId, configPath);
+                continue;
+            }
+            parsed.add(modId);
+        }
+        return Set.copyOf(parsed);
     }
 
     private static void synchronizeReloadedSettings() {
@@ -373,11 +500,19 @@ public final class PostureServerConfig {
             Set<ResourceLocation> entityBlacklist,
             boolean enableVanillaHumanoidCompatibility,
             boolean enableExtendedHumanoidCompatibility,
-            boolean enableVanillaSpiderCompatibility) {
+            boolean enableVanillaSpiderCompatibility,
+            CompatibilityFilterMode compatibilityFilterMode,
+            Set<String> modAllowlist,
+            Set<String> modDenylist) {
         public Snapshot {
             globalMultiplier = globalMultiplier == null ? 1.0D : globalMultiplier;
             minimumPosture = minimumPosture == null ? 1.0D : minimumPosture;
             entityBlacklist = entityBlacklist == null ? Set.of() : Set.copyOf(entityBlacklist);
+            compatibilityFilterMode = compatibilityFilterMode == null
+                    ? CompatibilityFilterMode.DENYLIST
+                    : compatibilityFilterMode;
+            modAllowlist = modAllowlist == null ? Set.of() : Set.copyOf(modAllowlist);
+            modDenylist = modDenylist == null ? Set.of() : Set.copyOf(modDenylist);
         }
     }
 

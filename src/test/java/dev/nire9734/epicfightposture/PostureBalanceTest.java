@@ -8,10 +8,12 @@ class PostureBalanceTest {
     private static final float EPSILON = 0.0001F;
 
     @Test
-    void parryDamageUsesConfiguredFractionWithHalfPointMinimum() {
-        assertEquals(0.5F, PostureBalance.parryDamage(3.2F, 0.08F), EPSILON);
+    void parryDamageUsesConfiguredFractionWithoutAbsoluteMinimum() {
+        assertEquals(0.256F, PostureBalance.parryDamage(3.2F, 0.08F), EPSILON);
         assertEquals(0.8F, PostureBalance.parryDamage(10.0F, 0.08F), EPSILON);
         assertEquals(8.0F, PostureBalance.parryDamage(100.0F, 0.08F), EPSILON);
+        assertEquals(0.0F, PostureBalance.parryDamage(0.0F, 0.08F), EPSILON);
+        assertEquals(0.0F, PostureBalance.parryDamage(Float.NaN, 0.08F), EPSILON);
     }
 
     @Test

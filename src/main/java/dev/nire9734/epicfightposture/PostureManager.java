@@ -336,7 +336,10 @@ public final class PostureManager {
         boolean useArmor = PostureServerConfig.useArmorScaling();
         float armor = useArmor ? finiteOr((float) entity.getAttributeValue(Attributes.ARMOR), 0.0F) : 0.0F;
         float toughness = useArmor ? finiteOr((float) entity.getAttributeValue(Attributes.ARMOR_TOUGHNESS), 0.0F) : 0.0F;
-        float multiplier = finiteOr(PostureServerConfig.globalMultiplier(), 1.0F);
+        float multiplier = finiteOr(
+                PostureServerConfig.maximumPostureMultiplier(entityTypeId(entity)),
+                1.0F
+        );
         float minimum = finiteOr(PostureServerConfig.minimumPosture(), 1.0F);
 
         if (state.inputsInitialized
@@ -371,7 +374,7 @@ public final class PostureManager {
                 maxHealth,
                 armor,
                 toughness,
-                finiteOr(PostureServerConfig.globalMultiplier(), 1.0F),
+                finiteOr(PostureServerConfig.maximumPostureMultiplier(entityTypeId(entity)), 1.0F),
                 finiteOr(PostureServerConfig.minimumPosture(), 1.0F),
                 useArmor,
                 state
@@ -425,7 +428,7 @@ public final class PostureManager {
                 maxHealth,
                 armor,
                 toughness,
-                finiteOr(PostureServerConfig.globalMultiplier(), 1.0F),
+                finiteOr(PostureServerConfig.maximumPostureMultiplier(entityTypeId(entity)), 1.0F),
                 finiteOr(PostureServerConfig.minimumPosture(), 1.0F)
         );
     }

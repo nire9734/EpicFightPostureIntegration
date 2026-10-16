@@ -2,7 +2,6 @@ package dev.nire9734.epicfightposture;
 
 /** Pure balance math shared by the server posture runtime and unit tests. */
 final class PostureBalance {
-    private static final float PARRY_MIN_DAMAGE = 0.5F;
     private static final float DEFAULT_ATTACK_DAMAGE_REFERENCE = 8.0F;
     private static final float DEFAULT_ATTACK_DAMAGE_EXPONENT = 0.7F;
     private static final float DEFAULT_HEALTH_SCALING_EHP_START = 40.0F;
@@ -12,9 +11,9 @@ final class PostureBalance {
     static float parryDamage(float maxPosture, float maxPostureFraction) {
         float fraction = sanitizeFraction(maxPostureFraction);
         if (!Float.isFinite(maxPosture) || maxPosture <= 0.0F) {
-            return PARRY_MIN_DAMAGE;
+            return 0.0F;
         }
-        return Math.max(PARRY_MIN_DAMAGE, maxPosture * fraction);
+        return maxPosture * fraction;
     }
 
     static float attackDamageScale(float damageAmount, float referenceDamage, float exponent) {

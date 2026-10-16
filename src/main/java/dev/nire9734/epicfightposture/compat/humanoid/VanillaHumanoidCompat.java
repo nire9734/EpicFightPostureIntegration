@@ -78,6 +78,7 @@ public final class VanillaHumanoidCompat {
             ResourceLocation entityId = target.getKey();
             CompatibilityKind kind = target.getValue();
             if (PostureServerConfig.isBlacklisted(entityId)
+                    || !PostureServerConfig.isAutomaticCompatibilityAllowed(entityId)
                     || existingPatchIds.contains(entityId)
                     || !compatibilityKindEnabled(kind)) {
                 continue;
@@ -127,6 +128,7 @@ public final class VanillaHumanoidCompat {
         CompatibilityKind kind = registeredByEfpi.get(id);
         return kind != null
                 && !PostureServerConfig.isExplicitlyBlacklisted(id)
+                && PostureServerConfig.isAutomaticCompatibilityAllowed(id)
                 && compatibilityKindEnabled(kind);
     }
 
