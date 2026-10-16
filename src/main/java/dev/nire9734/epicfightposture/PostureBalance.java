@@ -9,11 +9,6 @@ final class PostureBalance {
     private static final float MID_HEALTH_THRESHOLD = 0.50F;
     private static final float HIGH_HEALTH_THRESHOLD = 0.75F;
 
-    private static final float LOW_HEALTH_REGEN = 0.03F;
-    private static final float MID_HEALTH_REGEN = 0.07F;
-    private static final float HIGH_HEALTH_REGEN = 0.10F;
-    private static final float FULL_HEALTH_REGEN = 0.12F;
-
     static float parryDamage(float maxPosture) {
         if (!Float.isFinite(maxPosture) || maxPosture <= 0.0F) {
             return PARRY_MIN_DAMAGE;
@@ -21,40 +16,60 @@ final class PostureBalance {
         return Math.max(PARRY_MIN_DAMAGE, maxPosture * PARRY_MAX_FRACTION);
     }
 
+    static int regenDelayTicks(float delaySeconds) {
+        if (!Float.isFinite(delaySeconds) || delaySeconds <= 0.0F) {
+            return 0;
+        }
+        return Math.max(0, Math.round(delaySeconds * 20.0F));
+    }
+
     /**
      * Returns the fraction of maximum posture regenerated per second.
-     *
-     * <p>The curve is continuous and linearly interpolated through the intended
-     * sustained-pressure anchors: 25% HP = 3%, 50% = 7%, 75% = 10%, 100% = 12%.
-     * Below 25% HP the rate stays at 3% per second.</p>
+     * Rates are linearly interpolated through the 25%, 50%, 75%, and 100% HP anchors.
+     * Below 25% HP the 25% anchor rate is retained.
      */
-    static float regenFractionPerSecond(float healthFraction) {
+    static float regenFractionPerSecond(
+            float healthFraction,
+            float lowHealthRegen,
+            float midHealthRegen,
+            float highHealthRegen,
+            float fullHealthRegen) {
         if (!Float.isFinite(healthFraction)) {
             healthFraction = 1.0F;
         }
+
+        float low = sanitizeRate(lowHealthRegen);
+        float mid = sanitizeRate(midHealthRegen);
+        float high = sanitizeRate(highHealthRegen);
+        float full = sanitizeRate(fullHealthRegen);
         float health = clamp(healthFraction, 0.0F, 1.0F);
+
         if (health <= LOW_HEALTH_THRESHOLD) {
-            return LOW_HEALTH_REGEN;
+            return low;
         }
         if (health <= MID_HEALTH_THRESHOLD) {
             return interpolate(
-                    LOW_HEALTH_REGEN,
-                    MID_HEALTH_REGEN,
+                    low,
+                    mid,
                     (health - LOW_HEALTH_THRESHOLD) / (MID_HEALTH_THRESHOLD - LOW_HEALTH_THRESHOLD)
             );
         }
         if (health <= HIGH_HEALTH_THRESHOLD) {
             return interpolate(
-                    MID_HEALTH_REGEN,
-                    HIGH_HEALTH_REGEN,
+                    mid,
+                    high,
                     (health - MID_HEALTH_THRESHOLD) / (HIGH_HEALTH_THRESHOLD - MID_HEALTH_THRESHOLD)
             );
         }
         return interpolate(
-                HIGH_HEALTH_REGEN,
-                FULL_HEALTH_REGEN,
+                high,
+                full,
                 (health - HIGH_HEALTH_THRESHOLD) / (1.0F - HIGH_HEALTH_THRESHOLD)
         );
+    }
+
+    private static float sanitizeRate(float value) {
+        return Float.isFinite(value) ? clamp(value, 0.0F, 1.0F) : 0.0F;
     }
 
     private static float interpolate(float start, float end, float progress) {

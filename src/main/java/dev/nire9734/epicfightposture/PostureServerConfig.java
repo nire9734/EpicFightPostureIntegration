@@ -32,6 +32,11 @@ public final class PostureServerConfig {
     public static final ForgeConfigSpec.DoubleValue POSTURE_DAMAGE_MULTIPLIER;
     public static final ForgeConfigSpec.DoubleValue MINIMUM_POSTURE;
     public static final ForgeConfigSpec.BooleanValue USE_ARMOR_SCALING;
+    public static final ForgeConfigSpec.DoubleValue REGEN_DELAY_SECONDS;
+    public static final ForgeConfigSpec.DoubleValue REGEN_RATE_FULL_HEALTH_PERCENT;
+    public static final ForgeConfigSpec.DoubleValue REGEN_RATE_75_HEALTH_PERCENT;
+    public static final ForgeConfigSpec.DoubleValue REGEN_RATE_50_HEALTH_PERCENT;
+    public static final ForgeConfigSpec.DoubleValue REGEN_RATE_25_HEALTH_PERCENT;
     public static final ForgeConfigSpec.ConfigValue<List<? extends String>> ENTITY_BLACKLIST;
     public static final ForgeConfigSpec.BooleanValue ENABLE_VANILLA_HUMANOID_COMPATIBILITY;
     public static final ForgeConfigSpec.BooleanValue ENABLE_GECKOLIB_HUMANOID_COMPATIBILITY;
@@ -68,6 +73,40 @@ public final class PostureServerConfig {
         USE_ARMOR_SCALING = BUILDER
                 .comment("Whether armor and armor toughness affect maximum posture.")
                 .define("use_armor_scaling", true);
+
+        BUILDER.push("regeneration");
+        REGEN_DELAY_SECONDS = BUILDER
+                .comment(
+                        "Seconds after posture damage or a parry before posture regeneration starts.",
+                        "Default: 5.0 seconds."
+                )
+                .defineInRange("delay_seconds", 5.0D, 0.0D, 60.0D);
+        REGEN_RATE_FULL_HEALTH_PERCENT = BUILDER
+                .comment(
+                        "Maximum-posture percentage regenerated per second at 100% health.",
+                        "Default: 8.0 (% per second)."
+                )
+                .defineInRange("full_health_percent_per_second", 8.0D, 0.0D, 100.0D);
+        REGEN_RATE_75_HEALTH_PERCENT = BUILDER
+                .comment(
+                        "Maximum-posture percentage regenerated per second at 75% health.",
+                        "Rates between health anchors are linearly interpolated. Default: 6.0."
+                )
+                .defineInRange("health_75_percent_per_second", 6.0D, 0.0D, 100.0D);
+        REGEN_RATE_50_HEALTH_PERCENT = BUILDER
+                .comment(
+                        "Maximum-posture percentage regenerated per second at 50% health.",
+                        "Rates between health anchors are linearly interpolated. Default: 4.0."
+                )
+                .defineInRange("health_50_percent_per_second", 4.0D, 0.0D, 100.0D);
+        REGEN_RATE_25_HEALTH_PERCENT = BUILDER
+                .comment(
+                        "Maximum-posture percentage regenerated per second at 25% health or below.",
+                        "Default: 1.5."
+                )
+                .defineInRange("health_25_percent_per_second", 1.5D, 0.0D, 100.0D);
+        BUILDER.pop();
+
         ENTITY_BLACKLIST = BUILDER
                 .comment(
                         "Entities excluded from EFPI posture and automatic compatibility behavior.",
@@ -109,6 +148,27 @@ public final class PostureServerConfig {
     /** Server-side tuning for Impact-derived posture damage. */
     public static float postureDamageMultiplier() {
         return POSTURE_DAMAGE_MULTIPLIER.get().floatValue();
+    }
+
+    /** Server-side delay before ordinary posture regeneration begins. */
+    public static float postureRegenDelaySeconds() {
+        return REGEN_DELAY_SECONDS.get().floatValue();
+    }
+
+    public static float postureRegenFullHealthFractionPerSecond() {
+        return REGEN_RATE_FULL_HEALTH_PERCENT.get().floatValue() / 100.0F;
+    }
+
+    public static float postureRegen75HealthFractionPerSecond() {
+        return REGEN_RATE_75_HEALTH_PERCENT.get().floatValue() / 100.0F;
+    }
+
+    public static float postureRegen50HealthFractionPerSecond() {
+        return REGEN_RATE_50_HEALTH_PERCENT.get().floatValue() / 100.0F;
+    }
+
+    public static float postureRegen25HealthFractionPerSecond() {
+        return REGEN_RATE_25_HEALTH_PERCENT.get().floatValue() / 100.0F;
     }
 
     public static float minimumPosture() {

@@ -25,7 +25,6 @@ import java.util.WeakHashMap;
 
 /** Owns server-authoritative posture state for eligible Epic Fight entity patches. */
 public final class PostureManager {
-    private static final int REGEN_DELAY_TICKS = 80;
     private static final int MAX_POSTURE_REFRESH_INTERVAL_TICKS = 10;
     private static final int BREAK_RECOVERY_TICKS = 60;
 
@@ -72,7 +71,7 @@ public final class PostureManager {
 
         float postureDamage = PostureBalance.parryDamage(state.max);
         state.current = Math.max(0.0F, state.current - postureDamage);
-        state.regenDelay = REGEN_DELAY_TICKS;
+        state.regenDelay = regenDelayTicks();
 
         if (state.current <= 0.0F) {
             breakPosture(target, patch, state);
@@ -162,7 +161,13 @@ public final class PostureManager {
         }
         float currentHealth = finiteOr(entity.getHealth(), maxHealth);
         float healthFraction = clamp(currentHealth / maxHealth, 0.0F, 1.0F);
-        float regenPerTick = state.max * PostureBalance.regenFractionPerSecond(healthFraction) / 20.0F;
+        float regenPerTick = state.max * PostureBalance.regenFractionPerSecond(
+                healthFraction,
+                PostureServerConfig.postureRegen25HealthFractionPerSecond(),
+                PostureServerConfig.postureRegen50HealthFractionPerSecond(),
+                PostureServerConfig.postureRegen75HealthFractionPerSecond(),
+                PostureServerConfig.postureRegenFullHealthFractionPerSecond()
+        ) / 20.0F;
         state.current = Math.min(state.max, state.current + regenPerTick);
         return true;
     }
@@ -225,7 +230,7 @@ public final class PostureManager {
         }
 
         state.current = Math.max(0.0F, state.current - damage);
-        state.regenDelay = REGEN_DELAY_TICKS;
+        state.regenDelay = regenDelayTicks();
         if (state.current <= 0.0F) {
             breakPosture(entity, patch, state);
         }
@@ -238,7 +243,7 @@ public final class PostureManager {
         }
 
         state.current = 0.0F;
-        state.regenDelay = REGEN_DELAY_TICKS;
+        state.regenDelay = regenDelayTicks();
         stopUsingItem(entity);
 
         boolean stunned = false;
@@ -482,6 +487,10 @@ public final class PostureManager {
         } catch (Throwable ignored) {
             return null;
         }
+    }
+
+    private static int regenDelayTicks() {
+        return PostureBalance.regenDelayTicks(PostureServerConfig.postureRegenDelaySeconds());
     }
 
     private static float finiteOr(float value, float fallback) {
