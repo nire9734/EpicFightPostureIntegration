@@ -17,10 +17,13 @@
     "client.GeoArmorRendererInvoker",
     "client.GeckoItemArmorLayerContextMixin",
     "client.IronsHumanoidRendererCapeMixin",
+    "client.LightweightHumanoidPatchDiagnosticsMixin",
     "client.LionfishAdvancedModelBoxLayerPoseMixin",
     "client.LionfishBasicEntityModelLayerMeshMixin",
+    "client.LivingEntityPatchDiagnosticsMixin",
     "client.LivingEntityRendererScaleInvoker",
     "client.LivingEntityRendererLayersAccessor",
+    "client.MinecraftFrameSpikeMixin",
     "client.ModelPartLayerPoseMixin",
     "client.MultiBufferSourceBufferSourceMixin",
     "client.OutlineBufferSourceMixin"
