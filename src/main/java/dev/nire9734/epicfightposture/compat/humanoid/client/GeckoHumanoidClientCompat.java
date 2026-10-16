@@ -42,11 +42,29 @@ public final class GeckoHumanoidClientCompat implements HumanoidRenderBackend {
 
         try {
             GeoModel geoModel = geoRenderer.getGeoModel();
-            ResourceLocation modelLocation = geoModel.getModelResource(null);
+            if (geoModel == null) {
+                LOGGER.debug("EFPI Gecko humanoid skipped {} because the renderer has no GeoModel", entityId);
+                return Inspection.rejected();
+            }
+
+            ResourceLocation modelLocation = resolveStaticModelLocation(geoModel, entityId);
+            if (modelLocation == null) {
+                return Inspection.rejected();
+            }
+
             BakedGeoModel bakedModel = geoModel.getBakedModel(modelLocation);
+            if (bakedModel == null) {
+                LOGGER.debug(
+                        "EFPI Gecko humanoid skipped {} because model {} did not resolve a baked bind model",
+                        entityId,
+                        modelLocation
+                );
+                return Inspection.rejected();
+            }
+
             SkeletonKey key = new SkeletonKey(
                     entityId.toString(),
-                    geoModel.getClass().getName() + "|" + String.valueOf(modelLocation)
+                    geoModel.getClass().getName() + "|" + modelLocation
             );
 
             GeckoHumanoidMeshAdapter.Result result =
@@ -86,6 +104,37 @@ public final class GeckoHumanoidClientCompat implements HumanoidRenderBackend {
                     throwable
             );
             return Inspection.rejected();
+        }
+    }
+
+    /**
+     * Automatic startup discovery has no live entity instance. A Gecko model is
+     * therefore eligible for static inspection only when its model resource can
+     * be resolved safely with a null animatable. Entity-dependent models are
+     * deliberately skipped instead of constructing a fake entity or guessing a
+     * resource path.
+     */
+    private static ResourceLocation resolveStaticModelLocation(
+            GeoModel geoModel,
+            ResourceLocation entityId) {
+        try {
+            ResourceLocation modelLocation = geoModel.getModelResource(null);
+            if (modelLocation == null) {
+                LOGGER.debug(
+                        "EFPI Gecko humanoid skipped {} because {} returned no model resource without a live entity",
+                        entityId,
+                        geoModel.getClass().getName()
+                );
+            }
+            return modelLocation;
+        } catch (Throwable throwable) {
+            LOGGER.debug(
+                    "EFPI Gecko humanoid skipped {} because {} requires a live entity to resolve its model resource ({})",
+                    entityId,
+                    geoModel.getClass().getName(),
+                    throwable.getClass().getSimpleName()
+            );
+            return null;
         }
     }
 
