@@ -8,7 +8,8 @@
     "defaultRequire": 1
   },
   "mixins": [
-    "SpiderExecutionMixin"
+    "SpiderExecutionMixin",
+    "ParryDetectionMixin"
   ],
   "client": [
     "client.BridgeHealthBarMixin",
