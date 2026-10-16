@@ -67,14 +67,8 @@ public final class SpecialStateLionfishRenderer extends PatchedEntityRenderer<
         Armature armature = entitypatch.getArmature();
         int overlay = OverlayTexture.pack(0, OverlayTexture.v(entity.hurtTime > 5));
 
-        try (LionfishRetargetDiagnostics.Scope ignoredDiagnostics =
-                     LionfishRetargetDiagnostics.open(
-                             entity,
-                             renderer,
-                             this.skeleton,
-                             armature,
-                             partialTicks)) {
-            poseStack.pushPose();
+        poseStack.pushPose();
+        try {
             this.mulPoseStack(poseStack, armature, entity, entitypatch, partialTicks);
 
             if (renderer instanceof LivingEntityRenderer<?, ?> livingRenderer
@@ -86,7 +80,6 @@ public final class SpecialStateLionfishRenderer extends PatchedEntityRenderer<
             SkinnedMesh runtimeMesh = this.mesh.get();
             float alpha = entity.isInvisibleTo(minecraft.player) ? 0.15F : 1.0F;
             RenderType bodyRenderType = RenderType.entityCutoutNoCull(texture);
-            LionfishRetargetDiagnostics.bodyPass(poseStack, bodyRenderType);
 
             runtimeMesh.draw(
                     poseStack,
@@ -136,7 +129,7 @@ public final class SpecialStateLionfishRenderer extends PatchedEntityRenderer<
                     runtimeMesh,
                     this.skeleton
             );
-
+        } finally {
             poseStack.popPose();
         }
     }

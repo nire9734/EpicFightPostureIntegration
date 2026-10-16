@@ -63,8 +63,6 @@ public final class LivingRenderLayerBridge {
         List<ModelPartState> savedParts = saveModelParts(model);
 
         try {
-            prepareSourceModel(entity, model, partialTicks);
-
             float limbSwingAmount = entity.isAlive() && !entity.isPassenger()
                     ? Math.min(1.0F, entity.walkAnimation.speed(partialTicks))
                     : 0.0F;
@@ -80,6 +78,17 @@ public final class LivingRenderLayerBridge {
             float netHeadYaw = Mth.wrapDegrees(headYaw - bodyYaw);
             float headPitch = Mth.lerp(partialTicks, entity.xRotO, entity.getXRot());
             float ageInTicks = entity.tickCount + partialTicks;
+
+            prepareSourceModel(
+                    entity,
+                    model,
+                    partialTicks,
+                    limbSwing,
+                    limbSwingAmount,
+                    ageInTicks,
+                    netHeadYaw,
+                    headPitch
+            );
 
             poseStack.pushPose();
             try {
@@ -103,23 +112,18 @@ public final class LivingRenderLayerBridge {
                         if (layer == null) {
                             continue;
                         }
-                        LionfishRetargetDiagnostics.layerStart(layer);
-                        try {
-                            layer.render(
-                                    poseStack,
-                                    buffer,
-                                    packedLight,
-                                    entity,
-                                    limbSwing,
-                                    limbSwingAmount,
-                                    partialTicks,
-                                    ageInTicks,
-                                    netHeadYaw,
-                                    headPitch
-                            );
-                        } finally {
-                            LionfishRetargetDiagnostics.layerEnd(layer);
-                        }
+                        layer.render(
+                                poseStack,
+                                buffer,
+                                packedLight,
+                                entity,
+                                limbSwing,
+                                limbSwingAmount,
+                                partialTicks,
+                                ageInTicks,
+                                netHeadYaw,
+                                headPitch
+                        );
                     }
                 }
             } finally {
@@ -130,7 +134,15 @@ public final class LivingRenderLayerBridge {
         }
     }
 
-    private static void prepareSourceModel(LivingEntity entity, EntityModel model, float partialTicks) {
+    private static void prepareSourceModel(
+            LivingEntity entity,
+            EntityModel model,
+            float partialTicks,
+            float limbSwing,
+            float limbSwingAmount,
+            float ageInTicks,
+            float netHeadYaw,
+            float headPitch) {
         if (model == null) {
             return;
         }
@@ -138,22 +150,6 @@ public final class LivingRenderLayerBridge {
         if (model instanceof HierarchicalModel<?> hierarchical) {
             hierarchical.root().getAllParts().forEach(ModelPart::resetPose);
         }
-
-        float limbSwingAmount = entity.isAlive() && !entity.isPassenger()
-                ? Math.min(1.0F, entity.walkAnimation.speed(partialTicks))
-                : 0.0F;
-        float limbSwing = entity.isAlive() && !entity.isPassenger()
-                ? entity.walkAnimation.position(partialTicks)
-                : 0.0F;
-        if (entity.isBaby()) {
-            limbSwing *= 3.0F;
-        }
-
-        float bodyYaw = Mth.rotLerp(partialTicks, entity.yBodyRotO, entity.yBodyRot);
-        float headYaw = Mth.rotLerp(partialTicks, entity.yHeadRotO, entity.yHeadRot);
-        float netHeadYaw = Mth.wrapDegrees(headYaw - bodyYaw);
-        float headPitch = Mth.lerp(partialTicks, entity.xRotO, entity.getXRot());
-        float ageInTicks = entity.tickCount + partialTicks;
 
         model.attackTime = entity.getAttackAnim(partialTicks);
         model.riding = entity.isPassenger();

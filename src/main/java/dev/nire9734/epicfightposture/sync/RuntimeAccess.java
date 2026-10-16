@@ -1,6 +1,5 @@
 package dev.nire9734.epicfightposture.sync;
 
-import dev.nire9734.epicfightposture.FastReflection;
 import net.minecraft.world.effect.MobEffect;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.server.level.ServerLevel;
@@ -34,10 +33,6 @@ public final class RuntimeAccess {
 
     public static Collection<MobEffectInstance> activeEffects(LivingEntity entity) {
         return entity == null ? Collections.emptyList() : entity.getActiveEffects();
-    }
-
-    public static Object original(Object object) {
-        return FastReflection.invokeNamed(object, new String[]{"getOriginal"});
     }
 
     public static MobEffect effect(MobEffectInstance instance) {

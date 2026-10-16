@@ -5,16 +5,9 @@ import com.github.L_Ender.lionfishapi.client.model.tools.AdvancedModelBox;
 import com.github.L_Ender.lionfishapi.client.model.tools.BasicModelPart;
 import com.github.L_Ender.lionfishapi.client.model.tools.LionfishModelRenderUtils;
 import com.mojang.blaze3d.vertex.PoseStack;
-import dev.nire9734.epicfightposture.compat.humanoid.rig.HumanoidSemanticAnalysis;
-import dev.nire9734.epicfightposture.compat.humanoid.rig.HumanoidSemanticAnalyzer;
-import dev.nire9734.epicfightposture.compat.humanoid.rig.HumanoidSkeletonResolver;
-import dev.nire9734.epicfightposture.compat.humanoid.rig.SemanticJointCandidate;
 import dev.nire9734.epicfightposture.compat.humanoid.rig.SourceNodeSnapshot;
 import dev.nire9734.epicfightposture.compat.humanoid.rig.SourceRigSnapshot;
 import dev.nire9734.epicfightposture.compat.humanoid.skeleton.BodyBounds;
-import dev.nire9734.epicfightposture.compat.humanoid.skeleton.HumanoidJoint;
-import dev.nire9734.epicfightposture.compat.humanoid.skeleton.HumanoidModelResolution;
-import dev.nire9734.epicfightposture.compat.humanoid.skeleton.HumanoidSourceBinding;
 import dev.nire9734.epicfightposture.compat.humanoid.skeleton.RigidTransform;
 import dev.nire9734.epicfightposture.compat.humanoid.skeleton.SkeletonKey;
 import dev.nire9734.epicfightposture.compat.humanoid.skeleton.SkeletonQuat;
@@ -26,7 +19,6 @@ import org.joml.Vector4f;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
-import java.util.EnumMap;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -68,24 +60,6 @@ public final class LionfishSourceRigAdapter {
         BodyBounds bounds = geometryBounds.toBounds().or(() -> pivotBounds.toBounds())
                 .orElseThrow(() -> new IllegalArgumentException("Lionfish model produced no finite bind-space bounds"));
         return new Capture(new SourceRigSnapshot(key, nodes, bounds, nonUniformScale[0]), Map.copyOf(sourceNodes));
-    }
-
-    public static HumanoidModelResolution<AdvancedModelBox> resolve(
-            AdvancedEntityModel<?> model,
-            SkeletonKey key,
-            HumanoidSemanticAnalyzer analyzer) {
-        Capture capture = capture(model, key);
-        HumanoidSemanticAnalysis analysis = analyzer.analyze(capture.snapshot());
-        var descriptor = HumanoidSkeletonResolver.resolve(capture.snapshot(), analysis);
-        EnumMap<HumanoidJoint, AdvancedModelBox> semanticSources = new EnumMap<>(HumanoidJoint.class);
-        for (Map.Entry<HumanoidJoint, SemanticJointCandidate> entry : analysis.candidates().entrySet()) {
-            entry.getValue().sourceNodeId().ifPresent(id -> {
-                AdvancedModelBox source = capture.sourceNodes().get(id);
-                if (source != null) semanticSources.put(entry.getKey(), source);
-            });
-        }
-        HumanoidSourceBinding<AdvancedModelBox> binding = joint -> Optional.ofNullable(semanticSources.get(joint));
-        return new HumanoidModelResolution<>(descriptor, binding);
     }
 
     /** Matches Epic Fight's vanilla model baker: Y180 * X180 * translate(0,-24px,0). */

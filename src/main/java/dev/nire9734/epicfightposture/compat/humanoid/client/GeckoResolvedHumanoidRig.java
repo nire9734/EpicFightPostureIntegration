@@ -40,8 +40,7 @@ final class GeckoResolvedHumanoidRig {
     private final HumanoidSkeletonDescriptor descriptor;
     private final HumanoidSkinWeightResolver weights;
     private final Map<String, GeoBone> sourceNodes;
-    private final IdentityHashMap<GeoBone, String> nodeIds;
-    private final IdentityHashMap<GeoBone, HumanoidJoint> directOwners;
+    private final IdentityHashMap<GeoBone, Integer> deformationJointIds;
 
     static GeckoResolvedHumanoidRig resolve(BakedGeoModel model, SkeletonKey key) {
         if (model == null) {
@@ -108,10 +107,7 @@ final class GeckoResolvedHumanoidRig {
         this.weights = weights;
         this.sourceNodes = Map.copyOf(sourceNodes);
 
-        this.nodeIds = new IdentityHashMap<>();
-        sourceNodes.forEach((sourceId, bone) -> this.nodeIds.put(bone, sourceId));
-
-        this.directOwners = new IdentityHashMap<>();
+        IdentityHashMap<GeoBone, HumanoidJoint> directOwners = new IdentityHashMap<>();
         for (HumanoidJoint joint : HumanoidJoint.values()) {
             SemanticJointCandidate candidate = analysis.candidate(joint).orElse(null);
             if (candidate == null || candidate.origin() != JointOrigin.SOURCE) {
@@ -120,10 +116,36 @@ final class GeckoResolvedHumanoidRig {
             candidate.sourceNodeId().ifPresent(sourceId -> {
                 GeoBone bone = sourceNodes.get(sourceId);
                 if (bone != null) {
-                    this.directOwners.putIfAbsent(bone, joint);
+                    directOwners.putIfAbsent(bone, joint);
                 }
             });
         }
+
+        this.deformationJointIds = new IdentityHashMap<>();
+        sourceNodes.forEach((nodeId, bone) -> {
+            HumanoidJoint directOwner = directOwners.get(bone);
+            if (directOwner != null) {
+                this.deformationJointIds.put(
+                        bone,
+                        HumanoidSkinWeightResolver.deformationJointId(directOwner)
+                );
+                return;
+            }
+
+            int jointId = HumanoidSkinWeightResolver.ROOT;
+            try {
+                HumanoidSkinWeightResolver.SkinWeights skin = weights.weights(
+                        nodeId,
+                        snapshot.node(nodeId).bindModelTransform().position()
+                );
+                jointId = skin.count() == 1 || skin.firstWeight() >= skin.secondWeight()
+                        ? skin.firstJoint()
+                        : skin.secondJoint();
+            } catch (Throwable ignored) {
+                // Keep Root as the conservative fallback for an unresolved source bone.
+            }
+            this.deformationJointIds.put(bone, jointId);
+        });
     }
 
     HumanoidSkeletonDescriptor descriptor() {
@@ -141,27 +163,6 @@ final class GeckoResolvedHumanoidRig {
     }
 
     int deformationJointId(GeoBone bone) {
-        HumanoidJoint directOwner = directOwners.get(bone);
-        if (directOwner != null) {
-            return HumanoidSkinWeightResolver.deformationJointId(directOwner);
-        }
-
-        String nodeId = nodeIds.get(bone);
-        if (nodeId == null) {
-            return HumanoidSkinWeightResolver.ROOT;
-        }
-
-        try {
-            HumanoidSkinWeightResolver.SkinWeights skin = weights.weights(
-                    nodeId,
-                    snapshot.node(nodeId).bindModelTransform().position()
-            );
-            if (skin.count() == 1 || skin.firstWeight() >= skin.secondWeight()) {
-                return skin.firstJoint();
-            }
-            return skin.secondJoint();
-        } catch (Throwable ignored) {
-            return HumanoidSkinWeightResolver.ROOT;
-        }
+        return deformationJointIds.getOrDefault(bone, HumanoidSkinWeightResolver.ROOT);
     }
 }

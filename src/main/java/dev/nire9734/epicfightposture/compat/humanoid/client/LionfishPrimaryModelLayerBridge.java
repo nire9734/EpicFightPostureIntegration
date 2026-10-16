@@ -43,38 +43,17 @@ public final class LionfishPrimaryModelLayerBridge {
     static Scope open(Object primaryModel, SkinnedMesh primaryMesh, Armature armature) {
         Frame previous = ACTIVE.get();
         if (primaryModel == null || primaryMesh == null || armature == null) {
-            LionfishRetargetDiagnostics.primaryBridge(
-                    primaryModel,
-                    "OPEN_FAIL",
-                    "null_input model=" + (primaryModel == null)
-                            + ",mesh=" + (primaryMesh == null)
-                            + ",armature=" + (armature == null),
-                    null
-            );
             return new Scope(previous, false);
         }
 
         OpenMatrix4f[] poses = armature.getPoseMatrices();
         int rootId = armature.rootJoint.getId();
         if (poses == null || rootId < 0 || rootId >= poses.length || poses[rootId] == null) {
-            LionfishRetargetDiagnostics.primaryBridge(
-                    primaryModel,
-                    "OPEN_FAIL",
-                    "invalid_pose_matrices rootId=" + rootId
-                            + ",poses=" + (poses == null ? "null" : poses.length),
-                    null
-            );
             return new Scope(previous, false);
         }
 
         VisibilitySnapshot visibility = captureVisibility(primaryModel);
         if (visibility == null) {
-            LionfishRetargetDiagnostics.primaryBridge(
-                    primaryModel,
-                    "OPEN_FAIL",
-                    "visibility_snapshot_unavailable",
-                    null
-            );
             return new Scope(previous, false);
         }
 
@@ -90,12 +69,6 @@ public final class LionfishPrimaryModelLayerBridge {
                 inverseExternal,
                 visibility
         ));
-        LionfishRetargetDiagnostics.primaryBridge(
-                primaryModel,
-                "OPEN_OK",
-                "visibility_parts=" + visibility.parts.size(),
-                null
-        );
         return new Scope(previous, true);
     }
 
@@ -118,21 +91,15 @@ public final class LionfishPrimaryModelLayerBridge {
             return false;
         }
         if (renderedModel != frame.primaryModel) {
-            LionfishRetargetDiagnostics.primaryBridge(
-                    renderedModel, "SKIP", "not_primary_model", poseStack);
             return false;
         }
         if (!visibilityMatches(frame.visibility)) {
-            LionfishRetargetDiagnostics.primaryBridge(
-                    renderedModel, "FALLBACK", "visibility_changed", poseStack);
             return false;
         }
 
         LionfishLayerRenderTargetCapture.Target target =
                 LionfishLayerRenderTargetCapture.resolve(vertexConsumer);
         if (target == null) {
-            LionfishRetargetDiagnostics.primaryBridge(
-                    renderedModel, "FALLBACK", "render_type_not_captured", poseStack);
             return false;
         }
 
@@ -143,12 +110,6 @@ public final class LionfishPrimaryModelLayerBridge {
             // the complete EF skin matrices, so remove only that replay basis and
             // preserve the renderer-owned/model presentation transform beneath it.
             mulPoseAndNormal(poseStack, frame.inverseExternalTransform);
-            LionfishRetargetDiagnostics.primaryBridge(
-                    renderedModel,
-                    "REPLACE",
-                    "renderType=" + target.renderType() + ",mode=" + target.renderType().mode(),
-                    poseStack
-            );
             frame.primaryMesh.draw(
                     poseStack,
                     target.bufferSource(),
@@ -184,28 +145,20 @@ public final class LionfishPrimaryModelLayerBridge {
     static VisibilitySnapshot captureVisibility(Object model) {
         Method allPartsMethod = findMethod(model.getClass(), "getAllParts");
         if (allPartsMethod != null) {
-            return captureFlatVisibility(model, allPartsMethod, "getAllParts");
+            return captureFlatVisibility(model, allPartsMethod);
         }
         return captureReflectiveVisibility(model);
     }
 
     private static VisibilitySnapshot captureFlatVisibility(
             Object model,
-            Method partsMethod,
-            String methodName) {
+            Method partsMethod) {
         try {
             if (!partsMethod.canAccess(model)) {
                 partsMethod.setAccessible(true);
             }
             Object partsValue = partsMethod.invoke(model);
             if (!(partsValue instanceof Iterable<?> partsIterable)) {
-                LionfishRetargetDiagnostics.primaryBridge(
-                        model,
-                        "VISIBILITY_FAIL",
-                        methodName + "_not_iterable type="
-                                + (partsValue == null ? "null" : partsValue.getClass().getName()),
-                        null
-                );
                 return null;
             }
 
@@ -216,30 +169,12 @@ public final class LionfishPrimaryModelLayerBridge {
                 }
                 PartVisibility visibility = readPartVisibility(part);
                 if (visibility == null) {
-                    LionfishRetargetDiagnostics.primaryBridge(
-                            model,
-                            "VISIBILITY_FAIL",
-                            methodName + "_part_visibility_unavailable part=" + part.getClass().getName(),
-                            null
-                    );
                     return null;
                 }
                 parts.put(part, visibility);
             }
-            if (parts.isEmpty()) {
-                LionfishRetargetDiagnostics.primaryBridge(
-                        model, "VISIBILITY_FAIL", methodName + "_empty", null);
-                return null;
-            }
-            return new VisibilitySnapshot(parts);
+            return parts.isEmpty() ? null : new VisibilitySnapshot(parts);
         } catch (Throwable failure) {
-            LionfishRetargetDiagnostics.primaryBridge(
-                    model,
-                    "VISIBILITY_FAIL",
-                    methodName + "_exception=" + failure.getClass().getName()
-                            + ",message=" + String.valueOf(failure.getMessage()),
-                    null
-            );
             return null;
         }
     }
@@ -248,8 +183,6 @@ public final class LionfishPrimaryModelLayerBridge {
         try {
             Method partsMethod = findMethod(model.getClass(), "parts");
             if (partsMethod == null) {
-                LionfishRetargetDiagnostics.primaryBridge(
-                        model, "VISIBILITY_FAIL", "parts_method_missing", null);
                 return null;
             }
             if (!partsMethod.canAccess(model)) {
@@ -257,13 +190,6 @@ public final class LionfishPrimaryModelLayerBridge {
             }
             Object rootsValue = partsMethod.invoke(model);
             if (!(rootsValue instanceof Iterable<?> roots)) {
-                LionfishRetargetDiagnostics.primaryBridge(
-                        model,
-                        "VISIBILITY_FAIL",
-                        "parts_not_iterable type="
-                                + (rootsValue == null ? "null" : rootsValue.getClass().getName()),
-                        null
-                );
                 return null;
             }
 
@@ -271,20 +197,8 @@ public final class LionfishPrimaryModelLayerBridge {
             for (Object root : roots) {
                 capturePartVisibility(root, parts);
             }
-            if (parts.isEmpty()) {
-                LionfishRetargetDiagnostics.primaryBridge(
-                        model, "VISIBILITY_FAIL", "no_parts_captured", null);
-                return null;
-            }
-            return new VisibilitySnapshot(parts);
+            return parts.isEmpty() ? null : new VisibilitySnapshot(parts);
         } catch (Throwable failure) {
-            LionfishRetargetDiagnostics.primaryBridge(
-                    model,
-                    "VISIBILITY_FAIL",
-                    "exception=" + failure.getClass().getName()
-                            + ",message=" + String.valueOf(failure.getMessage()),
-                    null
-            );
             return null;
         }
     }
@@ -338,12 +252,6 @@ public final class LionfishPrimaryModelLayerBridge {
         try {
             Field showModelField = findField(part.getClass(), "showModel");
             if (showModelField == null) {
-                LionfishRetargetDiagnostics.primaryBridge(
-                        part,
-                        "VISIBILITY_FAIL",
-                        "showModel_field_missing part=" + part.getClass().getName(),
-                        null
-                );
                 return null;
             }
             if (!showModelField.canAccess(part)) {
@@ -364,14 +272,6 @@ public final class LionfishPrimaryModelLayerBridge {
             }
             return new PartVisibility(showModel, hidden);
         } catch (Throwable failure) {
-            LionfishRetargetDiagnostics.primaryBridge(
-                    part,
-                    "VISIBILITY_FAIL",
-                    "read_part_exception=" + failure.getClass().getName()
-                            + ",message=" + String.valueOf(failure.getMessage())
-                            + ",part=" + part.getClass().getName(),
-                    null
-            );
             return null;
         }
     }

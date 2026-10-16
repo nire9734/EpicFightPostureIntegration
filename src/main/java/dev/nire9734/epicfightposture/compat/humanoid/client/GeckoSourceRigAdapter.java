@@ -1,17 +1,10 @@
 package dev.nire9734.epicfightposture.compat.humanoid.client;
 
 import com.mojang.blaze3d.vertex.PoseStack;
-import dev.nire9734.epicfightposture.compat.humanoid.rig.HumanoidSemanticAnalysis;
-import dev.nire9734.epicfightposture.compat.humanoid.rig.HumanoidSemanticAnalyzer;
-import dev.nire9734.epicfightposture.compat.humanoid.rig.HumanoidSkeletonResolver;
-import dev.nire9734.epicfightposture.compat.humanoid.rig.SemanticJointCandidate;
 import dev.nire9734.epicfightposture.compat.humanoid.rig.SourceNodeHeuristics;
 import dev.nire9734.epicfightposture.compat.humanoid.rig.SourceNodeSnapshot;
 import dev.nire9734.epicfightposture.compat.humanoid.rig.SourceRigSnapshot;
 import dev.nire9734.epicfightposture.compat.humanoid.skeleton.BodyBounds;
-import dev.nire9734.epicfightposture.compat.humanoid.skeleton.HumanoidJoint;
-import dev.nire9734.epicfightposture.compat.humanoid.skeleton.HumanoidModelResolution;
-import dev.nire9734.epicfightposture.compat.humanoid.skeleton.HumanoidSourceBinding;
 import dev.nire9734.epicfightposture.compat.humanoid.skeleton.RigidTransform;
 import dev.nire9734.epicfightposture.compat.humanoid.skeleton.SkeletonKey;
 import dev.nire9734.epicfightposture.compat.humanoid.skeleton.SkeletonVec3;
@@ -23,7 +16,6 @@ import software.bernie.geckolib.cache.object.GeoQuad;
 import software.bernie.geckolib.cache.object.GeoVertex;
 
 import java.util.ArrayList;
-import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -77,28 +69,6 @@ public final class GeckoSourceRigAdapter {
                 new SourceRigSnapshot(key, nodes, bounds, nonUniformScale[0]),
                 Map.copyOf(sourceNodes)
         );
-    }
-
-    public static HumanoidModelResolution<GeoBone> resolve(
-            BakedGeoModel model,
-            SkeletonKey key,
-            HumanoidSemanticAnalyzer analyzer) {
-        Capture capture = capture(model, key);
-        HumanoidSemanticAnalysis analysis = analyzer.analyze(capture.snapshot());
-        var descriptor = HumanoidSkeletonResolver.resolve(capture.snapshot(), analysis);
-
-        EnumMap<HumanoidJoint, GeoBone> semanticSources = new EnumMap<>(HumanoidJoint.class);
-        for (Map.Entry<HumanoidJoint, SemanticJointCandidate> entry : analysis.candidates().entrySet()) {
-            entry.getValue().sourceNodeId().ifPresent(sourceId -> {
-                GeoBone source = capture.sourceNodes().get(sourceId);
-                if (source != null) {
-                    semanticSources.put(entry.getKey(), source);
-                }
-            });
-        }
-
-        HumanoidSourceBinding<GeoBone> binding = joint -> Optional.ofNullable(semanticSources.get(joint));
-        return new HumanoidModelResolution<>(descriptor, binding);
     }
 
     private static void captureBone(

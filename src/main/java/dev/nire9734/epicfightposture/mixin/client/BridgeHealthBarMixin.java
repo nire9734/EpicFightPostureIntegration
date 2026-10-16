@@ -199,7 +199,7 @@ public abstract class BridgeHealthBarMixin extends EntityUI {
             MultiBufferSource buffer
     ) {
         Collection<MobEffectInstance> effects = RuntimeAccess.activeEffects(entity);
-        if (effects.isEmpty() || entity == RuntimeAccess.original(playerPatch)) {
+        if (effects.isEmpty() || entity == playerPatch.getOriginal()) {
             return;
         }
 

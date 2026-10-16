@@ -89,28 +89,20 @@ public final class LionfishSecondaryModelLayerBridge {
             return false;
         }
         if (renderedModel == frame.primaryModel) {
-            LionfishRetargetDiagnostics.secondaryBridge(
-                    renderedModel, "SKIP", "primary_model", poseStack);
             return false;
         }
         if (!(renderedModel instanceof AdvancedEntityModel<?> secondaryModel)) {
-            LionfishRetargetDiagnostics.secondaryBridge(
-                    renderedModel, "SKIP", "not_advanced_entity_model", poseStack);
             return false;
         }
 
         LionfishLayerRenderTargetCapture.Target target =
                 LionfishLayerRenderTargetCapture.resolve(vertexConsumer);
         if (target == null) {
-            LionfishRetargetDiagnostics.secondaryBridge(
-                    renderedModel, "FALLBACK", "render_type_not_captured", poseStack);
             return false;
         }
 
         VisibilityKey visibility = visibilityKey(secondaryModel);
         if (visibility == null) {
-            LionfishRetargetDiagnostics.secondaryBridge(
-                    renderedModel, "FALLBACK", "visibility_unavailable", poseStack);
             return false;
         }
 
@@ -125,20 +117,12 @@ public final class LionfishSecondaryModelLayerBridge {
             cacheSecondary(secondaryModel, cacheKey, cached);
         }
         if (!shouldReplace(cached)) {
-            LionfishRetargetDiagnostics.secondaryBridge(
-                    renderedModel, "FALLBACK", "secondary_not_safely_deformable", poseStack);
             return false;
         }
 
         poseStack.pushPose();
         try {
             mulPoseAndNormal(poseStack, frame.inverseExternalTransform);
-            LionfishRetargetDiagnostics.secondaryBridge(
-                    renderedModel,
-                    "REPLACE",
-                    "renderType=" + target.renderType() + ",mode=" + target.renderType().mode(),
-                    poseStack
-            );
             cached.mesh().draw(
                     poseStack,
                     target.bufferSource(),

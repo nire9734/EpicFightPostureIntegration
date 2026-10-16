@@ -41,6 +41,8 @@ public final class ModelPartDynamicAttachmentRenderer {
         try {
             prepare(entity, (EntityModel) hierarchical, partialTicks);
             ModelPart root = hierarchical.root();
+            RenderType renderType = RenderType.entityCutoutNoCull(texture);
+            var poseMatrices = armature.getPoseMatrices();
 
             for (ModelPartAttachmentPlan.Entry entry : plan.entries()) {
                 if (!isOwnGeometryVisible(root, entry.path())) {
@@ -49,7 +51,7 @@ public final class ModelPartDynamicAttachmentRenderer {
                 entry.mesh().draw(
                         poseStack,
                         buffer,
-                        RenderType.entityCutoutNoCull(texture),
+                        renderType,
                         packedLight,
                         1.0F,
                         1.0F,
@@ -57,7 +59,7 @@ public final class ModelPartDynamicAttachmentRenderer {
                         1.0F,
                         overlay,
                         armature,
-                        armature.getPoseMatrices()
+                        poseMatrices
                 );
             }
         } finally {
