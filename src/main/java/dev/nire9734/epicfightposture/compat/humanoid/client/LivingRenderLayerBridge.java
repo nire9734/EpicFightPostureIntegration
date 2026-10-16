@@ -1,11 +1,10 @@
 package dev.nire9734.epicfightposture.compat.humanoid.client;
 
 import com.mojang.blaze3d.vertex.PoseStack;
+import dev.nire9734.epicfightposture.client.FrameSpikeDiagnostics;
 import dev.nire9734.epicfightposture.compat.humanoid.skeleton.HumanoidSkeletonDescriptor;
 import dev.nire9734.epicfightposture.mixin.client.LivingEntityRendererLayersAccessor;
 import net.minecraft.client.model.EntityModel;
-import net.minecraft.client.model.HierarchicalModel;
-import net.minecraft.client.model.geom.ModelPart;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.entity.EntityRenderer;
 import net.minecraft.client.renderer.entity.LivingEntityRenderer;
@@ -16,7 +15,6 @@ import yesman.epicfight.api.client.model.SkinnedMesh;
 import yesman.epicfight.api.model.Armature;
 import yesman.epicfight.api.utils.math.MathUtils;
 
-import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -30,15 +28,51 @@ import java.util.List;
  * projects supported source model parts onto the same Epic Fight pose used by the
  * runtime mesh. Unsupported layers retain the historical Root-only fallback.</p>
  *
- * <p>When a Lionfish layer redraws the exact same primary model, EFPI reuses the
- * prepared body SkinnedMesh. A safely analyzable separate Lionfish clothing or
- * overlay model can also be baked against the primary body descriptor when its
- * real geometry spans a canonical deformation transition. Rigid-only or unsafe
- * layer models continue through the existing part-level fallback.</p>
+ * <p>Source-model animation preparation is shared with dynamic attachment replay
+ * by {@link SourceModelPreparation}, avoiding a second reset/prepareMobModel/setupAnim
+ * pass for the same entity in one special-state frame.</p>
  */
 @SuppressWarnings({"rawtypes", "unchecked"})
 public final class LivingRenderLayerBridge {
+    public static boolean hasReplayLayers(EntityRenderer<LivingEntity> renderer) {
+        if (!(renderer instanceof LivingEntityRenderer livingRenderer)
+                || !(livingRenderer instanceof LivingEntityRendererLayersAccessor accessor)) {
+            return false;
+        }
+        List<RenderLayer<?, ?>> layers = accessor.efpi$getLayers();
+        return layers != null && !layers.isEmpty();
+    }
+
     public static void replay(
+            LivingEntity entity,
+            EntityRenderer<LivingEntity> renderer,
+            MultiBufferSource buffer,
+            PoseStack poseStack,
+            int packedLight,
+            float partialTicks,
+            Armature armature,
+            SkinnedMesh primaryMesh,
+            HumanoidSkeletonDescriptor primaryDescriptor) {
+        if (!hasReplayLayers(renderer)) {
+            return;
+        }
+        try (SourceModelPreparation.Scope ignored =
+                     SourceModelPreparation.open(entity, renderer, partialTicks)) {
+            replayPrepared(
+                    entity,
+                    renderer,
+                    buffer,
+                    poseStack,
+                    packedLight,
+                    partialTicks,
+                    armature,
+                    primaryMesh,
+                    primaryDescriptor
+            );
+        }
+    }
+
+    static void replayPrepared(
             LivingEntity entity,
             EntityRenderer<LivingEntity> renderer,
             MultiBufferSource buffer,
@@ -59,10 +93,10 @@ public final class LivingRenderLayerBridge {
             return;
         }
 
-        EntityModel model = livingRenderer.getModel();
-        List<ModelPartState> savedParts = saveModelParts(model);
-
+        long startedNs = FrameSpikeDiagnostics.startTimedSection();
         try {
+            EntityModel model = livingRenderer.getModel();
+
             float limbSwingAmount = entity.isAlive() && !entity.isPassenger()
                     ? Math.min(1.0F, entity.walkAnimation.speed(partialTicks))
                     : 0.0F;
@@ -78,17 +112,6 @@ public final class LivingRenderLayerBridge {
             float netHeadYaw = Mth.wrapDegrees(headYaw - bodyYaw);
             float headPitch = Mth.lerp(partialTicks, entity.xRotO, entity.getXRot());
             float ageInTicks = entity.tickCount + partialTicks;
-
-            prepareSourceModel(
-                    entity,
-                    model,
-                    partialTicks,
-                    limbSwing,
-                    limbSwingAmount,
-                    ageInTicks,
-                    netHeadYaw,
-                    headPitch
-            );
 
             poseStack.pushPose();
             try {
@@ -130,61 +153,8 @@ public final class LivingRenderLayerBridge {
                 poseStack.popPose();
             }
         } finally {
-            restoreModelParts(savedParts);
+            FrameSpikeDiagnostics.finishLayerReplay(startedNs);
         }
-    }
-
-    private static void prepareSourceModel(
-            LivingEntity entity,
-            EntityModel model,
-            float partialTicks,
-            float limbSwing,
-            float limbSwingAmount,
-            float ageInTicks,
-            float netHeadYaw,
-            float headPitch) {
-        if (model == null) {
-            return;
-        }
-
-        if (model instanceof HierarchicalModel<?> hierarchical) {
-            hierarchical.root().getAllParts().forEach(ModelPart::resetPose);
-        }
-
-        model.attackTime = entity.getAttackAnim(partialTicks);
-        model.riding = entity.isPassenger();
-        model.young = entity.isBaby();
-        model.prepareMobModel(entity, limbSwing, limbSwingAmount, partialTicks);
-        model.setupAnim(entity, limbSwing, limbSwingAmount, ageInTicks, netHeadYaw, headPitch);
-    }
-
-    private static List<ModelPartState> saveModelParts(EntityModel<?> model) {
-        if (!(model instanceof HierarchicalModel<?> hierarchical)) {
-            return List.of();
-        }
-        List<ModelPartState> saved = new ArrayList<>();
-        hierarchical.root().getAllParts().forEach(part -> saved.add(new ModelPartState(
-                part,
-                part.storePose(),
-                part.visible,
-                part.skipDraw
-        )));
-        return saved;
-    }
-
-    private static void restoreModelParts(List<ModelPartState> saved) {
-        for (ModelPartState state : saved) {
-            state.part().loadPose(state.pose());
-            state.part().visible = state.visible();
-            state.part().skipDraw = state.skipDraw();
-        }
-    }
-
-    private record ModelPartState(
-            ModelPart part,
-            net.minecraft.client.model.geom.PartPose pose,
-            boolean visible,
-            boolean skipDraw) {
     }
 
     private LivingRenderLayerBridge() {
