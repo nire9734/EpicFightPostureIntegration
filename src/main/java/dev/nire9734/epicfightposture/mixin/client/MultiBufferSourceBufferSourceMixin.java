@@ -1,6 +1,7 @@
 package dev.nire9734.epicfightposture.mixin.client;
 
 import com.mojang.blaze3d.vertex.VertexConsumer;
+import dev.nire9734.epicfightposture.client.FrameSpikeDiagnostics;
 import dev.nire9734.epicfightposture.compat.humanoid.client.LionfishLayerRenderTargetCapture;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
@@ -16,6 +17,7 @@ public abstract class MultiBufferSourceBufferSourceMixin {
     private void efpi$captureLionfishLayerRenderType(
             RenderType renderType,
             CallbackInfoReturnable<VertexConsumer> cir) {
+        FrameSpikeDiagnostics.recordBufferHook();
         LionfishLayerRenderTargetCapture.record(
                 (MultiBufferSource) (Object) this,
                 renderType,
