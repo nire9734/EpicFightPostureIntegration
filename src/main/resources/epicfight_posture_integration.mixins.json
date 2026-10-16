@@ -13,6 +13,7 @@
   ],
   "client": [
     "client.BridgeHealthBarMixin",
+    "client.ComputeShaderProviderRuntimeMeshMixin",
     "client.GeoArmorRendererInvoker",
     "client.GeckoItemArmorLayerContextMixin",
     "client.IronsHumanoidRendererCapeMixin",
