@@ -1,7 +1,6 @@
 package dev.nire9734.epicfightposture.compat.humanoid.client;
 
 import com.mojang.blaze3d.vertex.PoseStack;
-import dev.nire9734.epicfightposture.client.FrameSpikeDiagnostics;
 import dev.nire9734.epicfightposture.compat.humanoid.skeleton.HumanoidSkeletonDescriptor;
 import dev.nire9734.epicfightposture.mixin.client.LivingEntityRendererLayersAccessor;
 import net.minecraft.client.model.EntityModel;
@@ -93,67 +92,64 @@ public final class LivingRenderLayerBridge {
             return;
         }
 
-        long startedNs = FrameSpikeDiagnostics.startTimedSection();
+        EntityModel model = livingRenderer.getModel();
+
+        float limbSwingAmount = entity.isAlive() && !entity.isPassenger()
+                ? Math.min(1.0F, entity.walkAnimation.speed(partialTicks))
+                : 0.0F;
+        float limbSwing = entity.isAlive() && !entity.isPassenger()
+                ? entity.walkAnimation.position(partialTicks)
+                : 0.0F;
+        if (entity.isBaby()) {
+            limbSwing *= 3.0F;
+        }
+
+        float bodyYaw = Mth.rotLerp(partialTicks, entity.yBodyRotO, entity.yBodyRot);
+        float headYaw = Mth.rotLerp(partialTicks, entity.yHeadRotO, entity.yHeadRot);
+        float netHeadYaw = Mth.wrapDegrees(headYaw - bodyYaw);
+        float headPitch = Mth.lerp(partialTicks, entity.xRotO, entity.getXRot());
+        float ageInTicks = entity.tickCount + partialTicks;
+
+        poseStack.pushPose();
+        SpecialRenderHooks.beginLayerReplay();
         try {
-            EntityModel model = livingRenderer.getModel();
+            MathUtils.mulStack(poseStack, armature.getPoseMatrices()[armature.rootJoint.getId()]);
+            poseStack.scale(-1.0F, -1.0F, 1.0F);
 
-            float limbSwingAmount = entity.isAlive() && !entity.isPassenger()
-                    ? Math.min(1.0F, entity.walkAnimation.speed(partialTicks))
-                    : 0.0F;
-            float limbSwing = entity.isAlive() && !entity.isPassenger()
-                    ? entity.walkAnimation.position(partialTicks)
-                    : 0.0F;
-            if (entity.isBaby()) {
-                limbSwing *= 3.0F;
-            }
-
-            float bodyYaw = Mth.rotLerp(partialTicks, entity.yBodyRotO, entity.yBodyRot);
-            float headYaw = Mth.rotLerp(partialTicks, entity.yHeadRotO, entity.yHeadRot);
-            float netHeadYaw = Mth.wrapDegrees(headYaw - bodyYaw);
-            float headPitch = Mth.lerp(partialTicks, entity.xRotO, entity.getXRot());
-            float ageInTicks = entity.tickCount + partialTicks;
-
-            poseStack.pushPose();
-            try {
-                MathUtils.mulStack(poseStack, armature.getPoseMatrices()[armature.rootJoint.getId()]);
-                poseStack.scale(-1.0F, -1.0F, 1.0F);
-
-                try (LionfishLayerRenderTargetCapture.Scope ignoredRenderTargets =
-                             LionfishLayerRenderTargetCapture.open(buffer);
-                     LionfishPrimaryModelLayerBridge.Scope ignoredPrimary =
-                             LionfishPrimaryModelLayerBridge.open(model, primaryMesh, armature);
-                     LionfishSecondaryModelLayerBridge.Scope ignoredSecondary =
-                             LionfishSecondaryModelLayerBridge.open(model, primaryDescriptor, armature);
-                     LayerPoseOverrideContext.Scope ignoredParts =
-                             LayerPoseOverrideContext.open(
-                                     entity,
-                                     model,
-                                     layers,
-                                     armature,
-                                     primaryDescriptor)) {
-                    for (RenderLayer layer : layers) {
-                        if (layer == null) {
-                            continue;
-                        }
-                        layer.render(
-                                poseStack,
-                                buffer,
-                                packedLight,
-                                entity,
-                                limbSwing,
-                                limbSwingAmount,
-                                partialTicks,
-                                ageInTicks,
-                                netHeadYaw,
-                                headPitch
-                        );
+            try (LionfishLayerRenderTargetCapture.Scope ignoredRenderTargets =
+                         LionfishLayerRenderTargetCapture.open(buffer);
+                 LionfishPrimaryModelLayerBridge.Scope ignoredPrimary =
+                         LionfishPrimaryModelLayerBridge.open(model, primaryMesh, armature);
+                 LionfishSecondaryModelLayerBridge.Scope ignoredSecondary =
+                         LionfishSecondaryModelLayerBridge.open(model, primaryDescriptor, armature);
+                 LayerPoseOverrideContext.Scope ignoredParts =
+                         LayerPoseOverrideContext.open(
+                                 entity,
+                                 model,
+                                 layers,
+                                 armature,
+                                 primaryDescriptor)) {
+                for (RenderLayer layer : layers) {
+                    if (layer == null) {
+                        continue;
                     }
+                    layer.render(
+                            poseStack,
+                            buffer,
+                            packedLight,
+                            entity,
+                            limbSwing,
+                            limbSwingAmount,
+                            partialTicks,
+                            ageInTicks,
+                            netHeadYaw,
+                            headPitch
+                    );
                 }
-            } finally {
-                poseStack.popPose();
             }
         } finally {
-            FrameSpikeDiagnostics.finishLayerReplay(startedNs);
+            SpecialRenderHooks.endLayerReplay();
+            poseStack.popPose();
         }
     }
 

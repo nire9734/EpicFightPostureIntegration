@@ -1,8 +1,8 @@
 package dev.nire9734.epicfightposture.mixin.client;
 
 import com.mojang.blaze3d.vertex.PoseStack;
-import dev.nire9734.epicfightposture.client.FrameSpikeDiagnostics;
 import dev.nire9734.epicfightposture.compat.humanoid.client.LayerPoseOverrideContext;
+import dev.nire9734.epicfightposture.compat.humanoid.client.SpecialRenderHooks;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Pseudo;
 import org.spongepowered.asm.mixin.injection.At;
@@ -21,9 +21,10 @@ public abstract class LionfishAdvancedModelBoxLayerPoseMixin {
             require = 0
     )
     private void efpi$useLayerPose(PoseStack poseStack, CallbackInfo ci) {
-        boolean overridden = LayerPoseOverrideContext.applyIfPresent(poseStack, this);
-        FrameSpikeDiagnostics.recordLionfishPartHook(overridden);
-        if (overridden) {
+        if (!SpecialRenderHooks.isLayerReplayActive()) {
+            return;
+        }
+        if (LayerPoseOverrideContext.applyIfPresent(poseStack, this)) {
             ci.cancel();
         }
     }

@@ -48,17 +48,6 @@ public final class SpecialStateGeckoRenderer extends PatchedEntityRenderer<
         EntityRenderer<LivingEntity>,
         SkinnedMesh> {
 
-    /**
-     * Some entity renderers are hybrid dispatchers: they are discovered as a
-     * GeoEntityRenderer but delegate to an ordinary LivingEntityRenderer for part
-     * of the entity lifecycle. Cache a native HumanoidModel conversion for that
-     * runtime source renderer instead of drawing the prepared Gecko mesh with an
-     * unrelated vanilla texture/layer contract.
-     *
-     * <p>The same HumanoidModel instance can legally be shared by more than one
-     * EntityType. The inner map therefore keeps the renderer's EntityType-specific
-     * layer/setup contract from leaking across those entities.</p>
-     */
     private static final Map<HumanoidModel<?>, Map<EntityType<?>, SpecialStateHumanoidRenderer>> HUMANOID_FALLBACKS =
             Collections.synchronizedMap(new WeakHashMap<>());
 
@@ -84,12 +73,6 @@ public final class SpecialStateGeckoRenderer extends PatchedEntityRenderer<
             PoseStack poseStack,
             int packedLight,
             float partialTicks) {
-        // A Gecko renderer may delegate at runtime to SkeletonRenderer,
-        // ZombieRenderer, or another HumanoidModel renderer. In that case the
-        // event's actual source renderer is authoritative: using the pre-baked
-        // Gecko mesh with its vanilla texture produces broken UVs, and Gecko
-        // layer replay cannot see the delegate's HumanoidArmorLayer. Reuse EF's
-        // normal humanoid renderer contract for this invocation instead.
         if (renderHumanoidDelegateIfPresent(
                 entity,
                 entitypatch,
@@ -109,79 +92,68 @@ public final class SpecialStateGeckoRenderer extends PatchedEntityRenderer<
         int overlay = OverlayTexture.pack(0, OverlayTexture.v(entity.hurtTime > 5));
 
         poseStack.pushPose();
+        try {
+            this.mulPoseStack(poseStack, armature, entity, entitypatch, partialTicks);
+            this.setArmaturePose(entitypatch, armature, partialTicks);
 
-        // Epic Fight's GeckoLib compatibility invokes patched rendering from
-        // GeoRenderEvent.Entity.Pre. GeckoLib fires that event after the source
-        // renderer's preRender() hook, so renderer-side presentation transforms
-        // (for example Iron's KeeperRenderer scale(1.3)) are already present on
-        // this incoming PoseStack. Replaying preRender/scale here would apply the
-        // presentation scale twice (1.3 * 1.3 for the Ancient Knight).
-        this.mulPoseStack(poseStack, armature, entity, entitypatch, partialTicks);
-        this.setArmaturePose(entitypatch, armature, partialTicks);
+            SkinnedMesh runtimeMesh = this.mesh.get();
 
-        SkinnedMesh runtimeMesh = this.mesh.get();
-
-        float baseAlpha = entity.isInvisibleTo(mc.player) ? 0.15F : 1.0F;
-        runtimeMesh.draw(
-                poseStack,
-                buffer,
-                RenderType.entityCutoutNoCull(textureLocation),
-                packedLight,
-                1.0F,
-                1.0F,
-                1.0F,
-                baseAlpha,
-                overlay,
-                armature,
-                armature.getPoseMatrices()
-        );
-
-        if (mc.shouldEntityAppearGlowing(entity)) {
+            float baseAlpha = entity.isInvisibleTo(mc.player) ? 0.15F : 1.0F;
             runtimeMesh.draw(
                     poseStack,
                     buffer,
-                    RenderType.outline(textureLocation),
+                    RenderType.entityCutoutNoCull(textureLocation),
                     packedLight,
                     1.0F,
                     1.0F,
                     1.0F,
-                    1.0F,
+                    baseAlpha,
                     overlay,
                     armature,
                     armature.getPoseMatrices()
             );
+
+            if (mc.shouldEntityAppearGlowing(entity)) {
+                runtimeMesh.draw(
+                        poseStack,
+                        buffer,
+                        RenderType.outline(textureLocation),
+                        packedLight,
+                        1.0F,
+                        1.0F,
+                        1.0F,
+                        1.0F,
+                        overlay,
+                        armature,
+                        armature.getPoseMatrices()
+                );
+            }
+
+            SpecialRenderHooks.beginGeckoArmorReplay();
+            try (GeckoArmorSkinnedMeshBridge.FrameScope ignored =
+                         GeckoArmorSkinnedMeshBridge.openFrame(
+                                 entity,
+                                 armature,
+                                 this.skeleton,
+                                 poseStack)) {
+                GeckoAttachmentBridge.syncAndRenderLayers(
+                        entity,
+                        entitypatch,
+                        renderer,
+                        buffer,
+                        poseStack,
+                        packedLight,
+                        overlay,
+                        partialTicks
+                );
+            } finally {
+                SpecialRenderHooks.endGeckoArmorReplay();
+            }
+
+            GeckoPostRenderMatrixOverride.armTorsoFromEpicFight(entity, entitypatch, renderer);
+        } finally {
+            poseStack.popPose();
         }
-
-        // Gecko's body render is cancelled by Epic Fight while overrideRender()
-        // is active, so GeoRenderLayer callbacks still need replay. The frame
-        // supplies the exact same root PoseStack + armature that drew the body;
-        // ItemArmorGeoLayer's mixin can therefore replace GeoArmorRenderer output
-        // with an EF-skinned armor mesh without reverse-projecting source bones.
-        try (GeckoArmorSkinnedMeshBridge.FrameScope ignored =
-                     GeckoArmorSkinnedMeshBridge.openFrame(
-                             entity,
-                             armature,
-                             this.skeleton,
-                             poseStack)) {
-            GeckoAttachmentBridge.syncAndRenderLayers(
-                    entity,
-                    entitypatch,
-                    renderer,
-                    buffer,
-                    poseStack,
-                    packedLight,
-                    overlay,
-                    partialTicks
-            );
-        }
-
-        // Some Gecko renderers draw attachments after their super.render()
-        // returns instead of using GeoRenderLayer. Queue the exact Chest skin
-        // matrix + authored semantic Chest source local bind for that immediate
-        // post-render call.
-        GeckoPostRenderMatrixOverride.armTorsoFromEpicFight(entity, entitypatch, renderer);
-
-        poseStack.popPose();
     }
 
     private boolean renderHumanoidDelegateIfPresent(
@@ -206,7 +178,7 @@ public final class SpecialStateGeckoRenderer extends PatchedEntityRenderer<
         fallback.render(
                 entity,
                 lightweightPatch,
-                (LivingEntityRenderer)livingRenderer,
+                (LivingEntityRenderer) livingRenderer,
                 buffer,
                 poseStack,
                 packedLight,

@@ -1,6 +1,5 @@
 package dev.nire9734.epicfightposture.compat.humanoid.client;
 
-import dev.nire9734.epicfightposture.client.FrameSpikeDiagnostics;
 import net.minecraft.client.model.EntityModel;
 import net.minecraft.client.model.HierarchicalModel;
 import net.minecraft.client.model.geom.ModelPart;
@@ -33,12 +32,7 @@ public final class SourceModelPreparation {
         }
 
         List<PartState> saved = save(model);
-        long startedNs = FrameSpikeDiagnostics.startTimedSection();
-        try {
-            prepare(entity, model, partialTicks);
-        } finally {
-            FrameSpikeDiagnostics.finishSourceModelPrepare(startedNs);
-        }
+        prepare(entity, model, partialTicks);
         return new Scope(saved, true);
     }
 

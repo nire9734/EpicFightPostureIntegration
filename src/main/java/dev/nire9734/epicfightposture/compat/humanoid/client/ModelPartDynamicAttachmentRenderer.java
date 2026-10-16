@@ -1,7 +1,6 @@
 package dev.nire9734.epicfightposture.compat.humanoid.client;
 
 import com.mojang.blaze3d.vertex.PoseStack;
-import dev.nire9734.epicfightposture.client.FrameSpikeDiagnostics;
 import net.minecraft.client.model.HierarchicalModel;
 import net.minecraft.client.model.geom.ModelPart;
 import net.minecraft.client.renderer.MultiBufferSource;
@@ -63,33 +62,27 @@ public final class ModelPartDynamicAttachmentRenderer {
             return;
         }
 
-        long startedNs = FrameSpikeDiagnostics.startTimedSection();
-        try {
-            ModelPart root = hierarchical.root();
-            RenderType renderType = RenderType.entityCutoutNoCull(texture);
-            var poseMatrices = armature.getPoseMatrices();
+        ModelPart root = hierarchical.root();
+        RenderType renderType = RenderType.entityCutoutNoCull(texture);
+        var poseMatrices = armature.getPoseMatrices();
 
-            for (ModelPartAttachmentPlan.Entry entry : plan.entries()) {
-                if (!isOwnGeometryVisible(root, entry.path())) {
-                    continue;
-                }
-                FrameSpikeDiagnostics.recordRuntimeCpuDraw();
-                entry.mesh().draw(
-                        poseStack,
-                        buffer,
-                        renderType,
-                        packedLight,
-                        1.0F,
-                        1.0F,
-                        1.0F,
-                        1.0F,
-                        overlay,
-                        armature,
-                        poseMatrices
-                );
+        for (ModelPartAttachmentPlan.Entry entry : plan.entries()) {
+            if (!isOwnGeometryVisible(root, entry.path())) {
+                continue;
             }
-        } finally {
-            FrameSpikeDiagnostics.finishAttachmentRender(startedNs);
+            entry.mesh().draw(
+                    poseStack,
+                    buffer,
+                    renderType,
+                    packedLight,
+                    1.0F,
+                    1.0F,
+                    1.0F,
+                    1.0F,
+                    overlay,
+                    armature,
+                    poseMatrices
+            );
         }
     }
 

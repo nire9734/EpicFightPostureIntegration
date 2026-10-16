@@ -1,7 +1,6 @@
 package dev.nire9734.epicfightposture.compat.humanoid.client;
 
 import com.mojang.blaze3d.vertex.PoseStack;
-import dev.nire9734.epicfightposture.client.FrameSpikeDiagnostics;
 import dev.nire9734.epicfightposture.compat.humanoid.skeleton.HumanoidSkeletonDescriptor;
 import dev.nire9734.epicfightposture.mixin.client.LivingEntityRendererScaleInvoker;
 import net.minecraft.client.Minecraft;
@@ -61,95 +60,88 @@ public final class SpecialStateLionfishRenderer extends PatchedEntityRenderer<
             PoseStack poseStack,
             int packedLight,
             float partialTicks) {
-        long startedNs = FrameSpikeDiagnostics.startTimedSection();
+        super.render(entity, entitypatch, renderer, buffer, poseStack, packedLight, partialTicks);
+
+        Minecraft minecraft = Minecraft.getInstance();
+        ResourceLocation texture = renderer.getTextureLocation(entity);
+        Armature armature = entitypatch.getArmature();
+        int overlay = OverlayTexture.pack(0, OverlayTexture.v(entity.hurtTime > 5));
+
+        poseStack.pushPose();
         try {
-            super.render(entity, entitypatch, renderer, buffer, poseStack, packedLight, partialTicks);
+            this.mulPoseStack(poseStack, armature, entity, entitypatch, partialTicks);
 
-            Minecraft minecraft = Minecraft.getInstance();
-            ResourceLocation texture = renderer.getTextureLocation(entity);
-            Armature armature = entitypatch.getArmature();
-            int overlay = OverlayTexture.pack(0, OverlayTexture.v(entity.hurtTime > 5));
+            if (renderer instanceof LivingEntityRenderer<?, ?> livingRenderer
+                    && livingRenderer instanceof LivingEntityRendererScaleInvoker invoker) {
+                invoker.efpi$invokeScale(entity, poseStack, partialTicks);
+            }
 
-            poseStack.pushPose();
-            try {
-                this.mulPoseStack(poseStack, armature, entity, entitypatch, partialTicks);
+            this.setArmaturePose(entitypatch, armature, partialTicks);
+            SkinnedMesh runtimeMesh = this.mesh.get();
+            float alpha = entity.isInvisibleTo(minecraft.player) ? 0.15F : 1.0F;
+            RenderType bodyRenderType = RenderType.entityCutoutNoCull(texture);
 
-                if (renderer instanceof LivingEntityRenderer<?, ?> livingRenderer
-                        && livingRenderer instanceof LivingEntityRendererScaleInvoker invoker) {
-                    invoker.efpi$invokeScale(entity, poseStack, partialTicks);
-                }
+            runtimeMesh.draw(
+                    poseStack,
+                    buffer,
+                    bodyRenderType,
+                    packedLight,
+                    1.0F, 1.0F, 1.0F, alpha,
+                    overlay,
+                    armature,
+                    armature.getPoseMatrices()
+            );
 
-                this.setArmaturePose(entitypatch, armature, partialTicks);
-                SkinnedMesh runtimeMesh = this.mesh.get();
-                float alpha = entity.isInvisibleTo(minecraft.player) ? 0.15F : 1.0F;
-                RenderType bodyRenderType = RenderType.entityCutoutNoCull(texture);
-
-                FrameSpikeDiagnostics.recordRuntimeCpuDraw();
+            if (minecraft.shouldEntityAppearGlowing(entity)) {
                 runtimeMesh.draw(
                         poseStack,
                         buffer,
-                        bodyRenderType,
+                        RenderType.outline(texture),
                         packedLight,
-                        1.0F, 1.0F, 1.0F, alpha,
+                        1.0F, 1.0F, 1.0F, 1.0F,
                         overlay,
                         armature,
                         armature.getPoseMatrices()
                 );
+            }
 
-                if (minecraft.shouldEntityAppearGlowing(entity)) {
-                    FrameSpikeDiagnostics.recordRuntimeCpuDraw();
-                    runtimeMesh.draw(
-                            poseStack,
-                            buffer,
-                            RenderType.outline(texture),
-                            packedLight,
-                            1.0F, 1.0F, 1.0F, 1.0F,
-                            overlay,
-                            armature,
-                            armature.getPoseMatrices()
-                    );
-                }
+            boolean hasAttachments = this.modelPartAttachments != null
+                    && !this.modelPartAttachments.isEmpty();
+            boolean hasLayers = LivingRenderLayerBridge.hasReplayLayers(renderer);
+            if (hasAttachments || hasLayers) {
+                try (SourceModelPreparation.Scope ignored =
+                             SourceModelPreparation.open(entity, renderer, partialTicks)) {
+                    if (hasAttachments) {
+                        ModelPartDynamicAttachmentRenderer.renderPrepared(
+                                this.modelPartAttachments,
+                                entity,
+                                renderer,
+                                buffer,
+                                poseStack,
+                                packedLight,
+                                overlay,
+                                texture,
+                                armature
+                        );
+                    }
 
-                boolean hasAttachments = this.modelPartAttachments != null
-                        && !this.modelPartAttachments.isEmpty();
-                boolean hasLayers = LivingRenderLayerBridge.hasReplayLayers(renderer);
-                if (hasAttachments || hasLayers) {
-                    try (SourceModelPreparation.Scope ignored =
-                                 SourceModelPreparation.open(entity, renderer, partialTicks)) {
-                        if (hasAttachments) {
-                            ModelPartDynamicAttachmentRenderer.renderPrepared(
-                                    this.modelPartAttachments,
-                                    entity,
-                                    renderer,
-                                    buffer,
-                                    poseStack,
-                                    packedLight,
-                                    overlay,
-                                    texture,
-                                    armature
-                            );
-                        }
-
-                        if (hasLayers) {
-                            LivingRenderLayerBridge.replayPrepared(
-                                    entity,
-                                    renderer,
-                                    buffer,
-                                    poseStack,
-                                    packedLight,
-                                    partialTicks,
-                                    armature,
-                                    runtimeMesh,
-                                    this.skeleton
-                            );
-                        }
+                    if (hasLayers) {
+                        LivingRenderLayerBridge.replayPrepared(
+                                entity,
+                                renderer,
+                                buffer,
+                                poseStack,
+                                packedLight,
+                                partialTicks,
+                                armature,
+                                runtimeMesh,
+                                this.skeleton
+                        );
                     }
                 }
-            } finally {
-                poseStack.popPose();
             }
         } finally {
-            FrameSpikeDiagnostics.finishSpecialRender(startedNs);
+            poseStack.popPose();
         }
     }
 

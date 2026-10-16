@@ -4,6 +4,7 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import dev.nire9734.epicfightposture.compat.humanoid.client.GeckoArmorBakeTransformContext;
 import dev.nire9734.epicfightposture.compat.humanoid.client.GeckoArmorSkinnedMeshBridge;
+import dev.nire9734.epicfightposture.compat.humanoid.client.SpecialRenderHooks;
 import net.minecraft.client.model.HumanoidModel;
 import net.minecraft.client.model.geom.ModelPart;
 import net.minecraft.client.renderer.MultiBufferSource;
@@ -86,6 +87,10 @@ public abstract class GeckoItemArmorLayerContextMixin {
             int packedLight,
             int packedOverlay,
             CallbackInfo ci) {
+        if (!SpecialRenderHooks.isGeckoArmorReplayActive()) {
+            return;
+        }
+
         ItemStack armorStack = this.getArmorItemForBone(bone, animatable);
         if (armorStack == null || armorStack.isEmpty()) {
             return;
@@ -117,14 +122,6 @@ public abstract class GeckoItemArmorLayerContextMixin {
             return;
         }
 
-        /*
-         * Gecko normally fits this ModelPart to the currently animated source
-         * bone. Baking that live rotation would double-apply animation once EF
-         * skins the armor, so run the exact fitting routine against the source
-         * bone's initial rotation. This also preserves custom overrides of
-         * getReferenceCubeForModel(). Any ModelPart without reference cubes is
-         * rejected by prepModelPartForRender and falls back to Gecko unchanged.
-         */
         PoseStack fitStack = new PoseStack();
         float rotX = bone.getRotX();
         float rotY = bone.getRotY();
