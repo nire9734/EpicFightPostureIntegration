@@ -53,9 +53,6 @@ public final class VanillaHumanoidClientCompat {
         if (ModList.get().isLoaded("lionfishapi")) {
             HumanoidBackendRegistry.register(LionfishHumanoidClientCompat.INSTANCE);
         }
-        if (ModList.get().isLoaded("azurelib")) {
-            HumanoidBackendRegistry.register(AzureHumanoidClientCompat.INSTANCE);
-        }
 
         HumanoidClientDiscovery.ScanSnapshot scan = HumanoidClientDiscovery.scan(
                 event.getContext().getEntityRenderDispatcher().renderers

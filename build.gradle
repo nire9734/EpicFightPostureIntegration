@@ -53,7 +53,6 @@ dependencies {
     // their classes are only loaded when the corresponding mod is actually present.
     compileOnly fg.deobf("curse.maven:geckolib-388172:8285794")
     compileOnly fg.deobf("curse.maven:lionfish-api-1001614:8095554")
-    compileOnly fg.deobf("curse.maven:azurelib-817423:4812417")
 
     testImplementation platform('org.junit:junit-bom:5.10.3')
     testImplementation 'org.junit.jupiter:junit-jupiter'

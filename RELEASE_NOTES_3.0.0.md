@@ -4,7 +4,7 @@
 
 ## Highlights
 
-- Broader automatic humanoid compatibility across supported ModelPart, GeckoLib, Lionfish/Citadel-style, and AzureLib-backed models.
+- Broader automatic humanoid compatibility across supported ModelPart, GeckoLib, and Lionfish/Citadel-style models.
 - Target-proportioned humanoid retargeting with improved armor, attachment, layer, and special-state rendering behavior.
 - New EHP-aware posture balance: dealt-damage-scaled direct attacks, EHP-scaled parries, shared health/finisher scaling, and constant delayed regeneration.
 - New per-entity maximum-posture overrides.

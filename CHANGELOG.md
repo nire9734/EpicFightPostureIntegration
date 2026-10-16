@@ -6,7 +6,7 @@ Major automatic-compatibility and posture-balance update.
 
 ### Added
 
-- Extended humanoid compatibility for supported ModelPart, GeckoLib, Lionfish/Citadel-style, and AzureLib-backed humanoid layouts.
+- Extended humanoid compatibility for supported ModelPart, GeckoLib, and Lionfish/Citadel-style humanoid layouts.
 - Target-proportioned humanoid retargeting and improved special-state secondary rendering.
 - Per-entity maximum-posture overrides via `posture.overrides.entity_multipliers`.
 - Mod-level automatic-compatibility filtering with `DENYLIST` / `ALLOWLIST`, `mod_denylist`, and `mod_allowlist`.

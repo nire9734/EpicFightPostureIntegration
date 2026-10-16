@@ -11,14 +11,14 @@ EFPI preserves the source mob's normal AI and ordinary rendering. Automatic comp
 - Epic Fight 20.14.17 through compatible 20.14.x releases
 - Combat Evolution 2.2.8 through compatible 2.3.x releases
 
-GeckoLib, Lionfish/Citadel-style libraries, AzureLib, Iron's Spells 'n Spellbooks, and L_Ender's Cataclysm are optional compatibility targets, not hard dependencies unless another installed mod requires them.
+GeckoLib, Lionfish/Citadel-style libraries, Iron's Spells 'n Spellbooks, and L_Ender's Cataclysm are optional compatibility targets, not hard dependencies unless another installed mod requires them.
 
 The main 3.0.0 development combination uses Forge 47.4.10, Epic Fight 20.14.17, Combat Evolution 2.3.1, and GeckoLib 4.8.4 when Gecko compatibility is needed.
 
 ## Features
 
 - Server-authoritative posture, posture breaks, and Combat Evolution execution integration.
-- Automatic compatibility for supported vanilla `HumanoidModel`, extended humanoid ModelPart/GeckoLib/Lionfish/AzureLib layouts, and vanilla-style `SpiderModel` entities.
+- Automatic compatibility for supported vanilla `HumanoidModel`, extended humanoid ModelPart/GeckoLib/Lionfish layouts, and vanilla-style `SpiderModel` entities.
 - Target-proportioned humanoid retargeting for posture/execution states while preserving normal mob behavior.
 - Health + Posture HUD.
 - EHP-based maximum posture, dealt-damage-scaled posture pressure, EHP-scaled parries, health-based finisher pressure, and configurable regeneration.
@@ -140,7 +140,7 @@ The cache uses schema version `2`. It is generated state, not a user configurati
 
 3.0.0 intentionally does not migrate older server config or renderer-discovery cache layouts. Back up any values you want to keep, then regenerate the config/cache and reapply desired settings.
 
-The old GeckoLib-only compatibility terminology is replaced by `enable_extended_humanoid_compatibility` for supported ModelPart, GeckoLib, Lionfish, and AzureLib humanoid backends.
+The old GeckoLib-only compatibility terminology is replaced by `enable_extended_humanoid_compatibility` for supported ModelPart, GeckoLib, and Lionfish humanoid backends.
 
 ## Client configuration
 
