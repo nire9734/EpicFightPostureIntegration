@@ -44,7 +44,7 @@ public final class PostureServerConfig {
     public static final ForgeConfigSpec.DoubleValue REGEN_RATE_PERCENT;
     public static final ForgeConfigSpec.ConfigValue<List<? extends String>> ENTITY_BLACKLIST;
     public static final ForgeConfigSpec.BooleanValue ENABLE_VANILLA_HUMANOID_COMPATIBILITY;
-    public static final ForgeConfigSpec.BooleanValue ENABLE_GECKOLIB_HUMANOID_COMPATIBILITY;
+    public static final ForgeConfigSpec.BooleanValue ENABLE_EXTENDED_HUMANOID_COMPATIBILITY;
     public static final ForgeConfigSpec.BooleanValue ENABLE_VANILLA_SPIDER_COMPATIBILITY;
     public static final ForgeConfigSpec SPEC;
 
@@ -158,7 +158,7 @@ public final class PostureServerConfig {
                         "Default: true. Restart the server after changing this option."
                 )
                 .define("enable_vanilla_humanoid_compatibility", true);
-        ENABLE_GECKOLIB_HUMANOID_COMPATIBILITY = BUILDER
+        ENABLE_EXTENDED_HUMANOID_COMPATIBILITY = BUILDER
                 .comment(
                         "Enable EFPI's automatic compatibility for supported extended humanoid model backends, including ModelPart, GeckoLib, Lionfish, and AzureLib.",
                         "Default: true. Restart the server after changing this option."
@@ -229,24 +229,6 @@ public final class PostureServerConfig {
         return REGEN_RATE_PERCENT.get().floatValue() / 100.0F;
     }
 
-    // Internal compatibility adapters: the runtime still asks for health anchors,
-    // but all anchors intentionally resolve to the same constant regeneration rate.
-    public static float postureRegenFullHealthFractionPerSecond() {
-        return postureRegenFractionPerSecond();
-    }
-
-    public static float postureRegen75HealthFractionPerSecond() {
-        return postureRegenFractionPerSecond();
-    }
-
-    public static float postureRegen50HealthFractionPerSecond() {
-        return postureRegenFractionPerSecond();
-    }
-
-    public static float postureRegen25HealthFractionPerSecond() {
-        return postureRegenFractionPerSecond();
-    }
-
     public static float minimumPosture() {
         Snapshot snapshot = effectiveClientSnapshot();
         return (snapshot != null ? snapshot.minimumPosture() : MINIMUM_POSTURE.get()).floatValue();
@@ -264,11 +246,11 @@ public final class PostureServerConfig {
                 : ENABLE_VANILLA_HUMANOID_COMPATIBILITY.get();
     }
 
-    public static boolean geckoLibHumanoidCompatibilityEnabled() {
+    public static boolean extendedHumanoidCompatibilityEnabled() {
         Snapshot snapshot = effectiveClientSnapshot();
         return snapshot != null
-                ? snapshot.enableGeckoLibHumanoidCompatibility()
-                : ENABLE_GECKOLIB_HUMANOID_COMPATIBILITY.get();
+                ? snapshot.enableExtendedHumanoidCompatibility()
+                : ENABLE_EXTENDED_HUMANOID_COMPATIBILITY.get();
     }
 
     public static boolean vanillaSpiderCompatibilityEnabled() {
@@ -308,7 +290,7 @@ public final class PostureServerConfig {
                 USE_ARMOR_SCALING.get(),
                 blacklist,
                 ENABLE_VANILLA_HUMANOID_COMPATIBILITY.get(),
-                ENABLE_GECKOLIB_HUMANOID_COMPATIBILITY.get(),
+                ENABLE_EXTENDED_HUMANOID_COMPATIBILITY.get(),
                 ENABLE_VANILLA_SPIDER_COMPATIBILITY.get()
         );
     }
@@ -390,7 +372,7 @@ public final class PostureServerConfig {
             boolean useArmorScaling,
             Set<ResourceLocation> entityBlacklist,
             boolean enableVanillaHumanoidCompatibility,
-            boolean enableGeckoLibHumanoidCompatibility,
+            boolean enableExtendedHumanoidCompatibility,
             boolean enableVanillaSpiderCompatibility) {
         public Snapshot {
             globalMultiplier = globalMultiplier == null ? 1.0D : globalMultiplier;

@@ -29,7 +29,7 @@ public final class ServerSettingsSyncPacket {
         buf.writeDouble(snapshot.minimumPosture());
         buf.writeBoolean(snapshot.useArmorScaling());
         buf.writeBoolean(snapshot.enableVanillaHumanoidCompatibility());
-        buf.writeBoolean(snapshot.enableGeckoLibHumanoidCompatibility());
+        buf.writeBoolean(snapshot.enableExtendedHumanoidCompatibility());
         buf.writeBoolean(snapshot.enableVanillaSpiderCompatibility());
 
         Set<ResourceLocation> blacklist = snapshot.entityBlacklist();
@@ -47,7 +47,7 @@ public final class ServerSettingsSyncPacket {
         double minimumPosture = buf.readDouble();
         boolean useArmorScaling = buf.readBoolean();
         boolean vanillaHumanoid = buf.readBoolean();
-        boolean geckoHumanoid = buf.readBoolean();
+        boolean extendedHumanoid = buf.readBoolean();
         boolean vanillaSpider = buf.readBoolean();
 
         int blacklistCount = buf.readVarInt();
@@ -65,7 +65,7 @@ public final class ServerSettingsSyncPacket {
                 useArmorScaling,
                 Set.copyOf(blacklist),
                 vanillaHumanoid,
-                geckoHumanoid,
+                extendedHumanoid,
                 vanillaSpider
         ));
     }

@@ -10,9 +10,9 @@ import net.minecraftforge.network.PacketDistributor;
 import net.minecraftforge.network.simple.SimpleChannel;
 
 public final class BridgeNetwork {
-    // Public 1.1.0 used protocol 1. The 2.x packet contract remains protocol 2,
-    // including renderer discovery and server-settings synchronization packets.
-    private static final String VERSION = "2";
+    // Protocol 3 is the clean 2.1.0 contract. It intentionally does not accept
+    // clients using the earlier renderer-discovery/server-settings packet contract.
+    private static final String VERSION = "3";
     private static SimpleChannel channel;
     private static boolean initialized;
 

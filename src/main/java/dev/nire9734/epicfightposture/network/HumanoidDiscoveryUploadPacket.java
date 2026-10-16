@@ -21,7 +21,7 @@ public final class HumanoidDiscoveryUploadPacket {
     private final String environmentFingerprint;
     private final Set<ResourceLocation> inspected;
     private final Set<ResourceLocation> vanillaHumanoid;
-    private final Set<ResourceLocation> geckoLibHumanoid;
+    private final Set<ResourceLocation> extendedHumanoid;
     private final Set<ResourceLocation> vanillaSpider;
 
     public HumanoidDiscoveryUploadPacket(
@@ -29,13 +29,13 @@ public final class HumanoidDiscoveryUploadPacket {
             String environmentFingerprint,
             Set<ResourceLocation> inspected,
             Set<ResourceLocation> vanillaHumanoid,
-            Set<ResourceLocation> geckoLibHumanoid,
+            Set<ResourceLocation> extendedHumanoid,
             Set<ResourceLocation> vanillaSpider) {
         this.nonce = nonce;
         this.environmentFingerprint = environmentFingerprint == null ? "" : environmentFingerprint;
         this.inspected = Set.copyOf(inspected);
         this.vanillaHumanoid = Set.copyOf(vanillaHumanoid);
-        this.geckoLibHumanoid = Set.copyOf(geckoLibHumanoid);
+        this.extendedHumanoid = Set.copyOf(extendedHumanoid);
         this.vanillaSpider = Set.copyOf(vanillaSpider);
     }
 
@@ -44,7 +44,7 @@ public final class HumanoidDiscoveryUploadPacket {
         buf.writeUtf(packet.environmentFingerprint, FINGERPRINT_LENGTH);
         writeIds(buf, packet.inspected);
         writeIds(buf, packet.vanillaHumanoid);
-        writeIds(buf, packet.geckoLibHumanoid);
+        writeIds(buf, packet.extendedHumanoid);
         writeIds(buf, packet.vanillaSpider);
     }
 
@@ -53,14 +53,14 @@ public final class HumanoidDiscoveryUploadPacket {
         String fingerprint = buf.readUtf(FINGERPRINT_LENGTH);
         Set<ResourceLocation> inspected = readIds(buf);
         Set<ResourceLocation> vanillaHumanoid = readIds(buf);
-        Set<ResourceLocation> geckoLibHumanoid = readIds(buf);
+        Set<ResourceLocation> extendedHumanoid = readIds(buf);
         Set<ResourceLocation> vanillaSpider = readIds(buf);
         return new HumanoidDiscoveryUploadPacket(
                 nonce,
                 fingerprint,
                 inspected,
                 vanillaHumanoid,
-                geckoLibHumanoid,
+                extendedHumanoid,
                 vanillaSpider
         );
     }
@@ -76,7 +76,7 @@ public final class HumanoidDiscoveryUploadPacket {
                 packet.environmentFingerprint,
                 packet.inspected,
                 packet.vanillaHumanoid,
-                packet.geckoLibHumanoid,
+                packet.extendedHumanoid,
                 packet.vanillaSpider
         ));
         context.setPacketHandled(true);

@@ -66,15 +66,13 @@ public final class VanillaHumanoidClientCompat {
         Set<EntityType<?>> verifiedSpider = registerVanillaSpiders(event, scan, alreadyPatched);
         Set<EntityType<?>> verifiedPreparedHumanoids = HumanoidBackendRegistry.registerRenderers(
                 event,
-                scan.externalHumanoidTypes()
+                scan.extendedHumanoidTypes()
         );
 
         Set<ResourceLocation> verifiedVanillaIds = idsOf(verifiedVanilla);
         Set<ResourceLocation> verifiedPreparedIds = idsOf(verifiedPreparedHumanoids);
         Set<ResourceLocation> verifiedSpiderIds = idsOf(verifiedSpider);
 
-        // The dedicated-server protocol still uses the legacy GeckoLib field name for
-        // the prepared humanoid bucket. Its semantics are backend-neutral.
         VanillaHumanoidCompat.replaceDetectedCache(
                 verifiedVanillaIds,
                 verifiedPreparedIds,

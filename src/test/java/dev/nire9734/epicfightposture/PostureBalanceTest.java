@@ -6,16 +6,12 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class PostureBalanceTest {
     private static final float EPSILON = 0.0001F;
-    private static final float LOW_REGEN = 0.01F;
-    private static final float MID_REGEN = 0.03F;
-    private static final float HIGH_REGEN = 0.06F;
-    private static final float FULL_REGEN = 0.08F;
 
     @Test
     void parryDamageUsesConfiguredFractionWithHalfPointMinimum() {
-        assertEquals(0.5F, PostureBalance.parryDamage(3.2F, 0.06F), EPSILON);
-        assertEquals(0.6F, PostureBalance.parryDamage(10.0F, 0.06F), EPSILON);
-        assertEquals(6.0F, PostureBalance.parryDamage(100.0F, 0.06F), EPSILON);
+        assertEquals(0.5F, PostureBalance.parryDamage(3.2F, 0.08F), EPSILON);
+        assertEquals(0.8F, PostureBalance.parryDamage(10.0F, 0.08F), EPSILON);
+        assertEquals(8.0F, PostureBalance.parryDamage(100.0F, 0.08F), EPSILON);
     }
 
     @Test
@@ -88,28 +84,6 @@ class PostureBalanceTest {
         assertEquals(0, PostureBalance.regenDelayTicks(Float.NaN));
     }
 
-    @Test
-    void regenCurveMatchesHealthAnchors() {
-        assertEquals(FULL_REGEN, regen(1.00F), EPSILON);
-        assertEquals(HIGH_REGEN, regen(0.75F), EPSILON);
-        assertEquals(MID_REGEN, regen(0.50F), EPSILON);
-        assertEquals(LOW_REGEN, regen(0.25F), EPSILON);
-        assertEquals(LOW_REGEN, regen(0.00F), EPSILON);
-    }
-
-    @Test
-    void regenCurveInterpolatesContinuouslyBetweenAnchors() {
-        assertEquals(0.07F, regen(0.875F), EPSILON);
-        assertEquals(0.045F, regen(0.625F), EPSILON);
-        assertEquals(0.02F, regen(0.375F), EPSILON);
-    }
-
-    @Test
-    void regenCurveClampsOutOfRangeHealth() {
-        assertEquals(FULL_REGEN, regen(2.0F), EPSILON);
-        assertEquals(LOW_REGEN, regen(-1.0F), EPSILON);
-    }
-
     private static float damageMultiplier(float healthFraction) {
         return PostureBalance.healthPostureDamageMultiplier(
                 healthFraction,
@@ -128,16 +102,6 @@ class PostureBalanceTest {
                 effectiveHealth,
                 40.0F,
                 200.0F
-        );
-    }
-
-    private static float regen(float healthFraction) {
-        return PostureBalance.regenFractionPerSecond(
-                healthFraction,
-                LOW_REGEN,
-                MID_REGEN,
-                HIGH_REGEN,
-                FULL_REGEN
         );
     }
 }

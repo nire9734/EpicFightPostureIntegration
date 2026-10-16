@@ -17,10 +17,10 @@ public final class CommonEvents {
     public static void onLivingDamage(LivingDamageEvent event) {
         LivingEntity target = event.getEntity();
         Entity offender = GuardSkill.getOffender(event.getSource());
-        if (!(offender instanceof Player player) || target == player) {
+        if (!(offender instanceof Player) || target == offender) {
             return;
         }
-        PostureManager.onPlayerDamage(target, player, event.getAmount(), event.getSource());
+        PostureManager.onPlayerDamage(target, event.getAmount(), event.getSource());
     }
 
     @SubscribeEvent

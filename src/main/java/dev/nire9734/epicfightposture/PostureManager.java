@@ -16,7 +16,6 @@ import yesman.epicfight.api.asset.AssetAccessor;
 import yesman.epicfight.model.armature.HumanoidArmature;
 import yesman.epicfight.world.capabilities.EpicFightCapabilities;
 import yesman.epicfight.world.capabilities.entitypatch.LivingEntityPatch;
-import yesman.epicfight.world.capabilities.entitypatch.player.PlayerPatch;
 import yesman.epicfight.world.damagesource.StunType;
 
 import java.util.Map;
@@ -36,7 +35,7 @@ public final class PostureManager {
 
     private static final Map<LivingEntity, State> STATES = new WeakHashMap<>();
 
-    public static void onPlayerDamage(LivingEntity target, Player player, float damageAmount, DamageSource source) {
+    public static void onPlayerDamage(LivingEntity target, float damageAmount, DamageSource source) {
         if (target == null || damageAmount <= 0.0F || !RuntimeAccess.isServerEntity(target)) {
             return;
         }
@@ -57,7 +56,7 @@ public final class PostureManager {
         damagePosture(target, patch, postureDamage);
     }
 
-    public static void onParried(LivingEntity target, PlayerPatch<?> playerPatch) {
+    public static void onParried(LivingEntity target) {
         if (target == null || !RuntimeAccess.isServerEntity(target)) {
             return;
         }
@@ -161,19 +160,7 @@ public final class PostureManager {
             return true;
         }
 
-        float maxHealth = finiteOr(entity.getMaxHealth(), EHP_REFERENCE_HEALTH);
-        if (maxHealth <= 0.0F) {
-            maxHealth = EHP_REFERENCE_HEALTH;
-        }
-        float currentHealth = finiteOr(entity.getHealth(), maxHealth);
-        float healthFraction = clamp(currentHealth / maxHealth, 0.0F, 1.0F);
-        float regenPerTick = state.max * PostureBalance.regenFractionPerSecond(
-                healthFraction,
-                PostureServerConfig.postureRegen25HealthFractionPerSecond(),
-                PostureServerConfig.postureRegen50HealthFractionPerSecond(),
-                PostureServerConfig.postureRegen75HealthFractionPerSecond(),
-                PostureServerConfig.postureRegenFullHealthFractionPerSecond()
-        ) / 20.0F;
+        float regenPerTick = state.max * PostureServerConfig.postureRegenFractionPerSecond() / 20.0F;
         state.current = Math.min(state.max, state.current + regenPerTick);
         return true;
     }

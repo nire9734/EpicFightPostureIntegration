@@ -162,13 +162,13 @@ public final class HumanoidBackendRegistry {
                 runtimeReady = armatureOverride == null
                         || VanillaHumanoidCompat.refreshRuntimeArmature(
                                 entityType,
-                                VanillaHumanoidCompat.CompatibilityKind.GECKOLIB_HUMANOID,
+                                VanillaHumanoidCompat.CompatibilityKind.EXTENDED_HUMANOID,
                                 armatureOverride
                         );
             } else {
                 runtimeReady = VanillaHumanoidCompat.registerDiscoveredAtRuntime(
                         entityType,
-                        VanillaHumanoidCompat.CompatibilityKind.GECKOLIB_HUMANOID,
+                        VanillaHumanoidCompat.CompatibilityKind.EXTENDED_HUMANOID,
                         armatureOverride
                 );
             }

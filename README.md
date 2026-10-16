@@ -24,7 +24,7 @@ The mod is designed to preserve the original mob implementation. It does **not**
 - Supports `CustomExecuteEntity` implementations from Combat Evolution
 - Displays health and posture together in the combat HUD
 - Uses server-authoritative multiplayer posture state and server policy synchronization
-- Includes posture scaling, blacklist, and automatic-compatibility server settings
+- Includes posture scaling, finisher-curve, regeneration, blacklist, and automatic-compatibility server settings
 - Includes a client-side Combat Evolution execution sound volume setting
 
 ## Requirements
@@ -49,9 +49,33 @@ The main tested development combination for 2.1.0 is:
 
 ## How Posture Works
 
-Each eligible entity receives a separate posture value. Maximum posture is calculated primarily from maximum health and, when enabled, armor and armor toughness.
+Each eligible entity receives a separate posture value. Maximum posture is based on effective health (EHP), using maximum health and, when enabled, armor and armor toughness. The default reference is 3.2 posture at 20 EHP, with sublinear EHP scaling:
 
-Epic Fight attacks deal posture damage based on Impact. Successful parries also damage the attacker's posture, allowing defensive play to create posture breaks without first reducing health.
+```text
+maximum posture = 3.2 * (EHP / 20)^0.7
+```
+
+The configured global multiplier and minimum posture are then applied.
+
+Direct Epic Fight attacks use the attack's real Impact value. Their posture damage is additionally scaled by final dealt damage so player damage scaling and target EHP scaling remain comparable:
+
+```text
+attack posture scale = (dealt damage / 8)^0.7
+```
+
+The default Impact-derived posture multiplier is `0.55`. Eligible non-Epic-Fight direct player attacks use a bounded damage-derived fallback Impact before the same dealt-damage scaling is applied.
+
+Successful Epic Fight-style parries damage the attacker's posture. By default the raw parry value is 8% of the target's maximum posture, with a minimum raw value of 0.5.
+
+Both direct-hit and parry posture damage then use the health/EHP finisher modifier. For a sufficiently high-EHP target, the default health curve is:
+
+```text
+multiplier = 0.25 + 0.75 * (1 - health fraction)^2
+```
+
+That gives approximately x0.25 posture damage at full health, x0.4375 at 50% health, and x1.0 near zero health. The curve is deliberately weakened for lower-EHP mobs: at 40 EHP or below it is disabled and posture damage stays at x1.0; between 40 and 200 EHP its strength is smoothly interpolated; at 200 EHP or above the full curve is applied.
+
+Ordinary posture regeneration starts after 10 seconds without posture damage or a parry and then restores 2% of maximum posture per second. This rate is constant and does not vary with health. Posture-break recovery is a separate state and is not controlled by the ordinary regeneration rate.
 
 When posture reaches zero, EFPI attempts to apply the entity's neutralize/guard-break animation. During execution, posture remains locked at zero. If the entity is not executed, it enters recovery and returns to normal behavior.
 
@@ -163,57 +187,53 @@ Compatibility with every third-party renderer, custom layer, armor implementatio
 
 ## Server Configuration
 
-Since 2.0.0, EFPI stores server policy globally for the Minecraft installation/server rather than separately inside each world.
+EFPI stores server policy globally for the Minecraft installation/server at:
 
 ```text
 config/epicfight_posture_integration/server.toml
 ```
 
-Example:
+The 2.1.0 defaults are:
 
 ```toml
 [posture]
-
-# Global maximum posture multiplier.
-# 1.0 = default
 global_multiplier = 1.0
-
-# Minimum maximum posture an eligible mob can have.
+posture_damage_multiplier = 0.55
+attack_damage_reference = 8.0
+attack_damage_scaling_exponent = 0.7
+parry_posture_percent = 8.0
+full_health_posture_damage_multiplier = 0.25
+zero_health_posture_damage_multiplier = 1.0
+health_posture_curve_exponent = 2.0
 minimum_posture = 1.0
-
-# Whether armor and armor toughness affect maximum posture.
 use_armor_scaling = true
-
-# Entities excluded from EFPI posture and automatic compatibility behavior.
-# Use namespace:entity IDs.
 entity_blacklist = []
+health_scaling_ehp_start = 40.0
+health_scaling_ehp_end = 200.0
+
+[posture.regeneration]
+delay_seconds = 10.0
+percent_per_second = 2.0
 
 [compatibility]
-
-# Automatic compatibility for Minecraft HumanoidModel entities.
 enable_vanilla_humanoid_compatibility = true
-
-# Automatic compatibility for conservatively prepared custom/external humanoid
-# model backends. The legacy key name is retained for config compatibility.
-enable_geckolib_humanoid_compatibility = true
-
-# Automatic compatibility for unpatched Minecraft SpiderModel entities.
+enable_extended_humanoid_compatibility = true
 enable_vanilla_spider_compatibility = true
 ```
 
-All three automatic compatibility options default to `true`.
+`enable_extended_humanoid_compatibility` controls the shared prepared-humanoid bucket used by supported ModelPart, GeckoLib, Lionfish, and AzureLib backends.
 
-The `enable_geckolib_humanoid_compatibility` key retains its 2.0.0 name for configuration compatibility, but in 2.1.0 it is the server switch used by the prepared external/custom humanoid compatibility bucket, including supported GeckoLib, ModelPart, Lionfish, and Azure-backed targets.
-
-On a dedicated server, this file is authoritative. Relevant values, including compatibility switches and the entity blacklist, are synchronized to clients when they join. A client's local `server.toml` does not override the remote server. In single-player, the same global file is used by the integrated server.
+On a dedicated server, this file is authoritative. Relevant compatibility policy values and the entity blacklist are synchronized to clients when they join. A client's local `server.toml` does not override the remote server. In single-player, the same global file is used by the integrated server.
 
 Restart the server after changing an automatic compatibility option so patch ownership is rebuilt consistently.
 
 `entity_blacklist` remains the per-entity override. Blacklisted IDs do not use EFPI posture or active EFPI automatic compatibility behavior.
 
-### Upgrading from 1.1.0
+### Upgrading to 2.1.0
 
-The public 1.1.0 release used Forge's per-world server config location. Version 2.0.0 moved server policy to the global file above. If you customized the old per-world `serverconfig/epicfight_posture_integration-server.toml`, copy those values into the global `server.toml` once after upgrading.
+2.1.0 deliberately does not retain migration shims for older EFPI configuration or renderer-discovery cache layouts. If upgrading from an older release, back up any settings you want to keep, then delete `config/epicfight_posture_integration/server.toml` and the generated renderer cache before first launch so 2.1.0 can generate the current layout cleanly. Reapply desired settings afterward using the new keys.
+
+The old `enable_geckolib_humanoid_compatibility` switch is replaced by `enable_extended_humanoid_compatibility`.
 
 ## Client Configuration
 
@@ -233,11 +253,11 @@ The **Execution Sound Volume** setting changes only the local player's Combat Ev
 
 ## Multiplayer
 
-Posture state and EFPI server policy are controlled by the server. Clients receive synchronized posture information only for entities they are tracking, plus the server's authoritative EFPI configuration when joining.
+Posture state and EFPI server policy are controlled by the server. Clients receive synchronized posture information only for entities they are tracking, plus the server's authoritative EFPI compatibility policy when joining.
 
 Important state changes such as posture damage, posture breaks, execution start, recovery start, and return to normal are synchronized immediately. Continuous recovery uses reduced-frequency synchronization to avoid unnecessary traffic.
 
-EFPI 2.1.0 continues to use network protocol version `2`, introduced by 2.0.0 for renderer discovery and server-settings synchronization. The public 1.1.0 release used protocol version `1` and is not network-compatible with 2.x. Client and server should use the same EFPI version.
+EFPI 2.1.0 uses network protocol version `3`. Older protocol-2 builds are intentionally rejected; client and server should use the same EFPI version.
 
 ## Dedicated Server Renderer Discovery
 
@@ -266,11 +286,11 @@ Client renderer discovery is not persisted to disk. The client validates registe
 
 The dedicated-server cache uses an environment fingerprint derived from loaded mod IDs and versions. When the server mod environment changes, stale discovery data is discarded instead of being reused blindly.
 
-EFPI 2.1.0 continues to use renderer-discovery cache schema version `1`, introduced in 2.0.0.
+EFPI 2.1.0 uses renderer-discovery cache schema version `2`. Older schema versions are discarded rather than migrated.
 
 ## Cache and Conflict Handling
 
-Vanilla `HumanoidModel`, prepared external/custom humanoid, and vanilla `SpiderModel` targets are stored separately. The dedicated-server protocol retains the legacy Gecko-named prepared-humanoid bucket for compatibility with the 2.0.0 protocol contract.
+Vanilla `HumanoidModel`, extended/prepared humanoid, and vanilla `SpiderModel` targets are stored separately.
 
 On dedicated servers, reports are keyed by client environment fingerprint. If client environments disagree about whether an entity belongs to one of the supported renderer kinds or is unsupported, that entity is placed in the conflict set instead of being automatically enabled.
 

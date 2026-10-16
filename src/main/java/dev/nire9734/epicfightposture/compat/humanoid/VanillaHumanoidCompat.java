@@ -38,7 +38,7 @@ public final class VanillaHumanoidCompat {
 
     public enum CompatibilityKind {
         VANILLA_HUMANOID,
-        GECKOLIB_HUMANOID,
+        EXTENDED_HUMANOID,
         VANILLA_SPIDER
     }
 
@@ -48,7 +48,7 @@ public final class VanillaHumanoidCompat {
                     HumanoidServerDiscoveryStore.bootstrap(HumanoidEnvironmentFingerprint.current());
             cachedDetected = buildKindMap(
                     active.vanillaHumanoid(),
-                    active.geckoLibHumanoid(),
+                    active.extendedHumanoid(),
                     active.vanillaSpider()
             );
         } else {
@@ -249,38 +249,38 @@ public final class VanillaHumanoidCompat {
     /** Stores renderer targets that passed the current client compatibility preparation in memory. */
     public static synchronized void replaceDetectedCache(
             Set<ResourceLocation> vanillaHumanoid,
-            Set<ResourceLocation> geckoLibHumanoid,
+            Set<ResourceLocation> extendedHumanoid,
             Set<ResourceLocation> vanillaSpider) {
-        cachedDetected = buildKindMap(vanillaHumanoid, geckoLibHumanoid, vanillaSpider);
+        cachedDetected = buildKindMap(vanillaHumanoid, extendedHumanoid, vanillaSpider);
     }
 
     private static boolean compatibilityKindEnabled(CompatibilityKind kind) {
         return switch (kind) {
             case VANILLA_HUMANOID -> PostureServerConfig.vanillaHumanoidCompatibilityEnabled();
-            case GECKOLIB_HUMANOID -> PostureServerConfig.geckoLibHumanoidCompatibilityEnabled();
+            case EXTENDED_HUMANOID -> PostureServerConfig.extendedHumanoidCompatibilityEnabled();
             case VANILLA_SPIDER -> PostureServerConfig.vanillaSpiderCompatibilityEnabled();
         };
     }
 
     private static Map<ResourceLocation, CompatibilityKind> buildKindMap(
             Set<ResourceLocation> vanillaHumanoid,
-            Set<ResourceLocation> geckoLibHumanoid,
+            Set<ResourceLocation> extendedHumanoid,
             Set<ResourceLocation> vanillaSpider) {
         Set<ResourceLocation> vanilla = vanillaHumanoid == null ? Set.of() : vanillaHumanoid;
-        Set<ResourceLocation> gecko = geckoLibHumanoid == null ? Set.of() : geckoLibHumanoid;
+        Set<ResourceLocation> extended = extendedHumanoid == null ? Set.of() : extendedHumanoid;
         Set<ResourceLocation> spider = vanillaSpider == null ? Set.of() : vanillaSpider;
 
         Set<ResourceLocation> ambiguous = new HashSet<>();
-        collectOverlap(ambiguous, vanilla, gecko);
+        collectOverlap(ambiguous, vanilla, extended);
         collectOverlap(ambiguous, vanilla, spider);
-        collectOverlap(ambiguous, gecko, spider);
+        collectOverlap(ambiguous, extended, spider);
         if (!ambiguous.isEmpty()) {
             LOGGER.warn("EFPI ignored {} target(s) with ambiguous renderer classification", ambiguous.size());
         }
 
         Map<ResourceLocation, CompatibilityKind> result = new HashMap<>();
         addKind(result, vanilla, ambiguous, CompatibilityKind.VANILLA_HUMANOID);
-        addKind(result, gecko, ambiguous, CompatibilityKind.GECKOLIB_HUMANOID);
+        addKind(result, extended, ambiguous, CompatibilityKind.EXTENDED_HUMANOID);
         addKind(result, spider, ambiguous, CompatibilityKind.VANILLA_SPIDER);
         return Map.copyOf(result);
     }
@@ -311,7 +311,7 @@ public final class VanillaHumanoidCompat {
             CompatibilityKind kind,
             AssetAccessor<? extends Armature> armatureOverride) {
         switch (kind) {
-            case VANILLA_HUMANOID, GECKOLIB_HUMANOID -> {
+            case VANILLA_HUMANOID, EXTENDED_HUMANOID -> {
                 Armatures.registerEntityTypeArmature(
                         entityType,
                         armatureOverride != null ? armatureOverride : Armatures.BIPED
@@ -330,7 +330,7 @@ public final class VanillaHumanoidCompat {
             EntityType<?> entityType,
             CompatibilityKind kind) {
         switch (kind) {
-            case VANILLA_HUMANOID, GECKOLIB_HUMANOID -> {
+            case VANILLA_HUMANOID, EXTENDED_HUMANOID -> {
                 Armatures.registerEntityTypeArmature(entityType, Armatures.BIPED);
                 event.getTypeEntry().put(entityType, ignored -> LightweightHumanoidPatch::new);
             }

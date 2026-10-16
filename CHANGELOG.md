@@ -2,7 +2,7 @@
 
 ## 2.1.0
 
-Generalized humanoid retargeting and special-state rendering reliability update.
+Generalized humanoid retargeting, posture-balance, and special-state rendering reliability update.
 
 ### Added
 
@@ -15,6 +15,9 @@ Generalized humanoid retargeting and special-state rendering reliability update.
 - Added full-model Lionfish layer replay through the already-prepared skinned body mesh when the layer redraws the exact same parent model without changing part visibility.
 - Added a framework-neutral secondary-deformation policy that classifies sampled humanoid geometry as rigid or deformable from canonical Root/Chest, Arm/Hand, and Thigh/Leg skin weights.
 - Added skinned replay for safely analyzable layer-owned Lionfish secondary models, using the primary body's humanoid descriptor for elbow, knee, and spine transitions.
+- Added configurable direct-attack posture scaling from final dealt damage.
+- Added configurable EHP-aware health/finisher posture scaling so low-EHP mobs can use neutral posture vulnerability while high-EHP enemies retain the full low-health finisher curve.
+- Added configurable constant posture regeneration after a delay.
 
 ### Changed
 
@@ -31,6 +34,14 @@ Generalized humanoid retargeting and special-state rendering reliability update.
 - Portable humanoid rig/skeleton code no longer depends on Minecraft `ResourceLocation`; CI now rejects platform/framework imports from those core packages.
 - Epic Fight runtime armature construction was moved out of the portable retargeting package into the runtime Epic Fight compatibility layer.
 - Existing Epic Fight or third-party entity patches continue to take priority over EFPI automatic compatibility.
+- Default parry posture damage is now 8% of target maximum posture, retaining the 0.5 raw minimum.
+- Maximum posture remains EHP-based with the existing 0.7 exponent, while direct attack posture now uses matching `(dealtDamage / 8)^0.7` scaling by default.
+- High-EHP targets now use a quadratic health finisher curve from x0.25 posture damage at full health toward x1.0 at zero health; the curve strength is smoothly reduced from 200 EHP down to neutral at 40 EHP.
+- Ordinary posture regeneration now waits 10 seconds and then restores a constant 2% of maximum posture per second, independent of target health.
+- The shared prepared-humanoid compatibility bucket and config/API terminology now use `extended humanoid` instead of retaining GeckoLib-specific legacy names.
+- The dedicated-server renderer-discovery cache schema is now version `2`, with explicit extended-humanoid field names. Older cache schemas are discarded rather than migrated.
+- Network protocol version is now `3`; older protocol-2 builds are intentionally rejected.
+- 2.1.0 no longer carries config/cache migration shims for older releases or intermediate development builds.
 
 ### Fixed
 
@@ -42,6 +53,7 @@ Generalized humanoid retargeting and special-state rendering reliability update.
 - Fixed Gecko post-render attachment anchoring depending on a literal `torso` source-bone name.
 - Fixed automatic humanoid compatibility overriding existing Epic Fight patches hidden from Epic Fight's public patched-entity list, including Guard Villagers x Epic Fight compatibility.
 - Fixed Illager-style alternate crossed-arm geometry remaining visible or deforming incorrectly during posture-break special rendering.
+- Fixed parry posture detection being dependent on same-priority Epic Fight/Combat Evolution listener ordering by detecting the successful `setParried(true)` transition directly.
 
 ### Compatibility / Requirements
 
@@ -51,8 +63,6 @@ Generalized humanoid retargeting and special-state rendering reliability update.
 - Combat Evolution 2.2.8 through compatible 2.3.x releases; development build target remains 2.3.1
 - GeckoLib remains optional; the development compatibility target is GeckoLib 4.8.4
 - Iron's Spells 'n Spellbooks and L_Ender's Cataclysm remain optional third-party compatibility targets and are not hard dependencies
-
-No posture balance changes are included in 2.1.0.
 
 ## 2.0.0
 

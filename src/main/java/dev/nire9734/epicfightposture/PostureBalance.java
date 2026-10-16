@@ -3,9 +3,6 @@ package dev.nire9734.epicfightposture;
 /** Pure balance math shared by the server posture runtime and unit tests. */
 final class PostureBalance {
     private static final float PARRY_MIN_DAMAGE = 0.5F;
-    private static final float LOW_HEALTH_THRESHOLD = 0.25F;
-    private static final float MID_HEALTH_THRESHOLD = 0.50F;
-    private static final float HIGH_HEALTH_THRESHOLD = 0.75F;
     private static final float DEFAULT_ATTACK_DAMAGE_REFERENCE = 8.0F;
     private static final float DEFAULT_ATTACK_DAMAGE_EXPONENT = 0.7F;
     private static final float DEFAULT_HEALTH_SCALING_EHP_START = 40.0F;
@@ -101,47 +98,6 @@ final class PostureBalance {
             return 0;
         }
         return Math.max(0, Math.round(delaySeconds * 20.0F));
-    }
-
-    /** Returns the fraction of maximum posture regenerated per second at the current health. */
-    static float regenFractionPerSecond(
-            float healthFraction,
-            float lowHealthRegen,
-            float midHealthRegen,
-            float highHealthRegen,
-            float fullHealthRegen) {
-        if (!Float.isFinite(healthFraction)) {
-            healthFraction = 1.0F;
-        }
-
-        float low = sanitizeFraction(lowHealthRegen);
-        float mid = sanitizeFraction(midHealthRegen);
-        float high = sanitizeFraction(highHealthRegen);
-        float full = sanitizeFraction(fullHealthRegen);
-        float health = clamp(healthFraction, 0.0F, 1.0F);
-
-        if (health <= LOW_HEALTH_THRESHOLD) {
-            return low;
-        }
-        if (health <= MID_HEALTH_THRESHOLD) {
-            return interpolate(
-                    low,
-                    mid,
-                    (health - LOW_HEALTH_THRESHOLD) / (MID_HEALTH_THRESHOLD - LOW_HEALTH_THRESHOLD)
-            );
-        }
-        if (health <= HIGH_HEALTH_THRESHOLD) {
-            return interpolate(
-                    mid,
-                    high,
-                    (health - MID_HEALTH_THRESHOLD) / (HIGH_HEALTH_THRESHOLD - MID_HEALTH_THRESHOLD)
-            );
-        }
-        return interpolate(
-                high,
-                full,
-                (health - HIGH_HEALTH_THRESHOLD) / (1.0F - HIGH_HEALTH_THRESHOLD)
-        );
     }
 
     private static float sanitizeFraction(float value) {

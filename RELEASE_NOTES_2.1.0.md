@@ -1,6 +1,6 @@
 # Epic Fight Posture Integration 2.1.0
 
-Version 2.1.0 focuses on safer, more general automatic humanoid compatibility and on keeping framework-owned secondary rendering aligned with Epic Fight's special-state pose.
+Version 2.1.0 focuses on safer, more general automatic humanoid compatibility, keeping framework-owned secondary rendering aligned with Epic Fight's special-state pose, and a substantial posture-balance pass.
 
 Automatic compatibility remains conservative. EFPI does not claim universal humanoid support: models or render paths that cannot be classified and prepared safely are skipped instead of being forced through the BIPED path.
 
@@ -22,6 +22,31 @@ Automatic compatibility remains conservative. EFPI does not claim universal huma
 - Gecko post-render attachment anchoring uses the shared semantic CHEST binding instead of relying on a literal source-bone name.
 - Runtime target-proportioned armature generation fails closed if it cannot be prepared safely instead of falling back to a mismatched canonical BIPED armature.
 - Existing Epic Fight or third-party entity patches continue to take priority over EFPI automatic compatibility.
+- Direct attack posture now scales from both Epic Fight Impact and final dealt damage, using a default `(damage / 8)^0.7` dealt-damage factor.
+- Default parry posture damage is now 8% of the target's maximum posture, with the existing 0.5 raw minimum retained.
+- High-EHP targets use a configurable health-based finisher curve that suppresses posture damage at high HP and approaches full posture damage near zero HP.
+- The finisher curve is EHP-aware: it is disabled at 40 EHP or below, smoothly blended between 40 and 200 EHP, and fully active at 200 EHP or above.
+- Ordinary posture regeneration now waits 10 seconds and then restores a constant 2% of maximum posture per second, independent of target health.
+- Successful parries are detected directly when Epic Fight's attack event is marked parried, avoiding same-priority listener ordering races with Combat Evolution and other addons.
+
+## Posture defaults
+
+The 2.1.0 server defaults are tuned around the following values:
+
+```text
+maximum posture reference: 3.2 at 20 EHP
+maximum posture EHP exponent: 0.7
+Impact posture multiplier: 0.55
+direct attack damage reference: 8.0
+direct attack damage exponent: 0.7
+parry posture percent: 8.0
+full-health posture multiplier at full finisher strength: 0.25
+zero-health posture multiplier: 1.0
+health curve exponent: 2.0
+EHP finisher blend: 40 -> 200
+regen delay: 10 seconds
+regen rate: 2% maximum posture per second
+```
 
 ## Tested compatibility targets
 
@@ -50,6 +75,9 @@ Iron's Spells 'n Spellbooks and L_Ender's Cataclysm are optional compatibility t
 - Secondary geometry is only converted to deformable rendering when EFPI can obtain and classify its geometry safely. Opaque custom callbacks, item/effect layers, and other render contracts without safely extractable geometry retain their existing rigid or source-compatible fallback behavior.
 - GeckoLib `GeoArmorRenderer` armor keeps its existing per-vertex skinned path. Arbitrary `GeoRenderLayer` callbacks are not treated as generic meshes when their rendered geometry cannot be determined safely.
 - Existing Epic Fight patches supplied by Epic Fight or another compatibility addon take priority and are not replaced by EFPI.
-- No posture balance changes are included in 2.1.0.
+- The prepared custom/model-library compatibility bucket now uses explicit `extended humanoid` terminology instead of retaining GeckoLib-specific legacy names.
+- Network protocol version is `3`; older protocol-2 builds are intentionally rejected.
+- Dedicated-server renderer discovery uses cache schema version `2`; older cache schemas are discarded rather than migrated.
+- 2.1.0 does not retain config/cache migration shims for older releases or intermediate development builds. Regenerate the server config and renderer cache when upgrading if necessary.
 
 For configuration, dedicated-server renderer discovery, multiplayer behavior, and known limitations, see the project README.

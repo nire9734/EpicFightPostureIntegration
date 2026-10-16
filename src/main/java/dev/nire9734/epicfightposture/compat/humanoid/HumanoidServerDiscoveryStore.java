@@ -29,10 +29,9 @@ import java.util.Set;
 public final class HumanoidServerDiscoveryStore {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
-    private static final int SCHEMA_VERSION = 1;
+    private static final int SCHEMA_VERSION = 2;
     private static final String CACHE_DIRECTORY = "cache";
     private static final String FILE_NAME = "renderer-discovery.json";
-    private static final String LEGACY_FILE_NAME = "humanoid-server-discovery.json";
     private static final int MAX_REPORT_ENVIRONMENTS = 64;
 
     private static State state = State.fresh("");
@@ -51,28 +50,28 @@ public final class HumanoidServerDiscoveryStore {
 
         state = loaded;
         if (!state.activeVanilla.equals(state.pendingVanilla)
-                || !state.activeGecko.equals(state.pendingGecko)
+                || !state.activeExtended.equals(state.pendingExtended)
                 || !state.activeSpider.equals(state.pendingSpider)) {
             state.activeVanilla = new HashSet<>(state.pendingVanilla);
-            state.activeGecko = new HashSet<>(state.pendingGecko);
+            state.activeExtended = new HashSet<>(state.pendingExtended);
             state.activeSpider = new HashSet<>(state.pendingSpider);
             LOGGER.info(
-                    "EFPI activated {} dedicated-server renderer compatibility target(s): {} vanilla humanoid, {} GeckoLib humanoid, {} vanilla SpiderModel",
-                    state.activeVanilla.size() + state.activeGecko.size() + state.activeSpider.size(),
+                    "EFPI activated {} dedicated-server renderer compatibility target(s): {} vanilla humanoid, {} extended humanoid, {} vanilla SpiderModel",
+                    state.activeVanilla.size() + state.activeExtended.size() + state.activeSpider.size(),
                     state.activeVanilla.size(),
-                    state.activeGecko.size(),
+                    state.activeExtended.size(),
                     state.activeSpider.size()
             );
             save();
         }
-        return new ActiveTargets(state.activeVanilla, state.activeGecko, state.activeSpider);
+        return new ActiveTargets(state.activeVanilla, state.activeExtended, state.activeSpider);
     }
 
     public static synchronized UpdateResult acceptReport(
             String environmentFingerprint,
             Set<ResourceLocation> inspected,
             Set<ResourceLocation> vanillaHumanoid,
-            Set<ResourceLocation> geckoLibHumanoid,
+            Set<ResourceLocation> extendedHumanoid,
             Set<ResourceLocation> vanillaSpider) {
         if (!state.reports.containsKey(environmentFingerprint)
                 && state.reports.size() >= MAX_REPORT_ENVIRONMENTS) {
@@ -86,7 +85,7 @@ public final class HumanoidServerDiscoveryStore {
                 new Report(
                         new HashSet<>(inspected),
                         new HashSet<>(vanillaHumanoid),
-                        new HashSet<>(geckoLibHumanoid),
+                        new HashSet<>(extendedHumanoid),
                         new HashSet<>(vanillaSpider)
                 )
         );
@@ -94,13 +93,13 @@ public final class HumanoidServerDiscoveryStore {
         save();
 
         boolean restartRequired = !state.pendingVanilla.equals(state.activeVanilla)
-                || !state.pendingGecko.equals(state.activeGecko)
+                || !state.pendingExtended.equals(state.activeExtended)
                 || !state.pendingSpider.equals(state.activeSpider);
         return new UpdateResult(
                 true,
                 restartRequired,
                 state.pendingVanilla.size(),
-                state.pendingGecko.size(),
+                state.pendingExtended.size(),
                 state.pendingSpider.size(),
                 state.conflicts.size()
         );
@@ -108,13 +107,13 @@ public final class HumanoidServerDiscoveryStore {
 
     private static UpdateResult currentResult(boolean accepted) {
         boolean restartRequired = !state.pendingVanilla.equals(state.activeVanilla)
-                || !state.pendingGecko.equals(state.activeGecko)
+                || !state.pendingExtended.equals(state.activeExtended)
                 || !state.pendingSpider.equals(state.activeSpider);
         return new UpdateResult(
                 accepted,
                 restartRequired,
                 state.pendingVanilla.size(),
-                state.pendingGecko.size(),
+                state.pendingExtended.size(),
                 state.pendingSpider.size(),
                 state.conflicts.size()
         );
@@ -122,14 +121,14 @@ public final class HumanoidServerDiscoveryStore {
 
     public static synchronized Set<ResourceLocation> active() {
         Set<ResourceLocation> result = new HashSet<>(state.activeVanilla);
-        result.addAll(state.activeGecko);
+        result.addAll(state.activeExtended);
         result.addAll(state.activeSpider);
         return Set.copyOf(result);
     }
 
     public static synchronized Set<ResourceLocation> pending() {
         Set<ResourceLocation> result = new HashSet<>(state.pendingVanilla);
-        result.addAll(state.pendingGecko);
+        result.addAll(state.pendingExtended);
         result.addAll(state.pendingSpider);
         return Set.copyOf(result);
     }
@@ -146,8 +145,8 @@ public final class HumanoidServerDiscoveryStore {
                 Observation observation = observations.computeIfAbsent(id, ignored -> new Observation());
                 if (report.vanillaHumanoid.contains(id)) {
                     observation.vanillaHumanoid = true;
-                } else if (report.geckoLibHumanoid.contains(id)) {
-                    observation.geckoHumanoid = true;
+                } else if (report.extendedHumanoid.contains(id)) {
+                    observation.extendedHumanoid = true;
                 } else if (report.vanillaSpider.contains(id)) {
                     observation.vanillaSpider = true;
                 } else {
@@ -157,21 +156,21 @@ public final class HumanoidServerDiscoveryStore {
         }
 
         Set<ResourceLocation> pendingVanilla = new HashSet<>();
-        Set<ResourceLocation> pendingGecko = new HashSet<>();
+        Set<ResourceLocation> pendingExtended = new HashSet<>();
         Set<ResourceLocation> pendingSpider = new HashSet<>();
         Set<ResourceLocation> conflicts = new HashSet<>();
 
         for (Map.Entry<ResourceLocation, Observation> entry : observations.entrySet()) {
             Observation observation = entry.getValue();
             int supportedKinds = (observation.vanillaHumanoid ? 1 : 0)
-                    + (observation.geckoHumanoid ? 1 : 0)
+                    + (observation.extendedHumanoid ? 1 : 0)
                     + (observation.vanillaSpider ? 1 : 0);
 
             if (!observation.unsupported && supportedKinds == 1) {
                 if (observation.vanillaHumanoid) {
                     pendingVanilla.add(entry.getKey());
-                } else if (observation.geckoHumanoid) {
-                    pendingGecko.add(entry.getKey());
+                } else if (observation.extendedHumanoid) {
+                    pendingExtended.add(entry.getKey());
                 } else {
                     pendingSpider.add(entry.getKey());
                 }
@@ -181,13 +180,12 @@ public final class HumanoidServerDiscoveryStore {
         }
 
         state.pendingVanilla = pendingVanilla;
-        state.pendingGecko = pendingGecko;
+        state.pendingExtended = pendingExtended;
         state.pendingSpider = pendingSpider;
         state.conflicts = conflicts;
     }
 
     private static State load() {
-        migrateLegacyPath();
         Path path = path();
         if (!Files.isRegularFile(path)) {
             return State.fresh("");
@@ -202,17 +200,17 @@ public final class HumanoidServerDiscoveryStore {
             JsonObject root = parsed.getAsJsonObject();
             int schema = readInt(root, "schema", -1);
             if (schema != SCHEMA_VERSION) {
-                LOGGER.info("Ignoring legacy EFPI dedicated-server renderer discovery cache {} with schema {}",
+                LOGGER.info("Ignoring incompatible EFPI dedicated-server renderer discovery cache {} with schema {}",
                         path, schema);
                 return State.fresh("");
             }
 
             State loaded = State.fresh(readString(root, "server_fingerprint"));
             loaded.activeVanilla = readIds(root.get("active_vanilla"));
-            loaded.activeGecko = readIds(root.get("active_geckolib"));
+            loaded.activeExtended = readIds(root.get("active_extended_humanoid"));
             loaded.activeSpider = readIds(root.get("active_vanilla_spider"));
             loaded.pendingVanilla = readIds(root.get("pending_vanilla"));
-            loaded.pendingGecko = readIds(root.get("pending_geckolib"));
+            loaded.pendingExtended = readIds(root.get("pending_extended_humanoid"));
             loaded.pendingSpider = readIds(root.get("pending_vanilla_spider"));
             loaded.conflicts = readIds(root.get("conflicts"));
 
@@ -225,15 +223,15 @@ public final class HumanoidServerDiscoveryStore {
                     JsonObject reportObject = entry.getValue().getAsJsonObject();
                     Set<ResourceLocation> inspected = readIds(reportObject.get("inspected"));
                     Set<ResourceLocation> vanilla = readIds(reportObject.get("vanilla_humanoid"));
-                    Set<ResourceLocation> gecko = readIds(reportObject.get("geckolib_humanoid"));
+                    Set<ResourceLocation> extended = readIds(reportObject.get("extended_humanoid"));
                     Set<ResourceLocation> spider = readIds(reportObject.get("vanilla_spider"));
                     vanilla.retainAll(inspected);
-                    gecko.retainAll(inspected);
+                    extended.retainAll(inspected);
                     spider.retainAll(inspected);
-                    if (hasOverlap(vanilla, gecko) || hasOverlap(vanilla, spider) || hasOverlap(gecko, spider)) {
+                    if (hasOverlap(vanilla, extended) || hasOverlap(vanilla, spider) || hasOverlap(extended, spider)) {
                         continue;
                     }
-                    loaded.reports.put(entry.getKey(), new Report(inspected, vanilla, gecko, spider));
+                    loaded.reports.put(entry.getKey(), new Report(inspected, vanilla, extended, spider));
                 }
             }
             return loaded;
@@ -252,10 +250,10 @@ public final class HumanoidServerDiscoveryStore {
             root.addProperty("schema", SCHEMA_VERSION);
             root.addProperty("server_fingerprint", state.serverFingerprint);
             root.add("active_vanilla", toJsonArray(state.activeVanilla));
-            root.add("active_geckolib", toJsonArray(state.activeGecko));
+            root.add("active_extended_humanoid", toJsonArray(state.activeExtended));
             root.add("active_vanilla_spider", toJsonArray(state.activeSpider));
             root.add("pending_vanilla", toJsonArray(state.pendingVanilla));
-            root.add("pending_geckolib", toJsonArray(state.pendingGecko));
+            root.add("pending_extended_humanoid", toJsonArray(state.pendingExtended));
             root.add("pending_vanilla_spider", toJsonArray(state.pendingSpider));
             root.add("conflicts", toJsonArray(state.conflicts));
 
@@ -266,7 +264,7 @@ public final class HumanoidServerDiscoveryStore {
                         JsonObject report = new JsonObject();
                         report.add("inspected", toJsonArray(entry.getValue().inspected));
                         report.add("vanilla_humanoid", toJsonArray(entry.getValue().vanillaHumanoid));
-                        report.add("geckolib_humanoid", toJsonArray(entry.getValue().geckoLibHumanoid));
+                        report.add("extended_humanoid", toJsonArray(entry.getValue().extendedHumanoid));
                         report.add("vanilla_spider", toJsonArray(entry.getValue().vanillaSpider));
                         reports.add(entry.getKey(), report);
                     });
@@ -298,21 +296,6 @@ public final class HumanoidServerDiscoveryStore {
                     LOGGER.debug("Failed to remove temporary EFPI renderer discovery cache {}", temporary, cleanupException);
                 }
             }
-        }
-    }
-
-    private static void migrateLegacyPath() {
-        Path current = path();
-        Path legacy = legacyPath();
-        if (Files.exists(current) || !Files.isRegularFile(legacy)) {
-            return;
-        }
-        try {
-            Files.createDirectories(current.getParent());
-            Files.move(legacy, current, StandardCopyOption.REPLACE_EXISTING);
-            LOGGER.info("Moved EFPI renderer discovery cache to {}", current);
-        } catch (IOException exception) {
-            LOGGER.warn("Failed to move legacy EFPI renderer discovery cache {}", legacy, exception);
         }
     }
 
@@ -371,19 +354,13 @@ public final class HumanoidServerDiscoveryStore {
                 .resolve(FILE_NAME);
     }
 
-    private static Path legacyPath() {
-        return FMLPaths.CONFIGDIR.get()
-                .resolve(EpicFightPostureIntegration.MODID)
-                .resolve(LEGACY_FILE_NAME);
-    }
-
     public record ActiveTargets(
             Set<ResourceLocation> vanillaHumanoid,
-            Set<ResourceLocation> geckoLibHumanoid,
+            Set<ResourceLocation> extendedHumanoid,
             Set<ResourceLocation> vanillaSpider) {
         public ActiveTargets {
             vanillaHumanoid = vanillaHumanoid == null ? Set.of() : Set.copyOf(vanillaHumanoid);
-            geckoLibHumanoid = geckoLibHumanoid == null ? Set.of() : Set.copyOf(geckoLibHumanoid);
+            extendedHumanoid = extendedHumanoid == null ? Set.of() : Set.copyOf(extendedHumanoid);
             vanillaSpider = vanillaSpider == null ? Set.of() : Set.copyOf(vanillaSpider);
         }
 
@@ -396,17 +373,17 @@ public final class HumanoidServerDiscoveryStore {
             boolean accepted,
             boolean restartRequired,
             int pendingVanillaCount,
-            int pendingGeckoCount,
+            int pendingExtendedCount,
             int pendingSpiderCount,
             int conflictCount) {
         public int pendingCount() {
-            return pendingVanillaCount + pendingGeckoCount + pendingSpiderCount;
+            return pendingVanillaCount + pendingExtendedCount + pendingSpiderCount;
         }
     }
 
     private static final class Observation {
         boolean vanillaHumanoid;
-        boolean geckoHumanoid;
+        boolean extendedHumanoid;
         boolean vanillaSpider;
         boolean unsupported;
     }
@@ -414,17 +391,17 @@ public final class HumanoidServerDiscoveryStore {
     private static final class Report {
         final Set<ResourceLocation> inspected;
         final Set<ResourceLocation> vanillaHumanoid;
-        final Set<ResourceLocation> geckoLibHumanoid;
+        final Set<ResourceLocation> extendedHumanoid;
         final Set<ResourceLocation> vanillaSpider;
 
         Report(
                 Set<ResourceLocation> inspected,
                 Set<ResourceLocation> vanillaHumanoid,
-                Set<ResourceLocation> geckoLibHumanoid,
+                Set<ResourceLocation> extendedHumanoid,
                 Set<ResourceLocation> vanillaSpider) {
             this.inspected = inspected;
             this.vanillaHumanoid = vanillaHumanoid;
-            this.geckoLibHumanoid = geckoLibHumanoid;
+            this.extendedHumanoid = extendedHumanoid;
             this.vanillaSpider = vanillaSpider;
         }
     }
@@ -432,10 +409,10 @@ public final class HumanoidServerDiscoveryStore {
     private static final class State {
         final String serverFingerprint;
         Set<ResourceLocation> activeVanilla = new HashSet<>();
-        Set<ResourceLocation> activeGecko = new HashSet<>();
+        Set<ResourceLocation> activeExtended = new HashSet<>();
         Set<ResourceLocation> activeSpider = new HashSet<>();
         Set<ResourceLocation> pendingVanilla = new HashSet<>();
-        Set<ResourceLocation> pendingGecko = new HashSet<>();
+        Set<ResourceLocation> pendingExtended = new HashSet<>();
         Set<ResourceLocation> pendingSpider = new HashSet<>();
         Set<ResourceLocation> conflicts = new HashSet<>();
         final Map<String, Report> reports = new HashMap<>();
