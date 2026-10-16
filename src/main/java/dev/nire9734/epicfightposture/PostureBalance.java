@@ -8,6 +8,8 @@ final class PostureBalance {
     private static final float HIGH_HEALTH_THRESHOLD = 0.75F;
     private static final float DEFAULT_ATTACK_DAMAGE_REFERENCE = 8.0F;
     private static final float DEFAULT_ATTACK_DAMAGE_EXPONENT = 0.7F;
+    private static final float DEFAULT_HEALTH_SCALING_EHP_START = 40.0F;
+    private static final float DEFAULT_HEALTH_SCALING_EHP_END = 200.0F;
     private static final float MAX_ATTACK_DAMAGE_SCALE = 100.0F;
 
     static float parryDamage(float maxPosture, float maxPostureFraction) {
@@ -48,6 +50,50 @@ final class PostureBalance {
         float depleted = 1.0F - health;
         float progress = (float) Math.pow(depleted, exponent);
         return full + (zero - full) * progress;
+    }
+
+    /**
+     * Blends the health-based finisher curve in according to target effective health.
+     * Low-EHP mobs use a neutral x1.0 multiplier; high-EHP enemies use the full configured curve.
+     */
+    static float healthPostureDamageMultiplier(
+            float healthFraction,
+            float fullHealthMultiplier,
+            float zeroHealthMultiplier,
+            float curveExponent,
+            float effectiveHealth,
+            float scalingEhpStart,
+            float scalingEhpEnd) {
+        float bossCurve = healthPostureDamageMultiplier(
+                healthFraction,
+                fullHealthMultiplier,
+                zeroHealthMultiplier,
+                curveExponent
+        );
+        float strength = healthScalingStrength(effectiveHealth, scalingEhpStart, scalingEhpEnd);
+        return interpolate(1.0F, bossCurve, strength);
+    }
+
+    static float healthScalingStrength(float effectiveHealth, float scalingEhpStart, float scalingEhpEnd) {
+        float ehp = Float.isFinite(effectiveHealth) ? Math.max(0.0F, effectiveHealth) : 0.0F;
+        float start = Float.isFinite(scalingEhpStart)
+                ? Math.max(0.0F, scalingEhpStart)
+                : DEFAULT_HEALTH_SCALING_EHP_START;
+        float end = Float.isFinite(scalingEhpEnd)
+                ? Math.max(0.0F, scalingEhpEnd)
+                : DEFAULT_HEALTH_SCALING_EHP_END;
+
+        if (end < start) {
+            float swap = start;
+            start = end;
+            end = swap;
+        }
+        if (Math.abs(end - start) <= 1.0E-4F) {
+            return ehp >= end ? 1.0F : 0.0F;
+        }
+
+        float t = clamp((ehp - start) / (end - start), 0.0F, 1.0F);
+        return t * t * (3.0F - 2.0F * t);
     }
 
     static int regenDelayTicks(float delaySeconds) {

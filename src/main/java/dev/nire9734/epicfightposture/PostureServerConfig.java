@@ -36,6 +36,8 @@ public final class PostureServerConfig {
     public static final ForgeConfigSpec.DoubleValue FULL_HEALTH_POSTURE_DAMAGE_MULTIPLIER;
     public static final ForgeConfigSpec.DoubleValue ZERO_HEALTH_POSTURE_DAMAGE_MULTIPLIER;
     public static final ForgeConfigSpec.DoubleValue HEALTH_POSTURE_CURVE_EXPONENT;
+    public static final ForgeConfigSpec.DoubleValue HEALTH_SCALING_EHP_START;
+    public static final ForgeConfigSpec.DoubleValue HEALTH_SCALING_EHP_END;
     public static final ForgeConfigSpec.DoubleValue MINIMUM_POSTURE;
     public static final ForgeConfigSpec.BooleanValue USE_ARMOR_SCALING;
     public static final ForgeConfigSpec.DoubleValue REGEN_DELAY_SECONDS;
@@ -94,13 +96,13 @@ public final class PostureServerConfig {
                 .defineInRange("parry_posture_percent", 6.0D, 0.0D, 100.0D);
         FULL_HEALTH_POSTURE_DAMAGE_MULTIPLIER = BUILDER
                 .comment(
-                        "Posture-damage multiplier applied at 100% target health.",
-                        "Default: 0.25. High-health enemies are deliberately difficult to posture-break."
+                        "Posture-damage multiplier applied at 100% target health when the EHP-based finisher curve is fully active.",
+                        "Default: 0.25. High-EHP enemies are deliberately difficult to posture-break at high health."
                 )
                 .defineInRange("full_health_posture_damage_multiplier", 0.25D, 0.0D, 100.0D);
         ZERO_HEALTH_POSTURE_DAMAGE_MULTIPLIER = BUILDER
                 .comment(
-                        "Posture-damage multiplier approached as target health falls toward 0%.",
+                        "Posture-damage multiplier approached as target health falls toward 0% when the finisher curve is active.",
                         "Default: 1.0."
                 )
                 .defineInRange("zero_health_posture_damage_multiplier", 1.0D, 0.0D, 100.0D);
@@ -110,11 +112,23 @@ public final class PostureServerConfig {
                         "1.0 = linear. Values above 1.0 keep posture damage lower until later in the fight. Default: 2.0."
                 )
                 .defineInRange("health_posture_curve_exponent", 2.0D, 0.01D, 100.0D);
+        HEALTH_SCALING_EHP_START = BUILDER
+                .comment(
+                        "Effective health at or below which the health-based finisher posture modifier is disabled.",
+                        "Low-EHP mobs use a neutral x1.0 posture-damage multiplier. Default: 40.0."
+                )
+                .defineInRange("health_scaling_ehp_start", 40.0D, 0.0D, 1000000.0D);
+        HEALTH_SCALING_EHP_END = BUILDER
+                .comment(
+                        "Effective health at or above which the configured health-based finisher curve is fully applied.",
+                        "Between the start and end values, curve strength is smoothly interpolated. Default: 200.0."
+                )
+                .defineInRange("health_scaling_ehp_end", 200.0D, 0.0D, 1000000.0D);
         MINIMUM_POSTURE = BUILDER
                 .comment("Minimum maximum posture an eligible mob can have.")
                 .defineInRange("minimum_posture", 1.0D, 0.1D, 10000.0D);
         USE_ARMOR_SCALING = BUILDER
-                .comment("Whether armor and armor toughness affect maximum posture.")
+                .comment("Whether armor and armor toughness affect maximum posture and EHP-based finisher scaling.")
                 .define("use_armor_scaling", true);
 
         BUILDER.push("regeneration");
@@ -216,6 +230,14 @@ public final class PostureServerConfig {
 
     public static float healthPostureCurveExponent() {
         return HEALTH_POSTURE_CURVE_EXPONENT.get().floatValue();
+    }
+
+    public static float healthScalingEhpStart() {
+        return HEALTH_SCALING_EHP_START.get().floatValue();
+    }
+
+    public static float healthScalingEhpEnd() {
+        return HEALTH_SCALING_EHP_END.get().floatValue();
     }
 
     /** Server-side delay before ordinary posture regeneration begins. */

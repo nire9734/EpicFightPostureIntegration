@@ -506,11 +506,23 @@ public final class PostureManager {
         }
         float currentHealth = finiteOr(entity.getHealth(), maxHealth);
         float healthFraction = clamp(currentHealth / maxHealth, 0.0F, 1.0F);
+
+        boolean useArmor = PostureServerConfig.useArmorScaling();
+        float armor = useArmor ? finiteOr((float) entity.getAttributeValue(Attributes.ARMOR), 0.0F) : 0.0F;
+        float toughness = useArmor ? finiteOr((float) entity.getAttributeValue(Attributes.ARMOR_TOUGHNESS), 0.0F) : 0.0F;
+        float targetEffectiveHealth = effectiveHealth(maxHealth, armor, toughness, EHP_REFERENCE_DAMAGE);
+        if (!Float.isFinite(targetEffectiveHealth) || targetEffectiveHealth <= 0.0F) {
+            targetEffectiveHealth = EHP_REFERENCE_HEALTH;
+        }
+
         return PostureBalance.healthPostureDamageMultiplier(
                 healthFraction,
                 PostureServerConfig.fullHealthPostureDamageMultiplier(),
                 PostureServerConfig.zeroHealthPostureDamageMultiplier(),
-                PostureServerConfig.healthPostureCurveExponent()
+                PostureServerConfig.healthPostureCurveExponent(),
+                targetEffectiveHealth,
+                PostureServerConfig.healthScalingEhpStart(),
+                PostureServerConfig.healthScalingEhpEnd()
         );
     }
 

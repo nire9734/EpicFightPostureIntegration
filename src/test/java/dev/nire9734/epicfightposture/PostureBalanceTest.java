@@ -55,6 +55,33 @@ class PostureBalanceTest {
     }
 
     @Test
+    void ehpScalingUsesSmoothstepBetweenConfiguredAnchors() {
+        assertEquals(0.0F, PostureBalance.healthScalingStrength(20.0F, 40.0F, 200.0F), EPSILON);
+        assertEquals(0.0F, PostureBalance.healthScalingStrength(40.0F, 40.0F, 200.0F), EPSILON);
+        assertEquals(0.5F, PostureBalance.healthScalingStrength(120.0F, 40.0F, 200.0F), EPSILON);
+        assertEquals(1.0F, PostureBalance.healthScalingStrength(200.0F, 40.0F, 200.0F), EPSILON);
+        assertEquals(1.0F, PostureBalance.healthScalingStrength(500.0F, 40.0F, 200.0F), EPSILON);
+    }
+
+    @Test
+    void lowEhpMobsBlendOutHealthBasedFinisherPenalty() {
+        assertEquals(1.0F, ehpDamageMultiplier(1.0F, 20.0F), EPSILON);
+        assertEquals(0.625F, ehpDamageMultiplier(1.0F, 120.0F), EPSILON);
+        assertEquals(0.25F, ehpDamageMultiplier(1.0F, 200.0F), EPSILON);
+        assertEquals(1.0F, ehpDamageMultiplier(0.0F, 20.0F), EPSILON);
+        assertEquals(1.0F, ehpDamageMultiplier(0.0F, 500.0F), EPSILON);
+    }
+
+    @Test
+    void ehpScalingHandlesReversedOrCollapsedAnchors() {
+        assertEquals(0.0F, PostureBalance.healthScalingStrength(20.0F, 200.0F, 40.0F), EPSILON);
+        assertEquals(0.5F, PostureBalance.healthScalingStrength(120.0F, 200.0F, 40.0F), EPSILON);
+        assertEquals(1.0F, PostureBalance.healthScalingStrength(200.0F, 200.0F, 40.0F), EPSILON);
+        assertEquals(0.0F, PostureBalance.healthScalingStrength(39.0F, 40.0F, 40.0F), EPSILON);
+        assertEquals(1.0F, PostureBalance.healthScalingStrength(40.0F, 40.0F, 40.0F), EPSILON);
+    }
+
+    @Test
     void regenDelayConvertsTenSecondsToTicks() {
         assertEquals(200, PostureBalance.regenDelayTicks(10.0F));
         assertEquals(0, PostureBalance.regenDelayTicks(0.0F));
@@ -89,6 +116,18 @@ class PostureBalanceTest {
                 0.25F,
                 1.00F,
                 2.00F
+        );
+    }
+
+    private static float ehpDamageMultiplier(float healthFraction, float effectiveHealth) {
+        return PostureBalance.healthPostureDamageMultiplier(
+                healthFraction,
+                0.25F,
+                1.00F,
+                2.00F,
+                effectiveHealth,
+                40.0F,
+                200.0F
         );
     }
 
