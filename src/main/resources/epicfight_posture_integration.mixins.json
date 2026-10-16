@@ -16,6 +16,7 @@
     "client.ComputeShaderProviderRuntimeMeshMixin",
     "client.GeoArmorRendererInvoker",
     "client.GeckoItemArmorLayerContextMixin",
+    "client.GlDebug1005SuppressionMixin",
     "client.IronsHumanoidRendererCapeMixin",
     "client.LayerPoseReflectionCacheMixin",
     "client.LionfishAdvancedModelBoxLayerPoseMixin",
