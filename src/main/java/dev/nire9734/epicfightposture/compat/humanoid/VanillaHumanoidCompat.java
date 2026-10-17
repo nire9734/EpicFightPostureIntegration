@@ -13,7 +13,9 @@ import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.loading.FMLEnvironment;
 import net.minecraftforge.registries.ForgeRegistries;
 import org.slf4j.Logger;
+import yesman.epicfight.api.asset.AssetAccessor;
 import yesman.epicfight.api.forgeevent.EntityPatchRegistryEvent;
+import yesman.epicfight.api.model.Armature;
 import yesman.epicfight.gameasset.Armatures;
 import yesman.epicfight.world.capabilities.provider.EntityPatchProvider;
 
@@ -32,10 +34,11 @@ public final class VanillaHumanoidCompat {
     private static volatile Map<ResourceLocation, CompatibilityKind> cachedDetected = Map.of();
     private static volatile Set<ResourceLocation> externallyPatched = Set.of();
     private static final Map<ResourceLocation, CompatibilityKind> registeredByEfpi = new HashMap<>();
+    private static final Set<ResourceLocation> runtimeRejected = new HashSet<>();
 
     public enum CompatibilityKind {
         VANILLA_HUMANOID,
-        GECKOLIB_HUMANOID,
+        EXTENDED_HUMANOID,
         VANILLA_SPIDER
     }
 
@@ -45,7 +48,7 @@ public final class VanillaHumanoidCompat {
                     HumanoidServerDiscoveryStore.bootstrap(HumanoidEnvironmentFingerprint.current());
             cachedDetected = buildKindMap(
                     active.vanillaHumanoid(),
-                    active.geckoLibHumanoid(),
+                    active.extendedHumanoid(),
                     active.vanillaSpider()
             );
         } else {
@@ -58,6 +61,7 @@ public final class VanillaHumanoidCompat {
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public static synchronized void onEntityPatchRegistry(EntityPatchRegistryEvent event) {
         registeredByEfpi.clear();
+        runtimeRejected.clear();
 
         // Snapshot everything that already owns an Epic Fight patch before EFPI
         // adds its lightweight compatibility patches. At LOWEST priority this also
@@ -69,13 +73,13 @@ public final class VanillaHumanoidCompat {
                 existingPatchIds.add(id);
             }
         }
-        externallyPatched = Set.copyOf(existingPatchIds);
 
         for (Map.Entry<ResourceLocation, CompatibilityKind> target : cachedDetected.entrySet()) {
             ResourceLocation entityId = target.getKey();
             CompatibilityKind kind = target.getValue();
             if (PostureServerConfig.isBlacklisted(entityId)
-                    || externallyPatched.contains(entityId)
+                    || !PostureServerConfig.isAutomaticCompatibilityAllowed(entityId)
+                    || existingPatchIds.contains(entityId)
                     || !compatibilityKindEnabled(kind)) {
                 continue;
             }
@@ -85,9 +89,20 @@ public final class VanillaHumanoidCompat {
                 continue;
             }
 
+            // Epic Fight 1.20.1 does not expose CUSTOM_CAPABILITIES through
+            // getPatchedEntities(). Respect addon-owned custom patches explicitly;
+            // replacing one can invalidate the addon's patched renderer contract.
+            if (EpicFightPatchOwnership.hasCustomPatch(entityType)) {
+                existingPatchIds.add(entityId);
+                LOGGER.debug("EFPI skipped automatic compatibility for {} because an Epic Fight custom patch is already registered",
+                        entityId);
+                continue;
+            }
+
             registerIntoEvent(event, entityType, kind);
             registeredByEfpi.put(entityId, kind);
         }
+        externallyPatched = Set.copyOf(existingPatchIds);
     }
 
     /** True only when EFPI actually owns the active lightweight registration in this JVM. */
@@ -107,12 +122,13 @@ public final class VanillaHumanoidCompat {
 
     /** Returns whether server-authoritative settings permit this EFPI-owned lightweight patch. */
     public static synchronized boolean isCompatibilityEnabled(ResourceLocation id) {
-        if (id == null) {
+        if (id == null || runtimeRejected.contains(id)) {
             return false;
         }
         CompatibilityKind kind = registeredByEfpi.get(id);
         return kind != null
                 && !PostureServerConfig.isExplicitlyBlacklisted(id)
+                && PostureServerConfig.isAutomaticCompatibilityAllowed(id)
                 && compatibilityKindEnabled(kind);
     }
 
@@ -123,6 +139,19 @@ public final class VanillaHumanoidCompat {
     public static synchronized boolean registerDiscoveredAtRuntime(
             EntityType<?> entityType,
             CompatibilityKind kind) {
+        return registerDiscoveredAtRuntime(entityType, kind, null);
+    }
+
+    /**
+     * Installs a client/runtime automatic-compatibility patch with an optional
+     * model-specific armature. Dedicated-server registry bootstrap intentionally
+     * keeps using the canonical BIPED/SPIDER armatures until body-profile data is
+     * part of the trusted discovery protocol.
+     */
+    public static synchronized boolean registerDiscoveredAtRuntime(
+            EntityType<?> entityType,
+            CompatibilityKind kind,
+            AssetAccessor<? extends Armature> armatureOverride) {
         if (entityType == null || entityType == EntityType.PLAYER || kind == null) {
             return false;
         }
@@ -135,14 +164,28 @@ public final class VanillaHumanoidCompat {
             return false;
         }
 
+        // A custom patch supplied by an Epic Fight addon has ownership priority.
+        // Never overwrite it with EFPI's lightweight patch. This check is repeated
+        // here because custom registrations are not included in EF's public
+        // getPatchedEntities() result and may appear after the registry snapshot.
+        if (!registeredByEfpi.containsKey(id) && EpicFightPatchOwnership.hasCustomPatch(entityType)) {
+            Set<ResourceLocation> updatedExternal = new HashSet<>(externallyPatched);
+            updatedExternal.add(id);
+            externallyPatched = Set.copyOf(updatedExternal);
+            LOGGER.debug("EFPI skipped automatic compatibility for {} because an Epic Fight custom patch is already registered",
+                    id);
+            return false;
+        }
+
         try {
-            registerRuntime(entityType, kind);
+            registerRuntime(entityType, kind, armatureOverride);
             registeredByEfpi.put(id, kind);
+            runtimeRejected.remove(id);
 
             Map<ResourceLocation, CompatibilityKind> updated = new HashMap<>(cachedDetected);
             CompatibilityKind previous = updated.put(id, kind);
             if (previous != null && previous != kind) {
-                LOGGER.warn("EFPI renderer compatibility kind changed for {} from {} to {}; using the latest scan",
+                LOGGER.debug("EFPI renderer compatibility kind changed for {} from {} to {}; using the latest scan",
                         id, previous, kind);
             }
             cachedDetected = Map.copyOf(updated);
@@ -153,6 +196,54 @@ public final class VanillaHumanoidCompat {
         }
     }
 
+    /**
+     * Refreshes only the runtime armature mapping for an EFPI-owned patch.
+     *
+     * <p>Renderer/model reloads can rebuild a target descriptor without requiring
+     * a second EntityPatchProvider registration. Keeping those operations separate
+     * avoids a new mesh/descriptor being paired with the armature from an older scan.</p>
+     */
+    public static synchronized boolean refreshRuntimeArmature(
+            EntityType<?> entityType,
+            CompatibilityKind kind,
+            AssetAccessor<? extends Armature> armatureOverride) {
+        if (entityType == null || entityType == EntityType.PLAYER
+                || kind == null || armatureOverride == null) {
+            return false;
+        }
+
+        ResourceLocation id = EntityType.getKey(entityType);
+        if (id == null || externallyPatched.contains(id) || registeredByEfpi.get(id) != kind) {
+            return false;
+        }
+
+        try {
+            Armatures.registerEntityTypeArmature(entityType, armatureOverride);
+            runtimeRejected.remove(id);
+            return true;
+        } catch (Throwable throwable) {
+            runtimeRejected.add(id);
+            LOGGER.warn("Failed to refresh runtime humanoid armature for {}; compatibility is disabled until a later successful scan",
+                    id, throwable);
+            return false;
+        }
+    }
+
+    /**
+     * Leaves an already-installed EFPI patch physically registered but inert.
+     * This is used when a later renderer scan cannot safely rebuild the matching
+     * runtime armature. Retaining ownership lets a subsequent scan retry cleanly.
+     */
+    public static synchronized void rejectRuntimeCompatibility(EntityType<?> entityType) {
+        if (entityType == null) {
+            return;
+        }
+        ResourceLocation id = EntityType.getKey(entityType);
+        if (id != null && registeredByEfpi.containsKey(id)) {
+            runtimeRejected.add(id);
+        }
+    }
+
     public static boolean isCompatibilityBlacklisted(EntityType<?> entityType) {
         return entityType == null || PostureServerConfig.isBlacklisted(EntityType.getKey(entityType));
     }
@@ -160,38 +251,38 @@ public final class VanillaHumanoidCompat {
     /** Stores renderer targets that passed the current client compatibility preparation in memory. */
     public static synchronized void replaceDetectedCache(
             Set<ResourceLocation> vanillaHumanoid,
-            Set<ResourceLocation> geckoLibHumanoid,
+            Set<ResourceLocation> extendedHumanoid,
             Set<ResourceLocation> vanillaSpider) {
-        cachedDetected = buildKindMap(vanillaHumanoid, geckoLibHumanoid, vanillaSpider);
+        cachedDetected = buildKindMap(vanillaHumanoid, extendedHumanoid, vanillaSpider);
     }
 
     private static boolean compatibilityKindEnabled(CompatibilityKind kind) {
         return switch (kind) {
             case VANILLA_HUMANOID -> PostureServerConfig.vanillaHumanoidCompatibilityEnabled();
-            case GECKOLIB_HUMANOID -> PostureServerConfig.geckoLibHumanoidCompatibilityEnabled();
+            case EXTENDED_HUMANOID -> PostureServerConfig.extendedHumanoidCompatibilityEnabled();
             case VANILLA_SPIDER -> PostureServerConfig.vanillaSpiderCompatibilityEnabled();
         };
     }
 
     private static Map<ResourceLocation, CompatibilityKind> buildKindMap(
             Set<ResourceLocation> vanillaHumanoid,
-            Set<ResourceLocation> geckoLibHumanoid,
+            Set<ResourceLocation> extendedHumanoid,
             Set<ResourceLocation> vanillaSpider) {
         Set<ResourceLocation> vanilla = vanillaHumanoid == null ? Set.of() : vanillaHumanoid;
-        Set<ResourceLocation> gecko = geckoLibHumanoid == null ? Set.of() : geckoLibHumanoid;
+        Set<ResourceLocation> extended = extendedHumanoid == null ? Set.of() : extendedHumanoid;
         Set<ResourceLocation> spider = vanillaSpider == null ? Set.of() : vanillaSpider;
 
         Set<ResourceLocation> ambiguous = new HashSet<>();
-        collectOverlap(ambiguous, vanilla, gecko);
+        collectOverlap(ambiguous, vanilla, extended);
         collectOverlap(ambiguous, vanilla, spider);
-        collectOverlap(ambiguous, gecko, spider);
+        collectOverlap(ambiguous, extended, spider);
         if (!ambiguous.isEmpty()) {
             LOGGER.warn("EFPI ignored {} target(s) with ambiguous renderer classification", ambiguous.size());
         }
 
         Map<ResourceLocation, CompatibilityKind> result = new HashMap<>();
         addKind(result, vanilla, ambiguous, CompatibilityKind.VANILLA_HUMANOID);
-        addKind(result, gecko, ambiguous, CompatibilityKind.GECKOLIB_HUMANOID);
+        addKind(result, extended, ambiguous, CompatibilityKind.EXTENDED_HUMANOID);
         addKind(result, spider, ambiguous, CompatibilityKind.VANILLA_SPIDER);
         return Map.copyOf(result);
     }
@@ -217,10 +308,16 @@ public final class VanillaHumanoidCompat {
         }
     }
 
-    private static void registerRuntime(EntityType<?> entityType, CompatibilityKind kind) {
+    private static void registerRuntime(
+            EntityType<?> entityType,
+            CompatibilityKind kind,
+            AssetAccessor<? extends Armature> armatureOverride) {
         switch (kind) {
-            case VANILLA_HUMANOID, GECKOLIB_HUMANOID -> {
-                Armatures.registerEntityTypeArmature(entityType, Armatures.BIPED);
+            case VANILLA_HUMANOID, EXTENDED_HUMANOID -> {
+                Armatures.registerEntityTypeArmature(
+                        entityType,
+                        armatureOverride != null ? armatureOverride : Armatures.BIPED
+                );
                 EntityPatchProvider.putCustomEntityPatch(entityType, ignored -> LightweightHumanoidPatch::new);
             }
             case VANILLA_SPIDER -> {
@@ -235,7 +332,7 @@ public final class VanillaHumanoidCompat {
             EntityType<?> entityType,
             CompatibilityKind kind) {
         switch (kind) {
-            case VANILLA_HUMANOID, GECKOLIB_HUMANOID -> {
+            case VANILLA_HUMANOID, EXTENDED_HUMANOID -> {
                 Armatures.registerEntityTypeArmature(entityType, Armatures.BIPED);
                 event.getTypeEntry().put(entityType, ignored -> LightweightHumanoidPatch::new);
             }

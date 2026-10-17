@@ -24,6 +24,8 @@ import yesman.epicfight.api.client.model.transformer.HumanoidModelBaker;
 import yesman.epicfight.world.capabilities.provider.EntityPatchProvider;
 
 import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Set;
 
 /** Client-side renderer discovery and Epic Fight bridge registration. */
@@ -43,11 +45,13 @@ public final class VanillaHumanoidClientCompat {
             return state != null && state.broken;
         });
 
-        boolean geckoLoaded = ModList.get().isLoaded("geckolib");
-        if (geckoLoaded) {
-            GeckoHumanoidClientCompat.installDiscovery();
-        } else {
-            HumanoidClientDiscovery.installAdditionalScanner(null);
+        HumanoidBackendRegistry.clear();
+        HumanoidBackendRegistry.register(ModelPartHumanoidClientCompat.INSTANCE);
+        if (ModList.get().isLoaded("geckolib")) {
+            HumanoidBackendRegistry.register(GeckoHumanoidClientCompat.INSTANCE);
+        }
+        if (ModList.get().isLoaded("lionfishapi")) {
+            HumanoidBackendRegistry.register(LionfishHumanoidClientCompat.INSTANCE);
         }
 
         HumanoidClientDiscovery.ScanSnapshot scan = HumanoidClientDiscovery.scan(
@@ -57,38 +61,44 @@ public final class VanillaHumanoidClientCompat {
         Set<EntityType<?>> alreadyPatched = new HashSet<>(EntityPatchProvider.getPatchedEntities());
         Set<EntityType<?>> verifiedVanilla = registerVanillaHumanoids(event, scan, alreadyPatched);
         Set<EntityType<?>> verifiedSpider = registerVanillaSpiders(event, scan, alreadyPatched);
-        Set<EntityType<?>> verifiedGecko = geckoLoaded
-                ? GeckoHumanoidClientCompat.registerRenderers(event, scan.externalHumanoidTypes())
-                : Set.of();
+        Set<EntityType<?>> verifiedPreparedHumanoids = HumanoidBackendRegistry.registerRenderers(
+                event,
+                scan.extendedHumanoidTypes()
+        );
 
         Set<ResourceLocation> verifiedVanillaIds = idsOf(verifiedVanilla);
-        Set<ResourceLocation> verifiedGeckoIds = idsOf(verifiedGecko);
+        Set<ResourceLocation> verifiedPreparedIds = idsOf(verifiedPreparedHumanoids);
         Set<ResourceLocation> verifiedSpiderIds = idsOf(verifiedSpider);
 
-        // Only persist/report renderer targets whose special-state rendering was
-        // actually prepared successfully. This keeps the automatic compatibility
-        // path fail-closed instead of registering a patch with no usable renderer.
         VanillaHumanoidCompat.replaceDetectedCache(
                 verifiedVanillaIds,
-                verifiedGeckoIds,
+                verifiedPreparedIds,
                 verifiedSpiderIds
         );
         HumanoidClientDiscovery.updateServerReportSnapshot(new HumanoidClientDiscovery.ScanSnapshot(
                 scan.inspected(),
                 verifiedVanillaIds,
-                verifiedGeckoIds,
+                verifiedPreparedIds,
                 verifiedSpiderIds,
                 verifiedVanilla,
-                verifiedGecko,
+                verifiedPreparedHumanoids,
                 verifiedSpider
         ));
 
+        LinkedHashMap<String, Integer> summary = new LinkedHashMap<>();
+        if (!verifiedVanilla.isEmpty()) {
+            summary.put("vanilla", verifiedVanilla.size());
+        }
+        for (Map.Entry<String, Integer> entry : HumanoidBackendRegistry.lastVerifiedByBackend().entrySet()) {
+            summary.put(entry.getKey(), entry.getValue());
+        }
+        if (!verifiedSpider.isEmpty()) {
+            summary.put("spider", verifiedSpider.size());
+        }
         LOGGER.info(
-                "EFPI auto-detected {} renderer compatibility target(s): {} vanilla humanoid, {} GeckoLib humanoid, {} vanilla SpiderModel",
-                verifiedVanillaIds.size() + verifiedGeckoIds.size() + verifiedSpiderIds.size(),
-                verifiedVanilla.size(),
-                verifiedGecko.size(),
-                verifiedSpider.size()
+                "EFPI compatibility: {} target(s) {}",
+                verifiedVanillaIds.size() + verifiedPreparedIds.size() + verifiedSpiderIds.size(),
+                summary
         );
     }
 
@@ -171,8 +181,8 @@ public final class VanillaHumanoidClientCompat {
             Object sourceRenderer = event.getContext().getEntityRenderDispatcher().renderers.get(entityType);
             if (!(sourceRenderer instanceof LivingEntityRenderer<?, ?> livingRenderer)
                     || !(livingRenderer.getModel() instanceof HumanoidModel<?> humanoidModel)) {
-                LOGGER.warn(
-                        "Humanoid compatibility target {} no longer exposes HumanoidModel; skipping automatic compatibility",
+                LOGGER.debug(
+                        "EFPI HumanoidModel target {} changed renderer/model before preparation; skipping automatic compatibility",
                         entityId
                 );
                 return null;
@@ -180,8 +190,8 @@ public final class VanillaHumanoidClientCompat {
 
             SkinnedMesh baked = HumanoidModelBaker.VANILLA_TRANSFORMER.transformArmorModel(humanoidModel);
             if (baked == null) {
-                LOGGER.warn(
-                        "Epic Fight could not transform HumanoidModel for {}; skipping automatic compatibility",
+                LOGGER.debug(
+                        "EFPI could not transform HumanoidModel for {}; skipping automatic compatibility",
                         entityId
                 );
                 return null;
@@ -193,8 +203,8 @@ public final class VanillaHumanoidClientCompat {
             );
             return SelfAccessor.create(runtimeMeshId, baked);
         } catch (Throwable throwable) {
-            LOGGER.warn(
-                    "Failed to prepare Epic Fight runtime mesh for {}; skipping automatic compatibility",
+            LOGGER.debug(
+                    "EFPI failed to prepare HumanoidModel runtime mesh for {}; skipping automatic compatibility",
                     entityId,
                     throwable
             );

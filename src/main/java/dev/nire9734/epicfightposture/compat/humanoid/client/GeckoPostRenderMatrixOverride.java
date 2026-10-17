@@ -1,6 +1,8 @@
 package dev.nire9734.epicfightposture.compat.humanoid.client;
 
 import com.mojang.blaze3d.vertex.PoseStack;
+import dev.nire9734.epicfightposture.compat.humanoid.retarget.HumanoidSkinWeightResolver;
+import dev.nire9734.epicfightposture.compat.humanoid.skeleton.HumanoidJoint;
 import net.minecraft.client.renderer.entity.EntityRenderer;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.LivingEntity;
@@ -32,19 +34,19 @@ import yesman.epicfight.world.capabilities.entitypatch.LivingEntityPatch;
  * postRender = (poseMatrix * joint.toOrigin) * nativeGeoBoneLocalBind
  * </pre>
  *
- * <p>No Gecko Euler reconstruction or hand-tuned positional offset is involved.</p>
+ * <p>The source anchor comes from the same semantic Gecko resolution used by body
+ * baking and GeoRenderLayer replay; no literal source bone name is required.</p>
  */
 @SuppressWarnings({"rawtypes", "unchecked"})
 public final class GeckoPostRenderMatrixOverride {
     private static final ThreadLocal<Entry> NEXT = new ThreadLocal<>();
-    private static final int CHEST = 8;
 
     public static void clear() {
         NEXT.remove();
     }
 
     /**
-     * Arms an exact one-shot torso matrix for renderer-specific post-super
+     * Arms an exact one-shot Chest-source matrix for renderer-specific post-super
      * attachments such as Iron's ArmorCapeLayer.
      */
     public static void armTorsoFromEpicFight(
@@ -66,41 +68,46 @@ public final class GeckoPostRenderMatrixOverride {
                 return;
             }
 
-            GeoBone torso = findBone(bakedModel, "torso");
-            if (torso == null) {
+            GeckoResolvedHumanoidRig resolved = GeckoResolvedHumanoidRig.resolve(
+                    bakedModel,
+                    GeckoResolvedHumanoidRig.keyFor(entity, geoModel, modelLocation)
+            );
+            GeoBone chestSource = resolved.sourceBone(HumanoidJoint.CHEST).orElse(null);
+            if (chestSource == null) {
                 return;
             }
 
             // GeckoAttachmentBridge may have synchronized the live source bone
             // for generic fallback post-render code. The exact cape path must
-            // instead start from the authored local bind state that Iron's would
-            // normally feed to RenderUtils.prepMatrixForBone.
-            resetToInitial(torso);
+            // instead start from the authored local bind state that the source
+            // renderer would normally feed to RenderUtils.prepMatrixForBone.
+            resetToInitial(chestSource);
 
             PoseStack localBindStack = new PoseStack();
-            RenderUtils.prepMatrixForBone(localBindStack, torso);
+            RenderUtils.prepMatrixForBone(localBindStack, chestSource);
             Matrix4f localBind = new Matrix4f(localBindStack.last().pose());
 
             Armature armature = entityPatch.getArmature();
             OpenMatrix4f[] poseMatrices = armature.getPoseMatrices();
+            int chestJointId = HumanoidSkinWeightResolver.CHEST;
             if (poseMatrices == null
-                    || CHEST < 0
-                    || CHEST >= poseMatrices.length
-                    || poseMatrices[CHEST] == null) {
+                    || chestJointId < 0
+                    || chestJointId >= poseMatrices.length
+                    || poseMatrices[chestJointId] == null) {
                 return;
             }
 
-            Joint chest = armature.searchJointById(CHEST);
+            Joint chest = armature.searchJointById(chestJointId);
             if (chest == null) {
                 return;
             }
 
             // Mirror SkinnedMesh.drawPosed exactly: pose * inverse bind.
-            OpenMatrix4f skin = new OpenMatrix4f(poseMatrices[CHEST]);
+            OpenMatrix4f skin = new OpenMatrix4f(poseMatrices[chestJointId]);
             skin.mulBack(chest.getToOrigin());
             Matrix4f skinMatrix = OpenMatrix4f.exportToMojangMatrix(skin);
 
-            arm(torso, new Matrix4f(skinMatrix).mul(localBind));
+            arm(chestSource, new Matrix4f(skinMatrix).mul(localBind));
         } catch (Throwable ignored) {
             // Optional compatibility path. If a renderer/model differs from the
             // expected Gecko humanoid layout, leave its normal call untouched.
@@ -131,32 +138,6 @@ public final class GeckoPostRenderMatrixOverride {
         NEXT.remove();
         poseStack.mulPoseMatrix(new Matrix4f(entry.matrix()));
         return true;
-    }
-
-    private static GeoBone findBone(BakedGeoModel model, String name) {
-        for (GeoBone top : model.topLevelBones()) {
-            GeoBone found = findBone(top, name);
-            if (found != null) {
-                return found;
-            }
-        }
-        return null;
-    }
-
-    private static GeoBone findBone(GeoBone bone, String name) {
-        if (bone == null) {
-            return null;
-        }
-        if (name.equalsIgnoreCase(bone.getName())) {
-            return bone;
-        }
-        for (GeoBone child : bone.getChildBones()) {
-            GeoBone found = findBone(child, name);
-            if (found != null) {
-                return found;
-            }
-        }
-        return null;
     }
 
     private static void resetToInitial(GeoBone bone) {

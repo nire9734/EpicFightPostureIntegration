@@ -11,124 +11,277 @@ import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.common.ForgeConfigSpec;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.LogicalSide;
-import net.minecraftforge.fml.event.config.ModConfigEvent;
 import net.minecraftforge.fml.common.Mod;
+import net.minecraftforge.fml.event.config.ModConfigEvent;
 import net.minecraftforge.fml.loading.FMLEnvironment;
 import net.minecraftforge.fml.util.thread.EffectiveSide;
 import net.minecraftforge.server.ServerLifecycleHooks;
 import org.slf4j.Logger;
 
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
-/** Server-authoritative posture tuning and cached blacklist lookups. */
+/** Server-authoritative posture tuning and cached compatibility policy. */
 @Mod.EventBusSubscriber(modid = EpicFightPostureIntegration.MODID, bus = Mod.EventBusSubscriber.Bus.MOD)
 public final class PostureServerConfig {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final ForgeConfigSpec.Builder BUILDER = new ForgeConfigSpec.Builder();
 
-    public static final ForgeConfigSpec.DoubleValue GLOBAL_MULTIPLIER;
-    public static final ForgeConfigSpec.DoubleValue MINIMUM_POSTURE;
-    public static final ForgeConfigSpec.BooleanValue USE_ARMOR_SCALING;
+    /*
+     * Internal 3.0.0 balance constants. These were previously exposed as config
+     * keys. Keeping the established defaults here preserves the current balance
+     * while presenting only useful high-level controls to users.
+     */
+    private static final float BASE_IMPACT_POSTURE_DAMAGE_MULTIPLIER = 0.55F;
+    private static final float ATTACK_DAMAGE_REFERENCE = 8.0F;
+    private static final float ATTACK_DAMAGE_SCALING_EXPONENT = 0.7F;
+    private static final float FULL_HEALTH_POSTURE_DAMAGE_MULTIPLIER = 0.25F;
+    private static final float ZERO_HEALTH_POSTURE_DAMAGE_MULTIPLIER = 1.0F;
+    private static final float HEALTH_POSTURE_CURVE_EXPONENT = 2.0F;
+    private static final float HEALTH_SCALING_EHP_START = 40.0F;
+    private static final float HEALTH_SCALING_EHP_END = 200.0F;
+    private static final float MINIMUM_POSTURE = 1.0F;
+    private static final boolean USE_ARMOR_SCALING = true;
+
+    /**
+     * Retained as an internal network representation for protocol 3. The public
+     * config no longer exposes a filter mode; an empty allowlist means unrestricted.
+     */
+    public enum CompatibilityFilterMode {
+        DENYLIST,
+        ALLOWLIST
+    }
+
+    public static final ForgeConfigSpec.DoubleValue MAXIMUM_POSTURE_MULTIPLIER;
+    public static final ForgeConfigSpec.DoubleValue POSTURE_DAMAGE_MULTIPLIER;
+    public static final ForgeConfigSpec.DoubleValue PARRY_PERCENT;
+    public static final ForgeConfigSpec.DoubleValue REGEN_DELAY_SECONDS;
+    public static final ForgeConfigSpec.DoubleValue REGEN_RATE_PERCENT;
+    public static final ForgeConfigSpec.ConfigValue<List<? extends String>> POSTURE_MULTIPLIERS;
     public static final ForgeConfigSpec.ConfigValue<List<? extends String>> ENTITY_BLACKLIST;
-    public static final ForgeConfigSpec.BooleanValue ENABLE_VANILLA_HUMANOID_COMPATIBILITY;
-    public static final ForgeConfigSpec.BooleanValue ENABLE_GECKOLIB_HUMANOID_COMPATIBILITY;
-    public static final ForgeConfigSpec.BooleanValue ENABLE_VANILLA_SPIDER_COMPATIBILITY;
+    public static final ForgeConfigSpec.BooleanValue AUTOMATIC_COMPATIBILITY;
+    public static final ForgeConfigSpec.ConfigValue<List<? extends String>> MOD_ALLOWLIST;
+    public static final ForgeConfigSpec.ConfigValue<List<? extends String>> MOD_DENYLIST;
     public static final ForgeConfigSpec SPEC;
 
     private static final Snapshot CLIENT_FAIL_CLOSED_DEFAULTS = new Snapshot(
             1.0D,
-            1.0D,
-            true,
+            (double) MINIMUM_POSTURE,
+            USE_ARMOR_SCALING,
             Set.of(),
             false,
             false,
-            false
+            false,
+            CompatibilityFilterMode.DENYLIST,
+            Set.of(),
+            Set.of()
     );
 
     private static volatile Set<ResourceLocation> blacklist = Set.of();
+    private static volatile Map<ResourceLocation, Float> entityMultipliers = Map.of();
+    private static volatile Set<String> modAllowlist = Set.of();
+    private static volatile Set<String> modDenylist = Set.of();
     private static volatile Snapshot remoteSnapshot;
 
     static {
         BUILDER.push("posture");
-        GLOBAL_MULTIPLIER = BUILDER
-                .comment("Global maximum posture multiplier. 1.0 = default.")
-                .defineInRange("global_multiplier", 1.0D, 0.1D, 100.0D);
-        MINIMUM_POSTURE = BUILDER
-                .comment("Minimum maximum posture an eligible mob can have.")
-                .defineInRange("minimum_posture", 1.0D, 0.1D, 10000.0D);
-        USE_ARMOR_SCALING = BUILDER
-                .comment("Whether armor and armor toughness affect maximum posture.")
-                .define("use_armor_scaling", true);
+        MAXIMUM_POSTURE_MULTIPLIER = BUILDER
+                .comment(
+                        "Multiplier for the maximum Posture of all entities.",
+                        "Default: 1.0 | Range: 0.1-100.0"
+                )
+                .defineInRange("maximum_posture_multiplier", 1.0D, 0.1D, 100.0D);
+        POSTURE_DAMAGE_MULTIPLIER = BUILDER
+                .comment(
+                        "Multiplier for Posture damage dealt by attacks.",
+                        "1.0 = EFPI default balance, 0.5 = half, 2.0 = double.",
+                        "Default: 1.0 | Range: 0.0-100.0"
+                )
+                .defineInRange("posture_damage_multiplier", 1.0D, 0.0D, 100.0D);
+        PARRY_PERCENT = BUILDER
+                .comment(
+                        "Posture damage dealt by a parry, as a percentage of maximum Posture.",
+                        "Default: 6.0 | Range: 0.0-100.0"
+                )
+                .defineInRange("parry_percent", 6.0D, 0.0D, 100.0D);
+        BUILDER.pop();
+
+        BUILDER.push("regeneration");
+        REGEN_DELAY_SECONDS = BUILDER
+                .comment(
+                        "Seconds before Posture regeneration starts.",
+                        "Default: 10.0 | Range: 0.0-60.0"
+                )
+                .defineInRange("delay_seconds", 10.0D, 0.0D, 60.0D);
+        REGEN_RATE_PERCENT = BUILDER
+                .comment(
+                        "Percentage of maximum Posture regenerated per second.",
+                        "Default: 2.0 | Range: 0.0-100.0"
+                )
+                .defineInRange("percent_per_second", 2.0D, 0.0D, 100.0D);
+        BUILDER.pop();
+
+        BUILDER.push("entities");
+        POSTURE_MULTIPLIERS = BUILDER
+                .comment(
+                        "Per-entity maximum Posture multipliers.",
+                        "Overrides maximum_posture_multiplier for the specified entity.",
+                        "Default: [] | Multiplier range: 0.01-100.0",
+                        "Example: [\"cataclysm:ignis=0.25\"]"
+                )
+                .defineListAllowEmpty("posture_multipliers", List.of(), value -> value instanceof String);
         ENTITY_BLACKLIST = BUILDER
                 .comment(
-                        "Entities excluded from EFPI posture and automatic compatibility behavior.",
-                        "Use namespace:entity IDs."
+                        "Entities completely excluded from EFPI.",
+                        "Default: []",
+                        "Example: [\"minecraft:zombie\"]"
                 )
                 .defineListAllowEmpty("entity_blacklist", List.of(), value -> value instanceof String);
         BUILDER.pop();
 
         BUILDER.push("compatibility");
-        ENABLE_VANILLA_HUMANOID_COMPATIBILITY = BUILDER
+        AUTOMATIC_COMPATIBILITY = BUILDER
                 .comment(
-                        "Enable EFPI's automatic compatibility for entities rendered with Minecraft HumanoidModel.",
-                        "Default: true. Restart the server after changing this option."
+                        "Automatically add EFPI compatibility to supported mobs that do not already have an Epic Fight patch.",
+                        "false = only mobs already patched by Epic Fight or another mod are supported.",
+                        "Default: true"
                 )
-                .define("enable_vanilla_humanoid_compatibility", true);
-        ENABLE_GECKOLIB_HUMANOID_COMPATIBILITY = BUILDER
+                .define("automatic_compatibility", true);
+        MOD_ALLOWLIST = BUILDER
                 .comment(
-                        "Enable EFPI's automatic compatibility for humanoid GeckoLib entity models.",
-                        "Default: true. This has no effect when GeckoLib is not installed.",
-                        "Restart the server after changing this option."
+                        "If non-empty, automatic compatibility is limited to these mod IDs.",
+                        "Default: []",
+                        "Example: [\"cataclysm\", \"irons_spellbooks\"]"
                 )
-                .define("enable_geckolib_humanoid_compatibility", true);
-        ENABLE_VANILLA_SPIDER_COMPATIBILITY = BUILDER
+                .defineListAllowEmpty("mod_allowlist", List.of(), value -> value instanceof String);
+        MOD_DENYLIST = BUILDER
                 .comment(
-                        "Enable EFPI's automatic compatibility for unpatched entities rendered with Minecraft SpiderModel.",
-                        "The source mob keeps its original AI; EFPI uses a lightweight SPIDER patch only for posture/execution states.",
-                        "Default: true. Restart the server after changing this option."
+                        "Mod IDs excluded from automatic compatibility. Denylist takes priority over allowlist.",
+                        "Default: []",
+                        "Example: [\"some_mod\"]"
                 )
-                .define("enable_vanilla_spider_compatibility", true);
+                .defineListAllowEmpty("mod_denylist", List.of(), value -> value instanceof String);
         BUILDER.pop();
 
         SPEC = BUILDER.build();
     }
 
+    /** Alias retained for internal callers that only need the global maximum-posture multiplier. */
     public static float globalMultiplier() {
         Snapshot snapshot = effectiveClientSnapshot();
-        return (snapshot != null ? snapshot.globalMultiplier() : GLOBAL_MULTIPLIER.get()).floatValue();
+        return (snapshot != null ? snapshot.globalMultiplier() : MAXIMUM_POSTURE_MULTIPLIER.get()).floatValue();
+    }
+
+    /** Server-side maximum-posture multiplier with an entity override replacing the global value. */
+    public static float maximumPostureMultiplier(ResourceLocation entityId) {
+        Float override = entityId == null ? null : entityMultipliers.get(entityId);
+        return override != null ? override : MAXIMUM_POSTURE_MULTIPLIER.get().floatValue();
+    }
+
+    /**
+     * Effective Impact-derived posture multiplier. The public config is a simple
+     * scale around the established 3.0.0 base coefficient of 0.55.
+     */
+    public static float postureDamageMultiplier() {
+        return BASE_IMPACT_POSTURE_DAMAGE_MULTIPLIER * POSTURE_DAMAGE_MULTIPLIER.get().floatValue();
+    }
+
+    public static float attackDamageReference() {
+        return ATTACK_DAMAGE_REFERENCE;
+    }
+
+    public static float attackDamageScalingExponent() {
+        return ATTACK_DAMAGE_SCALING_EXPONENT;
+    }
+
+    /** Base parry posture damage as a fraction of target maximum posture. */
+    public static float parryPostureFraction() {
+        return PARRY_PERCENT.get().floatValue() / 100.0F;
+    }
+
+    public static float fullHealthPostureDamageMultiplier() {
+        return FULL_HEALTH_POSTURE_DAMAGE_MULTIPLIER;
+    }
+
+    public static float zeroHealthPostureDamageMultiplier() {
+        return ZERO_HEALTH_POSTURE_DAMAGE_MULTIPLIER;
+    }
+
+    public static float healthPostureCurveExponent() {
+        return HEALTH_POSTURE_CURVE_EXPONENT;
+    }
+
+    public static float healthScalingEhpStart() {
+        return HEALTH_SCALING_EHP_START;
+    }
+
+    public static float healthScalingEhpEnd() {
+        return HEALTH_SCALING_EHP_END;
+    }
+
+    /** Server-side delay before ordinary posture regeneration begins. */
+    public static float postureRegenDelaySeconds() {
+        return REGEN_DELAY_SECONDS.get().floatValue();
+    }
+
+    /** Constant fraction of maximum posture regenerated per second after the delay. */
+    public static float postureRegenFractionPerSecond() {
+        return REGEN_RATE_PERCENT.get().floatValue() / 100.0F;
     }
 
     public static float minimumPosture() {
         Snapshot snapshot = effectiveClientSnapshot();
-        return (snapshot != null ? snapshot.minimumPosture() : MINIMUM_POSTURE.get()).floatValue();
+        return snapshot != null ? snapshot.minimumPosture().floatValue() : MINIMUM_POSTURE;
     }
 
     public static boolean useArmorScaling() {
         Snapshot snapshot = effectiveClientSnapshot();
-        return snapshot != null ? snapshot.useArmorScaling() : USE_ARMOR_SCALING.get();
+        return snapshot != null ? snapshot.useArmorScaling() : USE_ARMOR_SCALING;
+    }
+
+    public static boolean automaticCompatibilityEnabled() {
+        Snapshot snapshot = effectiveClientSnapshot();
+        if (snapshot != null) {
+            return snapshot.enableVanillaHumanoidCompatibility()
+                    && snapshot.enableExtendedHumanoidCompatibility()
+                    && snapshot.enableVanillaSpiderCompatibility();
+        }
+        return AUTOMATIC_COMPATIBILITY.get();
     }
 
     public static boolean vanillaHumanoidCompatibilityEnabled() {
-        Snapshot snapshot = effectiveClientSnapshot();
-        return snapshot != null
-                ? snapshot.enableVanillaHumanoidCompatibility()
-                : ENABLE_VANILLA_HUMANOID_COMPATIBILITY.get();
+        return automaticCompatibilityEnabled();
     }
 
-    public static boolean geckoLibHumanoidCompatibilityEnabled() {
-        Snapshot snapshot = effectiveClientSnapshot();
-        return snapshot != null
-                ? snapshot.enableGeckoLibHumanoidCompatibility()
-                : ENABLE_GECKOLIB_HUMANOID_COMPATIBILITY.get();
+    public static boolean extendedHumanoidCompatibilityEnabled() {
+        return automaticCompatibilityEnabled();
     }
 
     public static boolean vanillaSpiderCompatibilityEnabled() {
+        return automaticCompatibilityEnabled();
+    }
+
+    /** Namespace filtering applies only to EFPI automatic compatibility, not to existing third-party patches. */
+    public static boolean isAutomaticCompatibilityAllowed(ResourceLocation entityId) {
+        if (entityId == null || !automaticCompatibilityEnabled()) {
+            return false;
+        }
+        if ("minecraft".equals(entityId.getNamespace())) {
+            return true;
+        }
+
         Snapshot snapshot = effectiveClientSnapshot();
-        return snapshot != null
-                ? snapshot.enableVanillaSpiderCompatibility()
-                : ENABLE_VANILLA_SPIDER_COMPATIBILITY.get();
+        Set<String> allow = snapshot != null ? snapshot.modAllowlist() : modAllowlist;
+        Set<String> deny = snapshot != null ? snapshot.modDenylist() : modDenylist;
+        String namespace = entityId.getNamespace();
+
+        if (deny.contains(namespace)) {
+            return false;
+        }
+        return allow.isEmpty() || allow.contains(namespace);
     }
 
     public static boolean isExplicitlyBlacklisted(ResourceLocation entityId) {
@@ -141,7 +294,7 @@ public final class PostureServerConfig {
                 : blacklist.contains(entityId);
     }
 
-    /** Treat an EFPI-owned automatic compatibility target as disabled when its switch is off. */
+    /** Treat an EFPI-owned automatic compatibility target as disabled when its current policy is off. */
     public static boolean isBlacklisted(ResourceLocation entityId) {
         if (entityId == null) {
             return false;
@@ -153,16 +306,20 @@ public final class PostureServerConfig {
                 && !VanillaHumanoidCompat.isCompatibilityEnabled(entityId);
     }
 
-    /** Snapshot of the local authoritative config, used for login synchronization. */
+    /** Snapshot of the local authoritative compatibility policy, used for login synchronization. */
     public static Snapshot localSnapshot() {
+        boolean automatic = AUTOMATIC_COMPATIBILITY.get();
         return new Snapshot(
-                GLOBAL_MULTIPLIER.get(),
-                MINIMUM_POSTURE.get(),
-                USE_ARMOR_SCALING.get(),
+                MAXIMUM_POSTURE_MULTIPLIER.get(),
+                (double) MINIMUM_POSTURE,
+                USE_ARMOR_SCALING,
                 blacklist,
-                ENABLE_VANILLA_HUMANOID_COMPATIBILITY.get(),
-                ENABLE_GECKOLIB_HUMANOID_COMPATIBILITY.get(),
-                ENABLE_VANILLA_SPIDER_COMPATIBILITY.get()
+                automatic,
+                automatic,
+                automatic,
+                modAllowlist.isEmpty() ? CompatibilityFilterMode.DENYLIST : CompatibilityFilterMode.ALLOWLIST,
+                modAllowlist,
+                modDenylist
         );
     }
 
@@ -183,29 +340,79 @@ public final class PostureServerConfig {
     @SubscribeEvent
     public static void onConfigLoading(ModConfigEvent.Loading event) {
         if (event.getConfig().getSpec() == SPEC) {
-            refreshBlacklist();
+            refreshCachedSettings();
         }
     }
 
     @SubscribeEvent
     public static void onConfigReloading(ModConfigEvent.Reloading event) {
         if (event.getConfig().getSpec() == SPEC) {
-            refreshBlacklist();
+            refreshCachedSettings();
             synchronizeReloadedSettings();
         }
     }
 
-    public static void refreshBlacklist() {
+    private static void refreshCachedSettings() {
+        blacklist = parseEntityBlacklist();
+        entityMultipliers = parseEntityMultipliers();
+        modAllowlist = parseModIds(MOD_ALLOWLIST.get(), "compatibility.mod_allowlist");
+        modDenylist = parseModIds(MOD_DENYLIST.get(), "compatibility.mod_denylist");
+    }
+
+    private static Set<ResourceLocation> parseEntityBlacklist() {
         Set<ResourceLocation> parsed = new HashSet<>();
         for (String rawId : ENTITY_BLACKLIST.get()) {
-            ResourceLocation entityId = ResourceLocation.tryParse(rawId);
+            ResourceLocation entityId = ResourceLocation.tryParse(rawId == null ? "" : rawId.trim());
             if (entityId == null) {
-                LOGGER.warn("Ignoring invalid entity ID '{}' in posture.entity_blacklist", rawId);
+                LOGGER.warn("Ignoring invalid entity ID '{}' in entities.entity_blacklist", rawId);
                 continue;
             }
             parsed.add(entityId);
         }
-        blacklist = Set.copyOf(parsed);
+        return Set.copyOf(parsed);
+    }
+
+    private static Map<ResourceLocation, Float> parseEntityMultipliers() {
+        Map<ResourceLocation, Float> parsed = new HashMap<>();
+        for (String rawEntry : POSTURE_MULTIPLIERS.get()) {
+            String entry = rawEntry == null ? "" : rawEntry.trim();
+            int separator = entry.lastIndexOf('=');
+            if (separator <= 0 || separator == entry.length() - 1) {
+                LOGGER.warn("Ignoring invalid entity multiplier '{}' in entities.posture_multipliers", rawEntry);
+                continue;
+            }
+
+            ResourceLocation entityId = ResourceLocation.tryParse(entry.substring(0, separator).trim());
+            float multiplier;
+            try {
+                multiplier = Float.parseFloat(entry.substring(separator + 1).trim());
+            } catch (NumberFormatException exception) {
+                multiplier = Float.NaN;
+            }
+            if (entityId == null || !Float.isFinite(multiplier) || multiplier < 0.01F || multiplier > 100.0F) {
+                LOGGER.warn("Ignoring invalid entity multiplier '{}' in entities.posture_multipliers", rawEntry);
+                continue;
+            }
+            parsed.put(entityId, multiplier);
+        }
+        return Map.copyOf(parsed);
+    }
+
+    private static Set<String> parseModIds(List<? extends String> rawIds, String configPath) {
+        Set<String> parsed = new HashSet<>();
+        for (String rawId : rawIds) {
+            String modId = rawId == null ? "" : rawId.trim();
+            ResourceLocation probe = ResourceLocation.tryParse(modId + ":efpi_probe");
+            if (modId.isEmpty()
+                    || probe == null
+                    || !modId.equals(probe.getNamespace())
+                    || !"efpi_probe".equals(probe.getPath())) {
+                LOGGER.warn("Ignoring invalid mod ID '{}' in {}", rawId, configPath);
+                continue;
+            }
+            parsed.add(modId);
+        }
+        return Set.copyOf(parsed);
     }
 
     private static void synchronizeReloadedSettings() {
@@ -243,12 +450,20 @@ public final class PostureServerConfig {
             boolean useArmorScaling,
             Set<ResourceLocation> entityBlacklist,
             boolean enableVanillaHumanoidCompatibility,
-            boolean enableGeckoLibHumanoidCompatibility,
-            boolean enableVanillaSpiderCompatibility) {
+            boolean enableExtendedHumanoidCompatibility,
+            boolean enableVanillaSpiderCompatibility,
+            CompatibilityFilterMode compatibilityFilterMode,
+            Set<String> modAllowlist,
+            Set<String> modDenylist) {
         public Snapshot {
             globalMultiplier = globalMultiplier == null ? 1.0D : globalMultiplier;
-            minimumPosture = minimumPosture == null ? 1.0D : minimumPosture;
+            minimumPosture = minimumPosture == null ? (double) MINIMUM_POSTURE : minimumPosture;
             entityBlacklist = entityBlacklist == null ? Set.of() : Set.copyOf(entityBlacklist);
+            compatibilityFilterMode = compatibilityFilterMode == null
+                    ? CompatibilityFilterMode.DENYLIST
+                    : compatibilityFilterMode;
+            modAllowlist = modAllowlist == null ? Set.of() : Set.copyOf(modAllowlist);
+            modDenylist = modDenylist == null ? Set.of() : Set.copyOf(modDenylist);
         }
     }
 

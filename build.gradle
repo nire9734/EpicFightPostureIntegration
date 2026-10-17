@@ -49,9 +49,13 @@ dependencies {
     implementation fg.deobf("curse.maven:epic-fight-mod-${epic_fight_project}:${epic_fight_file}")
     implementation fg.deobf("curse.maven:combat-evolution-${combat_evolution_project}:${combat_evolution_file}")
 
-    // Optional client compatibility. GeckoLib is not required at runtime; its
-    // classes are only loaded when the geckolib mod is actually present.
-    compileOnly fg.deobf("curse.maven:geckolib-388172:5675221")
+    // Optional client compatibility. These libraries are not required at runtime;
+    // their classes are only loaded when the corresponding mod is actually present.
+    compileOnly fg.deobf("curse.maven:geckolib-388172:8285794")
+    compileOnly fg.deobf("curse.maven:lionfish-api-1001614:8095554")
+
+    testImplementation platform('org.junit:junit-bom:5.10.3')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
 
     annotationProcessor 'org.spongepowered:mixin:0.8.5:processor'
 }
@@ -94,6 +98,70 @@ tasks.named('jar', Jar).configure {
         ])
     }
     finalizedBy 'reobfJar'
+}
+
+tasks.named('test', Test).configure {
+    useJUnitPlatform()
+}
+
+tasks.register('checkHumanoidCoreDependencies') {
+    group = 'verification'
+    description = 'Rejects platform/framework imports from the portable humanoid rig, retarget, and skeleton core.'
+
+    doLast {
+        def coreDirectories = [
+            file('src/main/java/dev/nire9734/epicfightposture/compat/humanoid/rig'),
+            file('src/main/java/dev/nire9734/epicfightposture/compat/humanoid/retarget'),
+            file('src/main/java/dev/nire9734/epicfightposture/compat/humanoid/skeleton')
+        ]
+        def forbiddenPrefixes = [
+            'net.minecraft',
+            'net.minecraftforge',
+            'net.neoforged',
+            'yesman.epicfight',
+            'software.bernie',
+            'mod.azure',
+            'com.github.L_Ender'
+        ]
+        def violations = []
+
+        coreDirectories.each { directory ->
+            if (!directory.exists()) {
+                return
+            }
+            fileTree(directory) {
+                include '**/*.java'
+            }.each { sourceFile ->
+                sourceFile.eachLine('UTF-8') { line, lineNumber ->
+                    String statement = line.trim()
+                    String imported = null
+                    if (statement.startsWith('import static ')) {
+                        imported = statement.substring('import static '.length()).replace(';', '').trim()
+                    } else if (statement.startsWith('import ')) {
+                        imported = statement.substring('import '.length()).replace(';', '').trim()
+                    }
+                    if (imported == null) {
+                        return
+                    }
+                    forbiddenPrefixes.each { prefix ->
+                        if (imported == prefix || imported.startsWith(prefix + '.')) {
+                            violations.add("${sourceFile}:$lineNumber imports ${imported}")
+                        }
+                    }
+                }
+            }
+        }
+
+        if (!violations.isEmpty()) {
+            throw new GradleException(
+                    'Portable humanoid core depends on platform/framework APIs:\n' + violations.join('\n')
+            )
+        }
+    }
+}
+
+tasks.named('check').configure {
+    dependsOn tasks.named('checkHumanoidCoreDependencies')
 }
 
 tasks.withType(JavaCompile).configureEach {

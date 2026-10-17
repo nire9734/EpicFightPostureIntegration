@@ -55,7 +55,7 @@ public final class HumanoidDiscoveryServer {
             String environmentFingerprint,
             Set<ResourceLocation> inspected,
             Set<ResourceLocation> vanillaHumanoid,
-            Set<ResourceLocation> geckoLibHumanoid,
+            Set<ResourceLocation> extendedHumanoid,
             Set<ResourceLocation> vanillaSpider) {
         if (FMLEnvironment.dist != Dist.DEDICATED_SERVER
                 || sender == null
@@ -73,14 +73,14 @@ public final class HumanoidDiscoveryServer {
             return;
         }
         if (!inspected.containsAll(vanillaHumanoid)
-                || !inspected.containsAll(geckoLibHumanoid)
+                || !inspected.containsAll(extendedHumanoid)
                 || !inspected.containsAll(vanillaSpider)) {
             sender.sendSystemMessage(Component.literal("EFPI: rejected inconsistent renderer discovery report."));
             return;
         }
-        if (hasOverlap(vanillaHumanoid, geckoLibHumanoid)
+        if (hasOverlap(vanillaHumanoid, extendedHumanoid)
                 || hasOverlap(vanillaHumanoid, vanillaSpider)
-                || hasOverlap(geckoLibHumanoid, vanillaSpider)) {
+                || hasOverlap(extendedHumanoid, vanillaSpider)) {
             sender.sendSystemMessage(Component.literal("EFPI: rejected ambiguous renderer discovery report."));
             return;
         }
@@ -95,8 +95,8 @@ public final class HumanoidDiscoveryServer {
 
         Set<ResourceLocation> validVanilla = new HashSet<>(vanillaHumanoid);
         validVanilla.retainAll(validInspected);
-        Set<ResourceLocation> validGecko = new HashSet<>(geckoLibHumanoid);
-        validGecko.retainAll(validInspected);
+        Set<ResourceLocation> validExtended = new HashSet<>(extendedHumanoid);
+        validExtended.retainAll(validInspected);
         Set<ResourceLocation> validSpider = new HashSet<>(vanillaSpider);
         validSpider.retainAll(validInspected);
 
@@ -104,7 +104,7 @@ public final class HumanoidDiscoveryServer {
                 environmentFingerprint,
                 validInspected,
                 validVanilla,
-                validGecko,
+                validExtended,
                 validSpider
         );
 
@@ -116,7 +116,7 @@ public final class HumanoidDiscoveryServer {
         String summary = "EFPI: renderer discovery: "
                 + result.pendingCount() + " confirmed ("
                 + result.pendingVanillaCount() + " vanilla humanoid, "
-                + result.pendingGeckoCount() + " GeckoLib humanoid, "
+                + result.pendingExtendedCount() + " extended humanoid, "
                 + result.pendingSpiderCount() + " vanilla SpiderModel), "
                 + result.conflictCount() + " conflict(s).";
         if (result.restartRequired()) {

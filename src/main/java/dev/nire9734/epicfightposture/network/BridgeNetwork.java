@@ -10,9 +10,8 @@ import net.minecraftforge.network.PacketDistributor;
 import net.minecraftforge.network.simple.SimpleChannel;
 
 public final class BridgeNetwork {
-    // Public 1.1.0 used protocol 1. The unreleased 2.0.0 contract remains protocol 2,
-    // including renderer discovery and server-settings synchronization packets.
-    private static final String VERSION = "2";
+    // Network protocol version is intentionally independent from the mod version.
+    private static final String VERSION = "3";
     private static SimpleChannel channel;
     private static boolean initialized;
 

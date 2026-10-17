@@ -15,7 +15,6 @@ import org.slf4j.Logger;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 
 @Mod(EpicFightPostureIntegration.MODID)
 public final class EpicFightPostureIntegration {
@@ -24,7 +23,7 @@ public final class EpicFightPostureIntegration {
 
     public EpicFightPostureIntegration() {
         ModLoadingContext context = ModLoadingContext.get();
-        prepareConfigLocation();
+        prepareConfigDirectory();
 
         // EFPI server policy is installation/server-global rather than per-world.
         // The authoritative values are synchronized to clients after login.
@@ -47,31 +46,10 @@ public final class EpicFightPostureIntegration {
         BridgeNetwork.init();
     }
 
-    private static void prepareConfigLocation() {
-        Path configDirectory = FMLPaths.CONFIGDIR.get();
-        Path modDirectory = configDirectory.resolve(MODID);
-        Path legacyClientConfig = configDirectory.resolve(MODID + "-client.toml");
-        Path legacyGlobalServerConfig = configDirectory.resolve(MODID + "-server.toml");
-        Path legacyDiscoveryCache = configDirectory.resolve(MODID + "-humanoid-detected.json");
-        Path newClientConfig = modDirectory.resolve("client.toml");
-        Path newServerConfig = modDirectory.resolve("server.toml");
-        Path obsoleteDiscoveryCache = modDirectory.resolve("humanoid-detected.json");
-
+    private static void prepareConfigDirectory() {
+        Path modDirectory = FMLPaths.CONFIGDIR.get().resolve(MODID);
         try {
             Files.createDirectories(modDirectory);
-            if (Files.isRegularFile(legacyClientConfig) && !Files.exists(newClientConfig)) {
-                Files.move(legacyClientConfig, newClientConfig, StandardCopyOption.REPLACE_EXISTING);
-                LOGGER.info("Moved EFPI client config to {}", newClientConfig);
-            }
-            if (Files.isRegularFile(legacyGlobalServerConfig) && !Files.exists(newServerConfig)) {
-                Files.move(legacyGlobalServerConfig, newServerConfig, StandardCopyOption.REPLACE_EXISTING);
-                LOGGER.info("Moved EFPI global server config to {}", newServerConfig);
-            }
-
-            // Client renderer discovery is now validated fresh each launch and kept
-            // in memory only. Remove obsolete cache files from pre-release builds.
-            Files.deleteIfExists(obsoleteDiscoveryCache);
-            Files.deleteIfExists(legacyDiscoveryCache);
         } catch (IOException exception) {
             LOGGER.warn("Failed to prepare EFPI config directory {}", modDirectory, exception);
         }

@@ -8,11 +8,22 @@
     "defaultRequire": 1
   },
   "mixins": [
-    "SpiderExecutionMixin"
+    "SpiderExecutionMixin",
+    "ParryDetectionMixin"
   ],
   "client": [
     "client.BridgeHealthBarMixin",
+    "client.ComputeShaderProviderRuntimeMeshMixin",
+    "client.GeoArmorRendererInvoker",
+    "client.GeckoItemArmorLayerContextMixin",
+    "client.GlDebug1005SuppressionMixin",
     "client.IronsHumanoidRendererCapeMixin",
-    "client.LivingEntityRendererScaleInvoker"
+    "client.LionfishAdvancedModelBoxLayerPoseMixin",
+    "client.LionfishBasicEntityModelLayerMeshMixin",
+    "client.LivingEntityRendererScaleInvoker",
+    "client.LivingEntityRendererLayersAccessor",
+    "client.ModelPartLayerPoseMixin",
+    "client.MultiBufferSourceBufferSourceMixin",
+    "client.OutlineBufferSourceMixin"
   ]
 }

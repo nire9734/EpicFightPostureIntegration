@@ -16,7 +16,6 @@ import yesman.epicfight.api.asset.AssetAccessor;
 import yesman.epicfight.model.armature.HumanoidArmature;
 import yesman.epicfight.world.capabilities.EpicFightCapabilities;
 import yesman.epicfight.world.capabilities.entitypatch.LivingEntityPatch;
-import yesman.epicfight.world.capabilities.entitypatch.player.PlayerPatch;
 import yesman.epicfight.world.damagesource.StunType;
 
 import java.util.Map;
@@ -25,11 +24,8 @@ import java.util.WeakHashMap;
 
 /** Owns server-authoritative posture state for eligible Epic Fight entity patches. */
 public final class PostureManager {
-    private static final float HURT_IMPACT_MULTIPLIER = 0.55F;
-    private static final int REGEN_DELAY_TICKS = 150;
     private static final int MAX_POSTURE_REFRESH_INTERVAL_TICKS = 10;
     private static final int BREAK_RECOVERY_TICKS = 60;
-    private static final float REGEN_FRACTION_PER_SECOND = 0.05F;
 
     private static final float EHP_REFERENCE_DAMAGE = 8.0F;
     private static final float EHP_REFERENCE_HEALTH = 20.0F;
@@ -37,13 +33,9 @@ public final class PostureManager {
     private static final double EHP_EXPONENT = 0.7D;
     private static final float MAX_SAFE_POSTURE = 1_000_000.0F;
 
-    private static final float PARRY_BASE_DAMAGE = 0.5F;
-    private static final float PARRY_MAX_FRACTION = 0.08F;
-    private static final float PARRY_DAMAGE_CAP = 2.0F;
-
     private static final Map<LivingEntity, State> STATES = new WeakHashMap<>();
 
-    public static void onPlayerDamage(LivingEntity target, Player player, float damageAmount, DamageSource source) {
+    public static void onPlayerDamage(LivingEntity target, float damageAmount, DamageSource source) {
         if (target == null || damageAmount <= 0.0F || !RuntimeAccess.isServerEntity(target)) {
             return;
         }
@@ -58,10 +50,13 @@ public final class PostureManager {
             return;
         }
 
-        damagePosture(target, patch, impact * HURT_IMPACT_MULTIPLIER);
+        float postureDamage = impact
+                * PostureServerConfig.postureDamageMultiplier()
+                * healthPostureDamageMultiplier(target);
+        damagePosture(target, patch, postureDamage);
     }
 
-    public static void onParried(LivingEntity target, PlayerPatch<?> playerPatch) {
+    public static void onParried(LivingEntity target) {
         if (target == null || !RuntimeAccess.isServerEntity(target)) {
             return;
         }
@@ -76,17 +71,19 @@ public final class PostureManager {
             return;
         }
 
-        float postureDamage = Math.min(PARRY_DAMAGE_CAP, PARRY_BASE_DAMAGE + state.max * PARRY_MAX_FRACTION);
+        float targetEffectiveHealth = targetEffectiveHealth(target);
+        float postureDamage = PostureBalance.parryDamage(
+                state.max,
+                PostureServerConfig.parryPostureFraction(),
+                targetEffectiveHealth,
+                EHP_REFERENCE_HEALTH,
+                (float) EHP_EXPONENT
+        ) * healthPostureDamageMultiplier(target, targetEffectiveHealth);
         state.current = Math.max(0.0F, state.current - postureDamage);
-        state.regenDelay = REGEN_DELAY_TICKS;
+        state.regenDelay = regenDelayTicks();
 
         if (state.current <= 0.0F) {
             breakPosture(target, patch, state);
-        } else {
-            try {
-                patch.applyStun(StunType.LONG, 0.0F);
-            } catch (Throwable ignored) {
-            }
         }
         PostureSyncEvents.syncNow(target);
     }
@@ -167,7 +164,7 @@ public final class PostureManager {
             return true;
         }
 
-        float regenPerTick = state.max * REGEN_FRACTION_PER_SECOND / 20.0F;
+        float regenPerTick = state.max * PostureServerConfig.postureRegenFractionPerSecond() / 20.0F;
         state.current = Math.min(state.max, state.current + regenPerTick);
         return true;
     }
@@ -230,7 +227,7 @@ public final class PostureManager {
         }
 
         state.current = Math.max(0.0F, state.current - damage);
-        state.regenDelay = REGEN_DELAY_TICKS;
+        state.regenDelay = regenDelayTicks();
         if (state.current <= 0.0F) {
             breakPosture(entity, patch, state);
         }
@@ -243,7 +240,7 @@ public final class PostureManager {
         }
 
         state.current = 0.0F;
-        state.regenDelay = REGEN_DELAY_TICKS;
+        state.regenDelay = regenDelayTicks();
         stopUsingItem(entity);
 
         boolean stunned = false;
@@ -343,7 +340,10 @@ public final class PostureManager {
         boolean useArmor = PostureServerConfig.useArmorScaling();
         float armor = useArmor ? finiteOr((float) entity.getAttributeValue(Attributes.ARMOR), 0.0F) : 0.0F;
         float toughness = useArmor ? finiteOr((float) entity.getAttributeValue(Attributes.ARMOR_TOUGHNESS), 0.0F) : 0.0F;
-        float multiplier = finiteOr(PostureServerConfig.globalMultiplier(), 1.0F);
+        float multiplier = finiteOr(
+                PostureServerConfig.maximumPostureMultiplier(entityTypeId(entity)),
+                1.0F
+        );
         float minimum = finiteOr(PostureServerConfig.minimumPosture(), 1.0F);
 
         if (state.inputsInitialized
@@ -378,7 +378,7 @@ public final class PostureManager {
                 maxHealth,
                 armor,
                 toughness,
-                finiteOr(PostureServerConfig.globalMultiplier(), 1.0F),
+                finiteOr(PostureServerConfig.maximumPostureMultiplier(entityTypeId(entity)), 1.0F),
                 finiteOr(PostureServerConfig.minimumPosture(), 1.0F),
                 useArmor,
                 state
@@ -432,7 +432,7 @@ public final class PostureManager {
                 maxHealth,
                 armor,
                 toughness,
-                finiteOr(PostureServerConfig.globalMultiplier(), 1.0F),
+                finiteOr(PostureServerConfig.maximumPostureMultiplier(entityTypeId(entity)), 1.0F),
                 finiteOr(PostureServerConfig.minimumPosture(), 1.0F)
         );
     }
@@ -487,6 +487,51 @@ public final class PostureManager {
         } catch (Throwable ignored) {
             return null;
         }
+    }
+
+    private static int regenDelayTicks() {
+        return PostureBalance.regenDelayTicks(PostureServerConfig.postureRegenDelaySeconds());
+    }
+
+    private static float targetEffectiveHealth(LivingEntity entity) {
+        float maxHealth = finiteOr(entity.getMaxHealth(), EHP_REFERENCE_HEALTH);
+        if (maxHealth <= 0.0F) {
+            maxHealth = EHP_REFERENCE_HEALTH;
+        }
+
+        boolean useArmor = PostureServerConfig.useArmorScaling();
+        float armor = useArmor ? finiteOr((float) entity.getAttributeValue(Attributes.ARMOR), 0.0F) : 0.0F;
+        float toughness = useArmor ? finiteOr((float) entity.getAttributeValue(Attributes.ARMOR_TOUGHNESS), 0.0F) : 0.0F;
+        float targetEffectiveHealth = effectiveHealth(maxHealth, armor, toughness, EHP_REFERENCE_DAMAGE);
+        return Float.isFinite(targetEffectiveHealth) && targetEffectiveHealth > 0.0F
+                ? targetEffectiveHealth
+                : EHP_REFERENCE_HEALTH;
+    }
+
+    private static float healthPostureDamageMultiplier(LivingEntity entity) {
+        return healthPostureDamageMultiplier(entity, targetEffectiveHealth(entity));
+    }
+
+    private static float healthPostureDamageMultiplier(LivingEntity entity, float targetEffectiveHealth) {
+        float maxHealth = finiteOr(entity.getMaxHealth(), EHP_REFERENCE_HEALTH);
+        if (maxHealth <= 0.0F) {
+            maxHealth = EHP_REFERENCE_HEALTH;
+        }
+        float currentHealth = finiteOr(entity.getHealth(), maxHealth);
+        float healthFraction = clamp(currentHealth / maxHealth, 0.0F, 1.0F);
+        float effectiveHealth = Float.isFinite(targetEffectiveHealth) && targetEffectiveHealth > 0.0F
+                ? targetEffectiveHealth
+                : EHP_REFERENCE_HEALTH;
+
+        return PostureBalance.healthPostureDamageMultiplier(
+                healthFraction,
+                PostureServerConfig.fullHealthPostureDamageMultiplier(),
+                PostureServerConfig.zeroHealthPostureDamageMultiplier(),
+                PostureServerConfig.healthPostureCurveExponent(),
+                effectiveHealth,
+                PostureServerConfig.healthScalingEhpStart(),
+                PostureServerConfig.healthScalingEhpEnd()
+        );
     }
 
     private static float finiteOr(float value, float fallback) {
