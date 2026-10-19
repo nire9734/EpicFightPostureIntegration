@@ -1,5 +1,22 @@
 # Changelog
 
+## 3.0.1
+
+### Added
+- Per-entity `entities.parry_multipliers` with 0.0–100.0 values to tune unusual modded mobs.
+
+### Changed
+- Normal player hits now deplete posture from final actual HP damage as a fraction of maximum HP, using an integrated quadratic health-finisher curve and bounded Impact efficiency.
+- Retain EHP^0.7 maximum posture and its global/per-entity multipliers; using unmultipled base posture for attack pressure keeps increased maximum posture meaningful.
+- Use *innate/base-attribute EHP* to determine parry resistance and the parry finisher penalty, so leveled low-base-health mobs do not become parry-resistant bosses.
+- Apply attack finisher progression to all mobs; parries retain their base-EHP dependent finisher strength.
+- Attack coefficient changes from the old 0.55 Impact × damage^0.7 to internal 2.7 HP-normalized pressure. Retune custom `posture_damage_multiplier` values if needed.
+- Updated unit tests, configuration explanations, and version number to 3.0.1.
+
+### Fixed
+- Read Forge LivingDamageEvent at MONITOR priority after LOWEST damage-cap handlers (e.g. Soulrend KubeJS), and ignore cancelled/zero-damage hits. Do not mutate damage events.
+
+
 ## 3.0.0
 
 Major automatic-compatibility and posture-balance update.
