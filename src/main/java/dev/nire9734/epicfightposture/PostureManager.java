@@ -6,6 +6,8 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.ai.attributes.Attribute;
+import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.player.Player;
 import net.shelmarow.combat_evolution.ai.CEHumanoidPatch;
@@ -45,14 +47,21 @@ public final class PostureManager {
             return;
         }
 
-        float impact = CompatibilityDamage.calculateImpact(source, damageAmount);
+        float impact = CompatibilityDamage.calculateBaseImpact(source, damageAmount);
         if (impact <= 0.0F || !Float.isFinite(impact)) {
             return;
         }
 
-        float postureDamage = impact
-                * PostureServerConfig.postureDamageMultiplier()
-                * healthPostureDamageMultiplier(target);
+        // LivingDamageEvent fires before the final HP subtraction. The event
+        // amount already includes mitigation and downstream damage caps.
+        float postureDamage = PostureBalance.attackPostureDamage(
+                calculateBasePosture(target),
+                target.getMaxHealth(),
+                target.getHealth(),
+                damageAmount,
+                impact,
+                PostureServerConfig.attackPostureCoefficient()
+        );
         damagePosture(target, patch, postureDamage);
     }
 
@@ -71,14 +80,17 @@ public final class PostureManager {
             return;
         }
 
-        float targetEffectiveHealth = targetEffectiveHealth(target);
+        // Base attribute values preserve the parry-vulnerability of leveled mobs.
+        // Naturally durable bosses retain their health-dependent parry resistance.
+        float innateEhp = baseEffectiveHealth(target);
         float postureDamage = PostureBalance.parryDamage(
                 state.max,
                 PostureServerConfig.parryPostureFraction(),
-                targetEffectiveHealth,
+                innateEhp,
                 EHP_REFERENCE_HEALTH,
                 (float) EHP_EXPONENT
-        ) * healthPostureDamageMultiplier(target, targetEffectiveHealth);
+        ) * healthPostureDamageMultiplier(target, innateEhp)
+                * PostureServerConfig.parryDamageMultiplier(entityTypeId(target));
         state.current = Math.max(0.0F, state.current - postureDamage);
         state.regenDelay = regenDelayTicks();
 
@@ -423,6 +435,36 @@ public final class PostureManager {
         }
     }
 
+    /** Live, unmultipled max posture used to normalize attack-derived pressure. */
+    private static float calculateBasePosture(LivingEntity entity) {
+        float effective = targetEffectiveHealth(entity);
+        return clamp(EHP_REFERENCE_POSTURE
+                * (float) Math.pow(Math.max(0.01F, effective / EHP_REFERENCE_HEALTH), EHP_EXPONENT),
+                0.1F, MAX_SAFE_POSTURE);
+    }
+
+    /**
+     * Ignores attribute modifiers from mob levels/affixes.
+     * Mods rewriting the base value itself may require an entity parry override.
+     */
+    private static float baseEffectiveHealth(LivingEntity entity) {
+        float health = baseAttribute(entity, Attributes.MAX_HEALTH, entity.getMaxHealth());
+        if (health <= 0.0F) {
+            health = EHP_REFERENCE_HEALTH;
+        }
+        float armor = PostureServerConfig.useArmorScaling()
+                ? baseAttribute(entity, Attributes.ARMOR, 0.0F) : 0.0F;
+        float toughness = PostureServerConfig.useArmorScaling()
+                ? baseAttribute(entity, Attributes.ARMOR_TOUGHNESS, 0.0F) : 0.0F;
+        float value = effectiveHealth(health, armor, toughness, EHP_REFERENCE_DAMAGE);
+        return Float.isFinite(value) && value > 0.0F ? value : EHP_REFERENCE_HEALTH;
+    }
+
+    private static float baseAttribute(LivingEntity entity, Attribute attribute, float fallback) {
+        AttributeInstance instance = entity.getAttribute(attribute);
+        return instance == null ? fallback : finiteOr((float) instance.getBaseValue(), fallback);
+    }
+
     private static float calculateMaxPosture(LivingEntity entity) {
         boolean useArmor = PostureServerConfig.useArmorScaling();
         float maxHealth = finiteOr(entity.getMaxHealth(), EHP_REFERENCE_HEALTH);
@@ -506,10 +548,6 @@ public final class PostureManager {
         return Float.isFinite(targetEffectiveHealth) && targetEffectiveHealth > 0.0F
                 ? targetEffectiveHealth
                 : EHP_REFERENCE_HEALTH;
-    }
-
-    private static float healthPostureDamageMultiplier(LivingEntity entity) {
-        return healthPostureDamageMultiplier(entity, targetEffectiveHealth(entity));
     }
 
     private static float healthPostureDamageMultiplier(LivingEntity entity, float targetEffectiveHealth) {
