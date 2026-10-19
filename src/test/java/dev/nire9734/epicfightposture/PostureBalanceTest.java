@@ -61,7 +61,8 @@ class PostureBalanceTest {
 
     @Test
     void finisherWithImpactThreeBreaksBetweenTwentyAndTenPercentHp() {
-        assertTrue(2.7 * (.25 * .85 + .25 * Math.pow(.85, 3)) >= 1.0);
+        // The continuous threshold is at approximately 85.5% HP depleted.
+        assertTrue(2.7 * (.25 * .86 + .25 * Math.pow(.86, 3)) >= 1.0);
         assertTrue(2.7 * (.25 * .80 + .25 * Math.pow(.80, 3)) < 1.0);
     }
 
