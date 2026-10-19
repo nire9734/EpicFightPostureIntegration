@@ -41,6 +41,14 @@ class PostureBalanceTest {
     }
 
     @Test
+    void observedHealthLossIgnoresSamePriorityCapsAndCancellation() {
+        assertEquals(0.0F, PostureBalance.actualHealthLoss(100.0F, 100.0F), EPS);
+        assertEquals(20.0F, PostureBalance.actualHealthLoss(100.0F, 80.0F), EPS);
+        assertEquals(0.0F, PostureBalance.actualHealthLoss(100.0F, 120.0F), EPS);
+        assertEquals(0.0F, PostureBalance.actualHealthLoss(100.0F, Float.NaN), EPS);
+    }
+
+    @Test
     void overkillIsClippedAndZeroDamageIsIgnored() {
         assertEquals(attack(10, 100, 10, 10, 3, 2.7F),
                 attack(10, 100, 10, 1000, 3, 2.7F), EPS);
