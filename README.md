@@ -21,7 +21,7 @@ The main 3.0.0 development combination uses Forge 47.4.10, Epic Fight 20.14.17, 
 - Automatic compatibility for supported vanilla `HumanoidModel`, extended humanoid ModelPart/GeckoLib/Lionfish layouts, and vanilla-style `SpiderModel` entities.
 - Target-proportioned humanoid retargeting for posture/execution states while preserving normal mob behavior.
 - Health + Posture HUD.
-- EHP-based maximum posture, dealt-damage-scaled posture pressure, EHP-scaled parries, health-based finisher pressure, and configurable regeneration.
+- EHP-based maximum posture, HP-loss-normalized finisher pressure, innate-EHP parries, Impact-weighted direct attacks, and configurable regeneration.
 - Per-entity maximum-posture overrides, entity blacklist, and mod-level automatic-compatibility allow/deny filtering.
 - Dedicated-server renderer discovery with generated cache and multiplayer policy synchronization.
 
@@ -35,29 +35,31 @@ maximum posture = 3.2 * (EHP / 20)^0.7
 
 `maximum_posture_multiplier` is then applied. A per-entity `posture_multipliers` entry replaces that global multiplier for the specified entity. Maximum posture has an internal minimum of 1.0.
 
-Direct Epic Fight attacks use real Impact and scale with final dealt damage:
+In 3.0.1, direct attacks use **final HP damage** observed in Forge's `LivingDamageEvent`, after armor, potion, absorption, and most downstream mods' damage caps. EFPI observes the event at `MONITOR` priority without modifying it. Cancelled and zero-damage events are ignored.
+
+Attack posture follows the **fraction of target maximum HP removed**, rather than assuming a fixed damage scale. Let `u = 1 - currentHealth / maxHealth` and `F(u) = 0.25*u + 0.25*u^3`. `P_base = 3.2*(EHP/20)^0.7` is maximum posture *before* global or per-entity multipliers:
 
 ```text
-attack posture scale = (dealt damage / 8)^0.7
+Impact efficiency = clamp(0.7 + 0.3 * sqrt(Impact / 3), 0.7, 1.5)
+attack posture damage = 2.7 * P_base * Impact efficiency
+                        * (F(u_after) - F(u_before))
+                        * posture_damage_multiplier
 ```
 
-The internal Impact-derived base posture multiplier is `0.55`. The public `posture_damage_multiplier` scales that established balance, so `1.0` is normal, `0.5` is half, and `2.0` is double. Eligible non-Epic-Fight direct player attacks use a bounded damage-derived fallback Impact before the same dealt-damage scaling.
+The health-finisher curve `0.25 + 0.75*(1 - currentHealth/maxHealth)^2` applies to direct attacks against **all** mobs. Integrating it over the hit's actual HP-loss interval prevents high-damage RPG weapons from losing posture efficacy and makes hits approximately split-independent at equal Impact efficiency. An Epic Fight source with **zero Impact** remains excluded; eligible non-EF direct player damage receives a bounded derived Impact.
 
-Successful parries use an EHP-scaled percentage of target maximum posture:
+Parries intentionally work differently. They refer to **innate EHP** from base attribute values (unmodified max health, armor and toughness), not the mob's level/affix-scaled EHP:
 
 ```text
-effective parry fraction = base parry fraction * (1 + (20 / EHP)^0.7)
+parry fraction = (parry_percent / 100) * (1 + (20 / innate EHP)^0.7)
+parry damage = maximum posture * parry fraction
+             * innate-EHP health-finisher modifier
+             * per-entity parry multiplier
 ```
 
-The default `parry_percent = 6.0`. Lower-EHP mobs receive a larger effective parry percentage while very high-EHP enemies approach the configured baseline. No absolute minimum parry damage is used.
+The parry finisher modifier is disabled at innate EHP ≤40, blended over 40–200, and fully active at 200+. This keeps even highly leveled zombies parry-vulnerable while naturally durable bosses are parry-resistant. If another mod rewrites *base* attributes instead of using modifiers, EFPI may need a `parry_multipliers` override for that mob type.
 
-Direct hits and parries both use the same health/EHP finisher modifier. At full finisher strength:
-
-```text
-multiplier = 0.25 + 0.75 * (1 - health fraction)^2
-```
-
-The finisher curve is disabled at 40 EHP or below, smoothly blended from 40 to 200 EHP, and fully active at 200 EHP or above. These lower-level balance constants are intentionally kept internal so the server config remains compact.
+`maximum_posture_multiplier` and `posture_multipliers` still affect how much attack damage is needed to break posture; parries are intentionally a **percentage of maximum posture** and therefore their relative efficacy is unchanged by that multiplier. Execution damage remains Combat Evolution's responsibility.
 
 Ordinary regeneration starts after the configured delay and restores the configured percentage of maximum posture per second. Posture-break recovery is a separate state.
 
@@ -69,7 +71,7 @@ Server policy is stored at:
 config/epicfight_posture_integration/server.toml
 ```
 
-3.0.0 defaults:
+3.0.1 defaults:
 
 ```toml
 [posture]
@@ -78,12 +80,13 @@ config/epicfight_posture_integration/server.toml
 # Default: 1.0 | Range: 0.1-100.0
 maximum_posture_multiplier = 1.0
 
-# Multiplier for Posture damage dealt by attacks.
-# 1.0 = EFPI default balance, 0.5 = half, 2.0 = double.
+# Multiplier for attack Posture damage from final HP lost.
+# Impact gives a bounded bonus; 1.0 = 3.0.1 default pressure.
 # Default: 1.0 | Range: 0.0-100.0
 posture_damage_multiplier = 1.0
 
-# Posture damage dealt by a parry, as a percentage of maximum Posture.
+# Base parry damage as a percentage of maximum Posture.
+# Innate EHP controls the parry/finisher penalty.
 # Default: 6.0 | Range: 0.0-100.0
 parry_percent = 6.0
 
@@ -106,6 +109,11 @@ percent_per_second = 2.0
 # Default: [] | Multiplier range: 0.01-100.0
 # Example: ["cataclysm:ignis=0.25"]
 posture_multipliers = []
+
+# Per-entity parry damage multipliers after innate-EHP scaling.
+# Default: [] | Range: 0.0-100.0
+# Example: ["cataclysm:ignis=0.25"]
+parry_multipliers = []
 
 # Entities completely excluded from EFPI.
 # Default: []
@@ -133,7 +141,7 @@ mod_allowlist = []
 mod_denylist = []
 ```
 
-`posture_multipliers` replaces `maximum_posture_multiplier` for the specified entity rather than multiplying it again.
+`posture_multipliers` replaces `maximum_posture_multiplier` for the specified entity rather than multiplying it again. `parry_multipliers` affects only parries and uses 0.0 to disable parry posture damage for a particular mob.
 
 Automatic compatibility policy works as follows:
 
@@ -157,6 +165,10 @@ config/epicfight_posture_integration/cache/renderer-discovery.json
 ```
 
 The cache uses schema version `2`. It is generated state, not a user configuration file. A trusted operator client reports renderer compatibility; when pending discovery data changes, restart the server to promote it to active data.
+
+## Upgrading from 3.0.0
+
+3.0.1 retains the 3.0.0 config location and compatibility/network format. Existing `posture_damage_multiplier` values now scale the new HP-normalized attack formula; retune custom non-default values. The new optional `entities.parry_multipliers` defaults to empty. No renderer-discovery cache or network protocol reset is required.
 
 ## Upgrading from 2.0.0 / development builds
 
