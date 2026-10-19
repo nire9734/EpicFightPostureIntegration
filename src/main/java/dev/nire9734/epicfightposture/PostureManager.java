@@ -36,30 +36,64 @@ public final class PostureManager {
     private static final float MAX_SAFE_POSTURE = 1_000_000.0F;
 
     private static final Map<LivingEntity, State> STATES = new WeakHashMap<>();
+    /** One in-flight LivingDamageEvent per target, resolved after vanilla actually changes HP. */
+    private static final Map<LivingEntity, PendingAttack> PENDING_ATTACKS = new WeakHashMap<>();
 
-    public static void onPlayerDamage(LivingEntity target, float damageAmount, DamageSource source) {
-        if (target == null || damageAmount <= 0.0F || !RuntimeAccess.isServerEntity(target)) {
+    /**
+     * Called at the lowest Forge event priority. Another mod (including a KubeJS
+     * LOWEST handler) may still change/cancel this event. Store attack metadata and
+     * calculate posture only when the real health change can be observed.
+     *
+     * A new damage event closes the previous one; the ordinary entity tick closes
+     * the last attack. This also handles multiple hits in the same server tick.
+     */
+    public static void observeDamageEvent(
+            LivingEntity target, float eventDamage, DamageSource source, boolean playerHit) {
+        if (target == null || !RuntimeAccess.isServerEntity(target)) {
             return;
         }
+        flushPendingDamage(target);
 
+        if (!playerHit || !Float.isFinite(eventDamage) || eventDamage <= 0.0F) {
+            return;
+        }
         LivingEntityPatch<?> patch = getPatch(target);
         if (!isEligiblePostureEntity(target, patch)) {
             return;
         }
 
-        float impact = CompatibilityDamage.calculateBaseImpact(source, damageAmount);
-        if (impact <= 0.0F || !Float.isFinite(impact)) {
+        float impact = CompatibilityDamage.calculateBaseImpact(source, eventDamage);
+        if (!Float.isFinite(impact) || impact <= 0.0F || state(target).isLocked()) {
             return;
         }
 
-        // LivingDamageEvent fires before the final HP subtraction. The event
-        // amount already includes mitigation and downstream damage caps.
+        PENDING_ATTACKS.put(target, new PendingAttack(
+                target.getHealth(), target.getMaxHealth(), impact));
+    }
+
+    /**
+     * Uses observed HP loss instead of the LivingDamageEvent amount so a later
+     * same-priority damage cap/cancellation cannot produce phantom posture.
+     */
+    private static void flushPendingDamage(LivingEntity target) {
+        PendingAttack pending = PENDING_ATTACKS.remove(target);
+        if (pending == null) {
+            return;
+        }
+        float actualLoss = PostureBalance.actualHealthLoss(pending.healthBefore(), target.getHealth());
+        if (actualLoss <= 0.0F || !RuntimeAccess.isServerEntity(target)) {
+            return;
+        }
+        LivingEntityPatch<?> patch = getPatch(target);
+        if (!isEligiblePostureEntity(target, patch)) {
+            return;
+        }
         float postureDamage = PostureBalance.attackPostureDamage(
                 calculateBasePosture(target),
-                target.getMaxHealth(),
-                target.getHealth(),
-                damageAmount,
-                impact,
+                pending.maxHealth(),
+                pending.healthBefore(),
+                actualLoss,
+                pending.impact(),
                 PostureServerConfig.attackPostureCoefficient()
         );
         damagePosture(target, patch, postureDamage);
@@ -105,6 +139,9 @@ public final class PostureManager {
             return false;
         }
 
+        // Damage listeners execute before vanilla subtracts HP. Flush at the
+        // next entity tick, after all later listeners and HP changes have run.
+        flushPendingDamage(entity);
         State state = STATES.get(entity);
         if (state == null) {
             return false;
@@ -222,6 +259,7 @@ public final class PostureManager {
         if (entity == null) {
             return;
         }
+        PENDING_ATTACKS.remove(entity);
         State removed = STATES.remove(entity);
         if (removed != null && notifyClients && RuntimeAccess.isServerEntity(entity)) {
             PostureSyncEvents.removeNow(entity);
@@ -581,6 +619,9 @@ public final class PostureManager {
     }
 
     private PostureManager() {
+    }
+
+    private record PendingAttack(float healthBefore, float maxHealth, float impact) {
     }
 
     private static final class State {
