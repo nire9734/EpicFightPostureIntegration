@@ -46,6 +46,17 @@ final class PostureBalance {
         );
     }
 
+    /**
+     * Observe only real positive HP reductions; a canceled or fully capped
+     * damage event may have had a positive amount before the final listeners.
+     */
+    static float actualHealthLoss(float before, float after) {
+        if (!Float.isFinite(before) || !Float.isFinite(after)) {
+            return 0.0F;
+        }
+        return Math.max(0.0F, before - after);
+    }
+
     /** Bounded, secondary weapon-weight bonus for nonzero Epic Fight Impact. */
     static float impactEfficiency(float impact) {
         if (!Float.isFinite(impact) || impact <= 0.0F) {
