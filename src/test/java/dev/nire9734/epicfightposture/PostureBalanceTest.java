@@ -3,132 +3,90 @@ package dev.nire9734.epicfightposture;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PostureBalanceTest {
-    private static final float EPSILON = 0.0001F;
+    private static final float EPS = 0.0001F;
 
     @Test
-    void parryFractionIncreasesContinuouslyTowardLowEhp() {
-        assertEquals(0.160000F,
-                PostureBalance.parryPostureFraction(0.08F, 20.0F, 20.0F, 0.7F), EPSILON);
-        assertEquals(0.129246F,
-                PostureBalance.parryPostureFraction(0.08F, 40.0F, 20.0F, 0.7F), EPSILON);
-        assertEquals(0.105931F,
-                PostureBalance.parryPostureFraction(0.08F, 100.0F, 20.0F, 0.7F), EPSILON);
-        assertEquals(0.095962F,
-                PostureBalance.parryPostureFraction(0.08F, 200.0F, 20.0F, 0.7F), EPSILON);
-        assertEquals(0.088405F,
-                PostureBalance.parryPostureFraction(0.08F, 500.0F, 20.0F, 0.7F), EPSILON);
+    void impactEfficiencyIsBounded() {
+        assertEquals(0.0F, PostureBalance.impactEfficiency(0.0F), EPS);
+        assertEquals(0.0F, PostureBalance.impactEfficiency(Float.NaN), EPS);
+        assertEquals(0.873205F, PostureBalance.impactEfficiency(1.0F), EPS);
+        assertEquals(1.0F, PostureBalance.impactEfficiency(3.0F), EPS);
+        assertEquals(1.247723F, PostureBalance.impactEfficiency(10.0F), EPS);
+        assertEquals(1.5F, PostureBalance.impactEfficiency(1000.0F), EPS);
     }
 
     @Test
-    void parryDamageUsesEhpDerivedFractionWithoutAbsoluteMinimum() {
-        assertEquals(0.512F,
-                PostureBalance.parryDamage(3.2F, 0.08F, 20.0F, 20.0F, 0.7F), EPSILON);
-        assertEquals(0.0F,
-                PostureBalance.parryDamage(0.0F, 0.08F, 20.0F, 20.0F, 0.7F), EPSILON);
-        assertEquals(0.0F,
-                PostureBalance.parryDamage(Float.NaN, 0.08F, 20.0F, 20.0F, 0.7F), EPSILON);
+    void finalHpLossUsesIntegralFinisherCurve() {
+        assertEquals(13.5F, attack(10, 100, 100, 100, 3, 2.7F), EPS);
+        assertEquals(4.21875F, attack(10, 100, 100, 50, 3, 2.7F), EPS);
     }
 
     @Test
-    void parryScalingSanitizesInvalidEhpInputs() {
-        assertEquals(0.16F,
-                PostureBalance.parryPostureFraction(0.08F, Float.NaN, 20.0F, 0.7F), EPSILON);
-        assertEquals(0.16F,
-                PostureBalance.parryPostureFraction(0.08F, 20.0F, Float.NaN, 0.7F), EPSILON);
-        assertEquals(0.16F,
-                PostureBalance.parryPostureFraction(0.08F, 20.0F, 20.0F, Float.NaN), EPSILON);
+    void splitHitsAreEquivalentToOneLargeHit() {
+        float one = attack(20, 100, 100, 80, 3, 2.7F);
+        float parts = attack(20, 100, 100, 30, 3, 2.7F)
+                + attack(20, 100, 70, 25, 3, 2.7F)
+                + attack(20, 100, 45, 25, 3, 2.7F);
+        assertEquals(one, parts, EPS);
     }
 
     @Test
-    void attackDamageScaleMatchesEhpStyleSublinearScaling() {
-        assertEquals(1.0F, PostureBalance.attackDamageScale(8.0F, 8.0F, 0.7F), EPSILON);
-        assertEquals((float) Math.pow(2.0D, 0.7D),
-                PostureBalance.attackDamageScale(16.0F, 8.0F, 0.7F), EPSILON);
-        assertEquals((float) Math.pow(4.0D, 0.7D),
-                PostureBalance.attackDamageScale(32.0F, 8.0F, 0.7F), EPSILON);
+    void sameFractionalHpLossMeansSameNormalizedPostureAcrossLevelScaling() {
+        float low = attack(3.2F, 20, 20, 4, 3, 2.7F) / 3.2F;
+        float high = attack(60.8F, 1214, 1214, 242.8F, 3, 2.7F) / 60.8F;
+        assertEquals(low, high, EPS);
     }
 
     @Test
-    void attackDamageScaleCanBeDisabledAndSanitizesInvalidInputs() {
-        assertEquals(1.0F, PostureBalance.attackDamageScale(64.0F, 8.0F, 0.0F), EPSILON);
-        assertEquals(0.0F, PostureBalance.attackDamageScale(0.0F, 8.0F, 0.7F), EPSILON);
-        assertEquals(0.0F, PostureBalance.attackDamageScale(Float.NaN, 8.0F, 0.7F), EPSILON);
-        assertEquals(1.0F, PostureBalance.attackDamageScale(8.0F, Float.NaN, 0.7F), EPSILON);
+    void overkillIsClippedAndZeroDamageIsIgnored() {
+        assertEquals(attack(10, 100, 10, 10, 3, 2.7F),
+                attack(10, 100, 10, 1000, 3, 2.7F), EPS);
+        assertEquals(0.0F, attack(10, 100, 100, 0, 3, 2.7F), EPS);
+        assertEquals(0.0F, attack(10, 100, 100, 50, 0, 2.7F), EPS);
+        assertEquals(0.0F, attack(10, 0, 100, 50, 3, 2.7F), EPS);
+        assertEquals(0.0F, attack(10, 100, 100, Float.NaN, 3, 2.7F), EPS);
+        assertEquals(0.0F, attack(10, 100, 100, 50, 3, 0), EPS);
     }
 
     @Test
-    void healthPostureDamageMultiplierUsesConfiguredQuadraticCurve() {
-        assertEquals(0.25F, damageMultiplier(1.00F), EPSILON);
-        assertEquals(0.296875F, damageMultiplier(0.75F), EPSILON);
-        assertEquals(0.4375F, damageMultiplier(0.50F), EPSILON);
-        assertEquals(0.671875F, damageMultiplier(0.25F), EPSILON);
-        assertEquals(1.00F, damageMultiplier(0.00F), EPSILON);
+    void finisherWithImpactThreeBreaksBetweenTwentyAndTenPercentHp() {
+        assertTrue(2.7 * (.25 * .85 + .25 * Math.pow(.85, 3)) >= 1.0);
+        assertTrue(2.7 * (.25 * .80 + .25 * Math.pow(.80, 3)) < 1.0);
     }
 
     @Test
-    void healthPostureDamageMultiplierClampsHealthAndSanitizesCurve() {
-        assertEquals(0.25F, damageMultiplier(2.0F), EPSILON);
-        assertEquals(1.00F, damageMultiplier(-1.0F), EPSILON);
-        assertEquals(0.25F, damageMultiplier(Float.NaN), EPSILON);
-        assertEquals(0.625F,
-                PostureBalance.healthPostureDamageMultiplier(0.50F, 0.25F, 1.00F, Float.NaN),
-                EPSILON);
+    void innateEhpKeepsLeveledZombiesParryVulnerable() {
+        float zombie = PostureBalance.parryPostureFraction(0.06F, 20, 20, 0.7F)
+                * PostureBalance.healthPostureDamageMultiplier(1, .25F, 1, 2, 20, 40, 200);
+        float boss = PostureBalance.parryPostureFraction(0.06F, 200, 20, 0.7F)
+                * PostureBalance.healthPostureDamageMultiplier(1, .25F, 1, 2, 200, 40, 200);
+        assertEquals(.12F, zombie, EPS);
+        assertTrue(boss < .02F);
+        assertTrue(zombie > boss * 6);
     }
 
     @Test
-    void ehpScalingUsesSmoothstepBetweenConfiguredAnchors() {
-        assertEquals(0.0F, PostureBalance.healthScalingStrength(20.0F, 40.0F, 200.0F), EPSILON);
-        assertEquals(0.0F, PostureBalance.healthScalingStrength(40.0F, 40.0F, 200.0F), EPSILON);
-        assertEquals(0.5F, PostureBalance.healthScalingStrength(120.0F, 40.0F, 200.0F), EPSILON);
-        assertEquals(1.0F, PostureBalance.healthScalingStrength(200.0F, 40.0F, 200.0F), EPSILON);
-        assertEquals(1.0F, PostureBalance.healthScalingStrength(500.0F, 40.0F, 200.0F), EPSILON);
+    void parryFinisherStillPenalizesInnatelyDurableBosses() {
+        assertEquals(.25F, PostureBalance.healthPostureDamageMultiplier(
+                1, .25F, 1, 2, 500, 40, 200), EPS);
+        assertEquals(1.0F, PostureBalance.healthPostureDamageMultiplier(
+                1, .25F, 1, 2, 20, 40, 200), EPS);
+        assertEquals(.5F, PostureBalance.healthScalingStrength(120, 40, 200), EPS);
+        assertEquals(0.0F, PostureBalance.parryDamage(0, .06F, 20, 20, .7F), EPS);
     }
 
     @Test
-    void lowEhpMobsBlendOutHealthBasedFinisherPenalty() {
-        assertEquals(1.0F, ehpDamageMultiplier(1.0F, 20.0F), EPSILON);
-        assertEquals(0.625F, ehpDamageMultiplier(1.0F, 120.0F), EPSILON);
-        assertEquals(0.25F, ehpDamageMultiplier(1.0F, 200.0F), EPSILON);
-        assertEquals(1.0F, ehpDamageMultiplier(0.0F, 20.0F), EPSILON);
-        assertEquals(1.0F, ehpDamageMultiplier(0.0F, 500.0F), EPSILON);
-    }
-
-    @Test
-    void ehpScalingHandlesReversedOrCollapsedAnchors() {
-        assertEquals(0.0F, PostureBalance.healthScalingStrength(20.0F, 200.0F, 40.0F), EPSILON);
-        assertEquals(0.5F, PostureBalance.healthScalingStrength(120.0F, 200.0F, 40.0F), EPSILON);
-        assertEquals(1.0F, PostureBalance.healthScalingStrength(200.0F, 200.0F, 40.0F), EPSILON);
-        assertEquals(0.0F, PostureBalance.healthScalingStrength(39.0F, 40.0F, 40.0F), EPSILON);
-        assertEquals(1.0F, PostureBalance.healthScalingStrength(40.0F, 40.0F, 40.0F), EPSILON);
-    }
-
-    @Test
-    void regenDelayConvertsTenSecondsToTicks() {
+    void regenerationDelayRemainsTenSeconds() {
         assertEquals(200, PostureBalance.regenDelayTicks(10.0F));
         assertEquals(0, PostureBalance.regenDelayTicks(0.0F));
-        assertEquals(0, PostureBalance.regenDelayTicks(Float.NaN));
     }
 
-    private static float damageMultiplier(float healthFraction) {
-        return PostureBalance.healthPostureDamageMultiplier(
-                healthFraction,
-                0.25F,
-                1.00F,
-                2.00F
-        );
-    }
-
-    private static float ehpDamageMultiplier(float healthFraction, float effectiveHealth) {
-        return PostureBalance.healthPostureDamageMultiplier(
-                healthFraction,
-                0.25F,
-                1.00F,
-                2.00F,
-                effectiveHealth,
-                40.0F,
-                200.0F
-        );
+    private static float attack(float basePosture, float maxHp, float hpBefore,
+                                float hpDamage, float impact, float coefficient) {
+        return PostureBalance.attackPostureDamage(
+                basePosture, maxHp, hpBefore, hpDamage, impact, coefficient);
     }
 }
