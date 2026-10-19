@@ -2,13 +2,11 @@ package dev.nire9734.epicfightposture;
 
 /** Pure balance math shared by the server posture runtime and unit tests. */
 final class PostureBalance {
-    private static final float DEFAULT_ATTACK_DAMAGE_REFERENCE = 8.0F;
     private static final float DEFAULT_ATTACK_DAMAGE_EXPONENT = 0.7F;
     private static final float DEFAULT_EHP_REFERENCE = 20.0F;
     private static final float DEFAULT_HEALTH_SCALING_EHP_START = 40.0F;
     private static final float DEFAULT_HEALTH_SCALING_EHP_END = 200.0F;
     private static final float MIN_EHP_RATIO = 0.01F;
-    private static final float MAX_ATTACK_DAMAGE_SCALE = 100.0F;
 
     static float parryPostureFraction(
             float baseMaxPostureFraction,
@@ -48,19 +46,47 @@ final class PostureBalance {
         );
     }
 
-    static float attackDamageScale(float damageAmount, float referenceDamage, float exponent) {
-        if (!Float.isFinite(damageAmount) || damageAmount <= 0.0F) {
+    /** Bounded, secondary weapon-weight bonus for nonzero Epic Fight Impact. */
+    static float impactEfficiency(float impact) {
+        if (!Float.isFinite(impact) || impact <= 0.0F) {
             return 0.0F;
         }
-        float reference = sanitizePositive(referenceDamage, DEFAULT_ATTACK_DAMAGE_REFERENCE);
-        float scalingExponent = Float.isFinite(exponent)
-                ? clamp(exponent, 0.0F, 4.0F)
-                : DEFAULT_ATTACK_DAMAGE_EXPONENT;
-        double scaled = Math.pow(damageAmount / reference, scalingExponent);
-        if (!Double.isFinite(scaled)) {
-            return MAX_ATTACK_DAMAGE_SCALE;
+        return clamp((float) (0.7D + 0.3D * Math.sqrt(impact / 3.0D)), 0.7F, 1.5F);
+    }
+
+    /**
+     * Final post-mitigation HP damage drives posture. Integration of the health
+     * finisher curve makes cumulative pressure independent of hit splitting.
+     * baseMaxPosture excludes the global/per-type maximum posture multiplier.
+     */
+    static float attackPostureDamage(float baseMaxPosture, float maxHealth,
+            float healthBefore, float finalDamage, float impact, float coefficient) {
+        if (!Float.isFinite(baseMaxPosture) || baseMaxPosture <= 0.0F
+                || !Float.isFinite(maxHealth) || maxHealth <= 0.0F
+                || !Float.isFinite(healthBefore) || healthBefore <= 0.0F
+                || !Float.isFinite(finalDamage) || finalDamage <= 0.0F
+                || !Float.isFinite(coefficient) || coefficient <= 0.0F) {
+            return 0.0F;
         }
-        return clamp((float) scaled, 0.0F, MAX_ATTACK_DAMAGE_SCALE);
+        float impactScale = impactEfficiency(impact);
+        if (impactScale <= 0.0F) {
+            return 0.0F;
+        }
+
+        double before = clamp(healthBefore / maxHealth, 0.0F, 1.0F);
+        double after = clamp((healthBefore - finalDamage) / maxHealth, 0.0F, 1.0F);
+        if (after >= before) {
+            return 0.0F;
+        }
+        double weighted = finisherIntegral(1.0D - after) - finisherIntegral(1.0D - before);
+        double posture = baseMaxPosture * coefficient * impactScale * weighted;
+        return Double.isFinite(posture) && posture > 0.0D
+                ? (float) Math.min(posture, 1_000_000_000.0D) : 0.0F;
+    }
+
+    /** Integral of 0.25 + 0.75 * depletedHealth^2. */
+    private static double finisherIntegral(double depletedHealth) {
+        return 0.25D * depletedHealth + 0.25D * depletedHealth * depletedHealth * depletedHealth;
     }
 
     static float healthPostureDamageMultiplier(
