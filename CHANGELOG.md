@@ -14,7 +14,7 @@
 - Updated unit tests, configuration explanations, and version number to 3.0.1.
 
 ### Fixed
-- Read Forge LivingDamageEvent at MONITOR priority after LOWEST damage-cap handlers (e.g. Soulrend KubeJS), and ignore cancelled/zero-damage hits. Do not mutate damage events.
+- Fix Forge 1.20.1 compilation: `EventPriority.MONITOR` does not exist. Listen at `LOWEST` and defer attack posture until actual HP reduction is observed. This prevents false posture damage if a later same-priority KubeJS damage-cap handler nullifies the hit. Added a regression test for capped/cancelled HP loss.
 
 
 ## 3.0.0
