@@ -35,7 +35,7 @@ maximum posture = 3.2 * (EHP / 20)^0.7
 
 `maximum_posture_multiplier` is then applied. A per-entity `posture_multipliers` entry replaces that global multiplier for the specified entity. Maximum posture has an internal minimum of 1.0.
 
-In 3.0.1, direct attacks use **final HP damage** observed in Forge's `LivingDamageEvent`, after armor, potion, absorption, and most downstream mods' damage caps. EFPI observes the event at `MONITOR` priority without modifying it. Cancelled and zero-damage events are ignored.
+In 3.0.1, EFPI observes direct player attacks at Forge 1.20.1's **`LOWEST` priority**, then determines actual damage from the target's **observed HP loss after the event completes** (at the next damage event or entity tick). This avoids relying on listener registration order when Soulrend/KubeJS applies another `LOWEST` damage cap after EFPI's listener. Attacks that do not actually reduce HP cause no posture damage. As with other delayed health-delta approaches, exceptional healing or non-event HP changes between observation points may affect attribution.
 
 Attack posture follows the **fraction of target maximum HP removed**, rather than assuming a fixed damage scale. Let `u = 1 - currentHealth / maxHealth` and `F(u) = 0.25*u + 0.25*u^3`. `P_base = 3.2*(EHP/20)^0.7` is maximum posture *before* global or per-entity multipliers:
 
