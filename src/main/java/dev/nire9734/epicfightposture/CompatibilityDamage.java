@@ -18,11 +18,11 @@ public final class CompatibilityDamage {
     );
 
     /**
-     * Returns posture-weighted impact for a direct player hit.
-     * Epic Fight attacks keep their real Impact; non-EF attacks derive an approximate Impact from dealt damage.
-     * Both paths receive the same sublinear dealt-damage scaling so player and boss stat scaling stay comparable.
+     * Returns raw Impact for eligible direct player damage (not multiplied by HP loss).
+     * Explicit zero-Impact Epic Fight attacks stay excluded; non-EF attacks use
+     * a bounded damage-derived approximation.
      */
-    public static float calculateImpact(DamageSource source, float damageAmount) {
+    public static float calculateBaseImpact(DamageSource source, float damageAmount) {
         if (source == null || !Float.isFinite(damageAmount) || damageAmount <= 0.0F) {
             return 0.0F;
         }
@@ -38,16 +38,7 @@ public final class CompatibilityDamage {
             baseImpact = fallbackImpact(damageAmount);
         }
 
-        if (baseImpact <= 0.0F) {
-            return 0.0F;
-        }
-
-        float damageScale = PostureBalance.attackDamageScale(
-                damageAmount,
-                PostureServerConfig.attackDamageReference(),
-                PostureServerConfig.attackDamageScalingExponent()
-        );
-        return baseImpact * damageScale;
+        return baseImpact;
     }
 
     private static float fallbackImpact(float damageAmount) {
