@@ -31,13 +31,10 @@ public final class PostureServerConfig {
     private static final ForgeConfigSpec.Builder BUILDER = new ForgeConfigSpec.Builder();
 
     /*
-     * Internal 3.0.0 balance constants. These were previously exposed as config
-     * keys. Keeping the established defaults here preserves the current balance
-     * while presenting only useful high-level controls to users.
+     * 3.0.1 normalizes attack posture to actual HP depletion. 2.7 is the
+     * internal default coefficient; the public setting scales it.
      */
-    private static final float BASE_IMPACT_POSTURE_DAMAGE_MULTIPLIER = 0.55F;
-    private static final float ATTACK_DAMAGE_REFERENCE = 8.0F;
-    private static final float ATTACK_DAMAGE_SCALING_EXPONENT = 0.7F;
+    private static final float BASE_ATTACK_POSTURE_COEFFICIENT = 2.7F;
     private static final float FULL_HEALTH_POSTURE_DAMAGE_MULTIPLIER = 0.25F;
     private static final float ZERO_HEALTH_POSTURE_DAMAGE_MULTIPLIER = 1.0F;
     private static final float HEALTH_POSTURE_CURVE_EXPONENT = 2.0F;
@@ -61,6 +58,7 @@ public final class PostureServerConfig {
     public static final ForgeConfigSpec.DoubleValue REGEN_DELAY_SECONDS;
     public static final ForgeConfigSpec.DoubleValue REGEN_RATE_PERCENT;
     public static final ForgeConfigSpec.ConfigValue<List<? extends String>> POSTURE_MULTIPLIERS;
+    public static final ForgeConfigSpec.ConfigValue<List<? extends String>> PARRY_MULTIPLIERS;
     public static final ForgeConfigSpec.ConfigValue<List<? extends String>> ENTITY_BLACKLIST;
     public static final ForgeConfigSpec.BooleanValue AUTOMATIC_COMPATIBILITY;
     public static final ForgeConfigSpec.ConfigValue<List<? extends String>> MOD_ALLOWLIST;
@@ -82,6 +80,7 @@ public final class PostureServerConfig {
 
     private static volatile Set<ResourceLocation> blacklist = Set.of();
     private static volatile Map<ResourceLocation, Float> entityMultipliers = Map.of();
+    private static volatile Map<ResourceLocation, Float> parryMultipliers = Map.of();
     private static volatile Set<String> modAllowlist = Set.of();
     private static volatile Set<String> modDenylist = Set.of();
     private static volatile Snapshot remoteSnapshot;
@@ -96,14 +95,15 @@ public final class PostureServerConfig {
                 .defineInRange("maximum_posture_multiplier", 1.0D, 0.1D, 100.0D);
         POSTURE_DAMAGE_MULTIPLIER = BUILDER
                 .comment(
-                        "Multiplier for Posture damage dealt by attacks.",
-                        "1.0 = EFPI default balance, 0.5 = half, 2.0 = double.",
+                        "Multiplier for attack Posture damage from final HP lost.",
+                        "Impact gives a bounded bonus; 1.0 = 3.0.1 default pressure.",
                         "Default: 1.0 | Range: 0.0-100.0"
                 )
                 .defineInRange("posture_damage_multiplier", 1.0D, 0.0D, 100.0D);
         PARRY_PERCENT = BUILDER
                 .comment(
-                        "Posture damage dealt by a parry, as a percentage of maximum Posture.",
+                        "Base parry damage as a percentage of maximum Posture.",
+                        "Innate EHP controls the parry/finisher penalty.",
                         "Default: 6.0 | Range: 0.0-100.0"
                 )
                 .defineInRange("parry_percent", 6.0D, 0.0D, 100.0D);
@@ -133,6 +133,13 @@ public final class PostureServerConfig {
                         "Example: [\"cataclysm:ignis=0.25\"]"
                 )
                 .defineListAllowEmpty("posture_multipliers", List.of(), value -> value instanceof String);
+        PARRY_MULTIPLIERS = BUILDER
+                .comment(
+                        "Per-entity parry damage multipliers after innate-EHP scaling.",
+                        "Default: [] | Range: 0.0-100.0",
+                        "Example: [\"cataclysm:ignis=0.25\"]"
+                )
+                .defineListAllowEmpty("parry_multipliers", List.of(), value -> value instanceof String);
         ENTITY_BLACKLIST = BUILDER
                 .comment(
                         "Entities completely excluded from EFPI.",
@@ -181,20 +188,14 @@ public final class PostureServerConfig {
         return override != null ? override : MAXIMUM_POSTURE_MULTIPLIER.get().floatValue();
     }
 
-    /**
-     * Effective Impact-derived posture multiplier. The public config is a simple
-     * scale around the established 3.0.0 base coefficient of 0.55.
-     */
-    public static float postureDamageMultiplier() {
-        return BASE_IMPACT_POSTURE_DAMAGE_MULTIPLIER * POSTURE_DAMAGE_MULTIPLIER.get().floatValue();
+    /** Attack finisher coefficient with configurable overall damage scaling. */
+    public static float attackPostureCoefficient() {
+        return BASE_ATTACK_POSTURE_COEFFICIENT * POSTURE_DAMAGE_MULTIPLIER.get().floatValue();
     }
 
-    public static float attackDamageReference() {
-        return ATTACK_DAMAGE_REFERENCE;
-    }
-
-    public static float attackDamageScalingExponent() {
-        return ATTACK_DAMAGE_SCALING_EXPONENT;
+    /** Additional per-type parry adjustment, with 0 disabling parry posture damage. */
+    public static float parryDamageMultiplier(ResourceLocation entityId) {
+        return entityId == null ? 1.0F : parryMultipliers.getOrDefault(entityId, 1.0F);
     }
 
     /** Base parry posture damage as a fraction of target maximum posture. */
@@ -355,6 +356,7 @@ public final class PostureServerConfig {
     private static void refreshCachedSettings() {
         blacklist = parseEntityBlacklist();
         entityMultipliers = parseEntityMultipliers();
+        parryMultipliers = parseParryMultipliers();
         modAllowlist = parseModIds(MOD_ALLOWLIST.get(), "compatibility.mod_allowlist");
         modDenylist = parseModIds(MOD_DENYLIST.get(), "compatibility.mod_denylist");
     }
@@ -394,6 +396,31 @@ public final class PostureServerConfig {
                 continue;
             }
             parsed.put(entityId, multiplier);
+        }
+        return Map.copyOf(parsed);
+    }
+
+    private static Map<ResourceLocation, Float> parseParryMultipliers() {
+        Map<ResourceLocation, Float> parsed = new HashMap<>();
+        for (String raw : PARRY_MULTIPLIERS.get()) {
+            String entry = raw == null ? "" : raw.trim();
+            int separator = entry.lastIndexOf('=');
+            if (separator <= 0 || separator == entry.length() - 1) {
+                LOGGER.warn("Ignoring invalid parry multiplier '{}'", raw);
+                continue;
+            }
+            ResourceLocation id = ResourceLocation.tryParse(entry.substring(0, separator).trim());
+            float value;
+            try {
+                value = Float.parseFloat(entry.substring(separator + 1).trim());
+            } catch (NumberFormatException exception) {
+                value = Float.NaN;
+            }
+            if (id == null || !Float.isFinite(value) || value < 0.0F || value > 100.0F) {
+                LOGGER.warn("Ignoring invalid parry multiplier '{}'", raw);
+                continue;
+            }
+            parsed.put(id, value);
         }
         return Map.copyOf(parsed);
     }
