@@ -67,24 +67,66 @@ class PostureBalanceTest {
     }
 
     @Test
-    void innateEhpKeepsLeveledZombiesParryVulnerable() {
-        float zombie = PostureBalance.parryPostureFraction(0.06F, 20, 20, 0.7F)
-                * PostureBalance.healthPostureDamageMultiplier(1, .25F, 1, 2, 20, 40, 200);
-        float boss = PostureBalance.parryPostureFraction(0.06F, 200, 20, 0.7F)
-                * PostureBalance.healthPostureDamageMultiplier(1, .25F, 1, 2, 200, 40, 200);
-        assertEquals(.12F, zombie, EPS);
-        assertTrue(boss < .02F);
-        assertTrue(zombie > boss * 6);
+    void configuredParryEndpointsMatchAtTwentyAndAtHighEhp() {
+        assertEquals(.18F, PostureBalance.parryPostureFraction(
+                .18F, .06F, 20, 20, .7F), EPS);
+        assertEquals(.18F, PostureBalance.parryPostureFraction(
+                .18F, .06F, 10, 20, .7F), EPS);
+        assertEquals(.18F, PostureBalance.parryPostureFraction(
+                .18F, .06F, 1, 20, .7F), EPS);
+        assertEquals(.083943F, PostureBalance.parryPostureFraction(
+                .18F, .06F, 200, 20, .7F), EPS);
+        assertEquals(.06F, PostureBalance.parryPostureFraction(
+                .18F, .06F, Float.MAX_VALUE, 20, .7F), EPS);
+    }
+
+    @Test
+    void endpointsAreIndependentAndTheCurveKeepsItsExponent() {
+        // Changing only the low-EHP anchor preserves the high-EHP asymptote.
+        assertEquals(.24F, PostureBalance.parryPostureFraction(
+                .24F, .06F, 20, 20, .7F), EPS);
+        assertEquals(.06F, PostureBalance.parryPostureFraction(
+                .24F, .06F, Float.MAX_VALUE, 20, .7F), EPS);
+        // Independent high-EHP tuning, keeping the same 18% low-EHP anchor.
+        assertEquals(.18F, PostureBalance.parryPostureFraction(
+                .18F, .03F, 20, 20, .7F), EPS);
+        assertEquals(.03F, PostureBalance.parryPostureFraction(
+                .18F, .03F, Float.MAX_VALUE, 20, .7F), EPS);
+        assertEquals(.06F + .12F * (float) Math.pow(.2D, .7D),
+                PostureBalance.parryPostureFraction(
+                        .18F, .06F, 100, 20, .7F), EPS);
+    }
+
+    @Test
+    void parryConfigurationInputIsClampedToFractions() {
+        assertEquals(1.0F, PostureBalance.parryPostureFraction(
+                2.0F, -.5F, 10, 20, .7F), EPS);
+        assertEquals(0.0F, PostureBalance.parryPostureFraction(
+                0.0F, 0.0F, 200, 20, .7F), EPS);
+        assertEquals(0.0F, PostureBalance.parryDamage(
+                0.0F, .18F, .06F, 20, 20, .7F), EPS);
+        assertEquals(1.8F, PostureBalance.parryDamage(
+                10.0F, .18F, .06F, 20, 20, .7F), EPS);
     }
 
     @Test
     void parryFinisherStillPenalizesInnatelyDurableBosses() {
+        float zombie = PostureBalance.parryPostureFraction(.18F, .06F, 20, 20, .7F)
+                * PostureBalance.healthPostureDamageMultiplier(
+                        1, .25F, 1, 2, 20, 40, 200);
+        float boss = PostureBalance.parryPostureFraction(.18F, .06F, 200, 20, .7F)
+                * PostureBalance.healthPostureDamageMultiplier(
+                        1, .25F, 1, 2, 200, 40, 200);
+        assertEquals(.18F, zombie, EPS);
+        assertEquals(.25F * PostureBalance.parryPostureFraction(
+                .18F, .06F, 200, 20, .7F), boss, EPS);
+        assertTrue(boss < .022F);
+        assertTrue(zombie > boss * 8);
         assertEquals(.25F, PostureBalance.healthPostureDamageMultiplier(
                 1, .25F, 1, 2, 500, 40, 200), EPS);
         assertEquals(1.0F, PostureBalance.healthPostureDamageMultiplier(
                 1, .25F, 1, 2, 20, 40, 200), EPS);
         assertEquals(.5F, PostureBalance.healthScalingStrength(120, 40, 200), EPS);
-        assertEquals(0.0F, PostureBalance.parryDamage(0, .06F, 20, 20, .7F), EPS);
     }
 
     @Test

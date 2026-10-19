@@ -119,12 +119,12 @@ public final class PostureManager {
         float innateEhp = baseEffectiveHealth(target);
         float postureDamage = PostureBalance.parryDamage(
                 state.max,
-                PostureServerConfig.parryPostureFraction(),
+                PostureServerConfig.parryLowEhpFraction(),
+                PostureServerConfig.parryHighEhpFraction(),
                 innateEhp,
                 EHP_REFERENCE_HEALTH,
                 (float) EHP_EXPONENT
-        ) * healthPostureDamageMultiplier(target, innateEhp)
-                * PostureServerConfig.parryDamageMultiplier(entityTypeId(target));
+        ) * healthPostureDamageMultiplier(target, innateEhp);
         state.current = Math.max(0.0F, state.current - postureDamage);
         state.regenDelay = regenDelayTicks();
 
@@ -483,7 +483,7 @@ public final class PostureManager {
 
     /**
      * Ignores attribute modifiers from mob levels/affixes.
-     * Mods rewriting the base value itself may require an entity parry override.
+     * Mods rewriting the base value itself may affect the innate-EHP classification.
      */
     private static float baseEffectiveHealth(LivingEntity entity) {
         float health = baseAttribute(entity, Attributes.MAX_HEALTH, entity.getMaxHealth());

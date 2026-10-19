@@ -2,36 +2,44 @@ package dev.nire9734.epicfightposture;
 
 /** Pure balance math shared by the server posture runtime and unit tests. */
 final class PostureBalance {
-    private static final float DEFAULT_ATTACK_DAMAGE_EXPONENT = 0.7F;
+    private static final float DEFAULT_PARRY_EHP_EXPONENT = 0.7F;
     private static final float DEFAULT_EHP_REFERENCE = 20.0F;
     private static final float DEFAULT_HEALTH_SCALING_EHP_START = 40.0F;
     private static final float DEFAULT_HEALTH_SCALING_EHP_END = 200.0F;
-    private static final float MIN_EHP_RATIO = 0.01F;
 
+    /**
+     * Two anchored parry fractions: lowEhpFraction at innate EHP <= reference
+     * (20), and highEhpFraction as EHP tends to infinity. Innate EHP below 20
+     * is clamped, so parry pressure cannot exceed the configured low endpoint
+     * solely because a mob has less than 20 innate EHP.
+     *
+     * The HP-dependent finisher modifier is applied separately by the caller.
+     */
     static float parryPostureFraction(
-            float baseMaxPostureFraction,
+            float lowEhpFraction,
+            float highEhpFraction,
             float effectiveHealth,
             float referenceEffectiveHealth,
             float scalingExponent) {
-        float baseFraction = sanitizeFraction(baseMaxPostureFraction);
+        float low = sanitizeFraction(lowEhpFraction);
+        float high = sanitizeFraction(highEhpFraction);
         float reference = sanitizePositive(referenceEffectiveHealth, DEFAULT_EHP_REFERENCE);
         float ehp = sanitizePositive(effectiveHealth, reference);
         float exponent = Float.isFinite(scalingExponent)
                 ? clamp(scalingExponent, 0.0F, 4.0F)
-                : DEFAULT_ATTACK_DAMAGE_EXPONENT;
-
-        float ehpRatio = Math.max(MIN_EHP_RATIO, ehp / reference);
-        double lowEhpBonus = Math.pow(1.0D / ehpRatio, exponent);
-        double scaledFraction = baseFraction * (1.0D + lowEhpBonus);
-        if (!Double.isFinite(scaledFraction)) {
-            return baseFraction;
-        }
-        return (float) Math.max(0.0D, scaledFraction);
+                : DEFAULT_PARRY_EHP_EXPONENT;
+        double referenceRatio = Math.min(1.0D, (double) reference / Math.max((double) ehp, reference));
+        double blend = Math.pow(referenceRatio, exponent);
+        double fraction = high + (low - high) * blend;
+        return Double.isFinite(fraction)
+                ? (float) clamp((float) fraction, 0.0F, 1.0F)
+                : low;
     }
 
     static float parryDamage(
             float maxPosture,
-            float baseMaxPostureFraction,
+            float lowEhpFraction,
+            float highEhpFraction,
             float effectiveHealth,
             float referenceEffectiveHealth,
             float scalingExponent) {
@@ -39,7 +47,8 @@ final class PostureBalance {
             return 0.0F;
         }
         return maxPosture * parryPostureFraction(
-                baseMaxPostureFraction,
+                lowEhpFraction,
+                highEhpFraction,
                 effectiveHealth,
                 referenceEffectiveHealth,
                 scalingExponent

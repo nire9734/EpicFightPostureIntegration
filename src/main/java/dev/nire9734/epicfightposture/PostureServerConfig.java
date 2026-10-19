@@ -54,11 +54,11 @@ public final class PostureServerConfig {
 
     public static final ForgeConfigSpec.DoubleValue MAXIMUM_POSTURE_MULTIPLIER;
     public static final ForgeConfigSpec.DoubleValue POSTURE_DAMAGE_MULTIPLIER;
-    public static final ForgeConfigSpec.DoubleValue PARRY_PERCENT;
+    public static final ForgeConfigSpec.DoubleValue PARRY_LOW_EHP_PERCENT;
+    public static final ForgeConfigSpec.DoubleValue PARRY_HIGH_EHP_PERCENT;
     public static final ForgeConfigSpec.DoubleValue REGEN_DELAY_SECONDS;
     public static final ForgeConfigSpec.DoubleValue REGEN_RATE_PERCENT;
     public static final ForgeConfigSpec.ConfigValue<List<? extends String>> POSTURE_MULTIPLIERS;
-    public static final ForgeConfigSpec.ConfigValue<List<? extends String>> PARRY_MULTIPLIERS;
     public static final ForgeConfigSpec.ConfigValue<List<? extends String>> ENTITY_BLACKLIST;
     public static final ForgeConfigSpec.BooleanValue AUTOMATIC_COMPATIBILITY;
     public static final ForgeConfigSpec.ConfigValue<List<? extends String>> MOD_ALLOWLIST;
@@ -80,7 +80,6 @@ public final class PostureServerConfig {
 
     private static volatile Set<ResourceLocation> blacklist = Set.of();
     private static volatile Map<ResourceLocation, Float> entityMultipliers = Map.of();
-    private static volatile Map<ResourceLocation, Float> parryMultipliers = Map.of();
     private static volatile Set<String> modAllowlist = Set.of();
     private static volatile Set<String> modDenylist = Set.of();
     private static volatile Snapshot remoteSnapshot;
@@ -100,13 +99,20 @@ public final class PostureServerConfig {
                         "Default: 1.0 | Range: 0.0-100.0"
                 )
                 .defineInRange("posture_damage_multiplier", 1.0D, 0.0D, 100.0D);
-        PARRY_PERCENT = BUILDER
+        PARRY_LOW_EHP_PERCENT = BUILDER
                 .comment(
-                        "Base parry damage as a percentage of maximum Posture.",
-                        "Innate EHP controls the parry/finisher penalty.",
+                        "Base parry Posture damage (% of maximum) for mobs with innate EHP <= 20.",
+                        "Innate EHP below 20 is clamped to 20 for parry scaling.",
+                        "Default: 18.0 | Range: 0.0-100.0"
+                )
+                .defineInRange("parry_low_ehp_percent", 18.0D, 0.0D, 100.0D);
+        PARRY_HIGH_EHP_PERCENT = BUILDER
+                .comment(
+                        "Base parry Posture damage (%) as innate EHP approaches infinity.",
+                        "This is the asymptote at 0% target HP, before the finisher modifier.",
                         "Default: 6.0 | Range: 0.0-100.0"
                 )
-                .defineInRange("parry_percent", 6.0D, 0.0D, 100.0D);
+                .defineInRange("parry_high_ehp_percent", 6.0D, 0.0D, 100.0D);
         BUILDER.pop();
 
         BUILDER.push("regeneration");
@@ -133,13 +139,6 @@ public final class PostureServerConfig {
                         "Example: [\"cataclysm:ignis=0.25\"]"
                 )
                 .defineListAllowEmpty("posture_multipliers", List.of(), value -> value instanceof String);
-        PARRY_MULTIPLIERS = BUILDER
-                .comment(
-                        "Per-entity parry damage multipliers after innate-EHP scaling.",
-                        "Default: [] | Range: 0.0-100.0",
-                        "Example: [\"cataclysm:ignis=0.25\"]"
-                )
-                .defineListAllowEmpty("parry_multipliers", List.of(), value -> value instanceof String);
         ENTITY_BLACKLIST = BUILDER
                 .comment(
                         "Entities completely excluded from EFPI.",
@@ -193,14 +192,14 @@ public final class PostureServerConfig {
         return BASE_ATTACK_POSTURE_COEFFICIENT * POSTURE_DAMAGE_MULTIPLIER.get().floatValue();
     }
 
-    /** Additional per-type parry adjustment, with 0 disabling parry posture damage. */
-    public static float parryDamageMultiplier(ResourceLocation entityId) {
-        return entityId == null ? 1.0F : parryMultipliers.getOrDefault(entityId, 1.0F);
+    /** Parry fraction against an innate-EHP 20 or lower mob. */
+    public static float parryLowEhpFraction() {
+        return PARRY_LOW_EHP_PERCENT.get().floatValue() / 100.0F;
     }
 
-    /** Base parry posture damage as a fraction of target maximum posture. */
-    public static float parryPostureFraction() {
-        return PARRY_PERCENT.get().floatValue() / 100.0F;
+    /** Parry fraction as innate EHP tends to infinity (at the finisher endpoint). */
+    public static float parryHighEhpFraction() {
+        return PARRY_HIGH_EHP_PERCENT.get().floatValue() / 100.0F;
     }
 
     public static float fullHealthPostureDamageMultiplier() {
@@ -356,7 +355,6 @@ public final class PostureServerConfig {
     private static void refreshCachedSettings() {
         blacklist = parseEntityBlacklist();
         entityMultipliers = parseEntityMultipliers();
-        parryMultipliers = parseParryMultipliers();
         modAllowlist = parseModIds(MOD_ALLOWLIST.get(), "compatibility.mod_allowlist");
         modDenylist = parseModIds(MOD_DENYLIST.get(), "compatibility.mod_denylist");
     }
@@ -396,31 +394,6 @@ public final class PostureServerConfig {
                 continue;
             }
             parsed.put(entityId, multiplier);
-        }
-        return Map.copyOf(parsed);
-    }
-
-    private static Map<ResourceLocation, Float> parseParryMultipliers() {
-        Map<ResourceLocation, Float> parsed = new HashMap<>();
-        for (String raw : PARRY_MULTIPLIERS.get()) {
-            String entry = raw == null ? "" : raw.trim();
-            int separator = entry.lastIndexOf('=');
-            if (separator <= 0 || separator == entry.length() - 1) {
-                LOGGER.warn("Ignoring invalid parry multiplier '{}'", raw);
-                continue;
-            }
-            ResourceLocation id = ResourceLocation.tryParse(entry.substring(0, separator).trim());
-            float value;
-            try {
-                value = Float.parseFloat(entry.substring(separator + 1).trim());
-            } catch (NumberFormatException exception) {
-                value = Float.NaN;
-            }
-            if (id == null || !Float.isFinite(value) || value < 0.0F || value > 100.0F) {
-                LOGGER.warn("Ignoring invalid parry multiplier '{}'", raw);
-                continue;
-            }
-            parsed.put(id, value);
         }
         return Map.copyOf(parsed);
     }
