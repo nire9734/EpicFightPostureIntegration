@@ -14,19 +14,16 @@ import yesman.epicfight.skill.guard.GuardSkill;
 
 @Mod.EventBusSubscriber(modid = EpicFightPostureIntegration.MODID, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public final class CommonEvents {
-    // Observe post-mitigation damage after LOWEST (e.g. Soulrend damage-cap)
-    // handlers without modifying the event itself at MONITOR priority.
-    @SubscribeEvent(priority = EventPriority.MONITOR)
+    // Forge 1.20.1 ends at LOWEST; MONITOR does not exist.
+    // Record the attack, but wait until HP actually changes before giving posture:
+    // same-priority KubeJS damage caps can still run after this callback.
+    @SubscribeEvent(priority = EventPriority.LOWEST)
     public static void onLivingDamage(LivingDamageEvent event) {
-        if (event.isCanceled() || event.getAmount() <= 0.0F) {
-            return;
-        }
         LivingEntity target = event.getEntity();
         Entity offender = GuardSkill.getOffender(event.getSource());
-        if (!(offender instanceof Player) || target == offender) {
-            return;
-        }
-        PostureManager.onPlayerDamage(target, event.getAmount(), event.getSource());
+        boolean playerHit = offender instanceof Player && target != offender;
+        PostureManager.observeDamageEvent(
+                target, event.getAmount(), event.getSource(), playerHit && !event.isCanceled());
     }
 
     @SubscribeEvent
