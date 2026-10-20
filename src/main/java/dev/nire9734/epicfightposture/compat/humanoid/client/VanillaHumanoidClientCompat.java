@@ -188,7 +188,9 @@ public final class VanillaHumanoidClientCompat {
                 return null;
             }
 
-            SkinnedMesh baked = HumanoidModelBaker.VANILLA_TRANSFORMER.transformArmorModel(humanoidModel);
+            SkinnedMesh baked = RuntimeMeshOwnership.callOwned(
+                    () -> HumanoidModelBaker.VANILLA_TRANSFORMER.transformArmorModel(humanoidModel)
+            );
             if (baked == null) {
                 LOGGER.debug(
                         "EFPI could not transform HumanoidModel for {}; skipping automatic compatibility",

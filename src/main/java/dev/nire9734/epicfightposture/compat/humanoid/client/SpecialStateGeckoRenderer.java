@@ -200,7 +200,9 @@ public final class SpecialStateGeckoRenderer extends PatchedEntityRenderer<
             }
 
             try {
-                SkinnedMesh baked = HumanoidModelBaker.VANILLA_TRANSFORMER.transformArmorModel(humanoidModel);
+                SkinnedMesh baked = RuntimeMeshOwnership.callOwned(
+                        () -> HumanoidModelBaker.VANILLA_TRANSFORMER.transformArmorModel(humanoidModel)
+                );
                 if (baked == null) {
                     return null;
                 }
