@@ -182,11 +182,6 @@ public final class PostureManager {
             LivingEntityPatch<?> patch = getPatch(entity);
             boolean guardBreakActive = isActiveNeutralize(patch);
             if (!guardBreakActive) {
-                if (state.brokenTicks < 2) {
-                    // Diagnostic only: a transient animation interruption
-                    // must not blacklist an otherwise compatible mob.
-                    logGuardBreakFailure(entity, patch, "neutralize ended before 2 ticks");
-                }
                 startRecovering(state);
                 PostureSyncEvents.syncNow(entity);
             } else {
@@ -328,11 +323,10 @@ public final class PostureManager {
             state.brokenTicks = 0;
             state.postureState = PostureState.BROKEN;
         } else {
-            logGuardBreakFailure(entity, patch,
-                    applied ? "neutralize returned true but the required animation is not playing"
-                            : "neutralize was unavailable or applyStun returned false");
-            // Preserve posture tracking: a temporary failed stun is not proof of
-            // permanent incompatibility.
+            // A transiently rejected stun does not justify removing posture tracking.
+            LOGGER.debug("EFPI neutralize unavailable for {} (applied={}, patch={})",
+                    entityTypeId(entity), applied,
+                    patch == null ? "none" : patch.getClass().getName());
             startRecovering(state);
         }
     }
@@ -398,47 +392,6 @@ public final class PostureManager {
             return player != null && player.getRealAnimation() == neutralize;
         } catch (Throwable ignored) {
             return false;
-        }
-    }
-
-    /**
-     * Emits one diagnostic per failed or immediately interrupted break, never per
-     * ordinary entity tick. The server log distinguishes failed stun application
-     * from a later animation/state replacement and identifies the actual patch.
-     */
-    private static void logGuardBreakFailure(
-            LivingEntity entity, LivingEntityPatch<?> patch, String reason) {
-        String details = "patch=none";
-        if (patch != null) {
-            try {
-                var animator = patch.getAnimator();
-                var animationPlayer = animator == null ? null : animator.getPlayerFor(null);
-                var expected = patch.getHitAnimation(StunType.NEUTRALIZE);
-                var actual = animationPlayer == null ? null : animationPlayer.getRealAnimation();
-                details = "patch=" + patch.getClass().getName()
-                        + ", animator=" + (animator == null ? "null" : animator.getClass().getSimpleName())
-                        + ", expected=" + animationName(expected)
-                        + ", current=" + animationName(actual)
-                        + ", matching=" + (actual != null && actual == expected)
-                        + ", isStunned=" + patch.isStunned();
-            } catch (Throwable failure) {
-                details = "patch=" + patch.getClass().getName()
-                        + ", inspectionFailure=" + failure.getClass().getSimpleName()
-                        + ": " + failure.getMessage();
-            }
-        }
-        LOGGER.warn("EFPI guard break unavailable for {} (UUID {}): {}; {}",
-                entityTypeId(entity), entity.getUUID(), reason, details);
-    }
-
-    private static String animationName(AssetAccessor<? extends StaticAnimation> animation) {
-        if (animation == null) {
-            return "null";
-        }
-        try {
-            return String.valueOf(animation.registryName());
-        } catch (Throwable ignored) {
-            return animation.getClass().getSimpleName();
         }
     }
 

@@ -53,7 +53,9 @@ public final class MissingHumanoidNeutralize {
         }
 
         LivingEntity entity = patch.getOriginal();
-        if (entity == null) {
+        // The client provider can omit stun animations. Only update the
+        // authoritative logical server's datapack provider.
+        if (entity == null || entity.level().isClientSide()) {
             return;
         }
         ResourceLocation id = EntityType.getKey(entity.getType());
@@ -104,7 +106,7 @@ public final class MissingHumanoidNeutralize {
 
             boolean effective = patch.getHitAnimation(StunType.NEUTRALIZE) == fallback;
             if (effective && LOGGED_SUCCESS.add(id)) {
-                LOGGER.info(
+                LOGGER.debug(
                         "EFPI generic humanoid neutralize fallback ACTIVE: entity={}, patch={}, " +
                         "animation={}, providerPatched=true",
                         id, patch.getClass().getName(), fallback.registryName());

@@ -1,7 +1,6 @@
 package dev.nire9734.epicfightposture.mixin.client;
 
 import com.mojang.blaze3d.vertex.PoseStack;
-import dev.nire9734.epicfightposture.PostureManager;
 import dev.nire9734.epicfightposture.client.ClientPostureStore;
 import dev.nire9734.epicfightposture.sync.RuntimeAccess;
 import net.minecraft.client.renderer.MultiBufferSource;
@@ -260,13 +259,13 @@ public abstract class BridgeHealthBarMixin extends EntityUI {
     private static boolean efpi$canRenderPosture(
             LivingEntityPatch<?> targetPatch, LocalPlayerPatch playerPatch) {
         if (targetPatch == null || playerPatch == null
-                || targetPatch instanceof CEHumanoidPatch
-                || !PostureManager.hasNeutralizeAnimation(targetPatch)) {
+                || targetPatch instanceof CEHumanoidPatch) {
             return false;
         }
         try {
-            // CE's target-side predicate also checks CustomExecuteEntity's
-            // executor-dependent policy (e.g. spider and custom boss patches).
+            // Server-synced posture eligibility is authoritative. Client-side
+            // datapack patches may not contain server-only stun animation tables.
+            // Keep Combat Evolution's executor-dependent target-support check.
             return ExecutionHandler.isTargetSupported(playerPatch, targetPatch);
         } catch (Throwable ignored) {
             return false;
