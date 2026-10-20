@@ -83,9 +83,10 @@ Combat Evolution `CustomExecuteEntity` contract). On the client, the HUD is
 shown only when Combat Evolution considers the target compatible with the
 local player's execution capability.
 
-On reaching zero posture, EFPI now accepts only an actually active
-`NEUTRALIZE` animation with Epic Fight's stunned state. It no longer treats
-a `LONG` hit reaction as an executable guard break. If the animation cannot start or ends almost immediately, EFPI returns to
+On reaching zero posture, EFPI accepts only an actually active
+`NEUTRALIZE` animation. It does not require a separate `isStunned()` flag
+to agree during animation transitions. EFPI no longer treats a `LONG`
+hit reaction as an executable guard break. If the animation cannot start or ends almost immediately, EFPI returns to
 posture recovery **without removing the HUD or blacklisting the entity**.
 Such a failure alone does not establish that the mob is permanently
 incompatible: temporary effects and third-party animations may interrupt it.
@@ -103,37 +104,36 @@ specific modpack has targets confirmed to be unsupported, operators can
 manually add their IDs to `entities.entity_blacklist`, without hardcoding
 mod-specific behavior into EFPI.
 
-### Soul's Weapons diagnostic branch
+### Generic datapack humanoid guard-break compatibility
 
-The development branch `dev/soulsweapons-compat-diagnostics` contains temporary,
-read-only `EFPI souls-diagnostic/scan`, `/server`, `/client` and `/break`
-logging for `soulsweapons:remnant`, `soulsweapons:dark_sorcerer` and
-`soulsweapons:forlorn`. Scan diagnostics are emitted even if no mobs spawn.
-Server/client diagnostics appear the first time each type spawns and reaches
-20 ticks, even if no posture bar is shown. Break diagnostics appear when a
-neutralize animation is accepted. This logging does not try to stun mobs in
-advance or blacklist failed instances.
+Epic Fight 1.20.1's datapack-backed `CustomHumanoidMobPatch` may define SHORT
+and LONG stun animations without defining `NEUTRALIZE`. Such a mob can still
+have a valid humanoid armature and be an eligible Combat Evolution execution
+target, yet a missing neutralize animation prevents posture breaks.
 
-The diagnostics showed `NEUTRALIZE=null` for Remnant/Forlorn even though
-their datapack-provided `CustomHumanoidMobPatch` uses a humanoid armature and
-defines ordinary hit reactions. The generic fallback now repairs the
-**provider stun-animation map** directly, rather than relying on a
-return-value Mixin, whenever a `CustomHumanoidMobPatch` has a
-`HumanoidArmature`, at least one SHORT or LONG hit reaction, and
-**no usable NEUTRALIZE animation**. This respects explicit datapack entries,
-preserves the original Epic Fight patch/AI/renderer, and also makes the
-animation visible to Epic Fight's own `applyStun` and Combat Evolution's
-execution checks. The log marker `EFPI generic humanoid neutralize fallback
-ACTIVE` indicates that the actual provider was updated and verified;
-`REJECTED` indicates a diagnostic failure. This does not guarantee every
-renderer/execution sequence is visually correct; test in-game.
+EFPI supplies the canonical `BIPED_COMMON_NEUTRALIZED` entry **only** when
+all of these conditions hold:
 
-A behavioral correction also aligns the broken-state check with Combat
-Evolution's execution predicate: only the actual `NEUTRALIZE` animation
-accessor identity is required, not a redundant `isStunned()` flag that can
-disagree during transitions. Unsupported targets still cannot be guaranteed
-executable without an in-game attempt; captured diagnostics will identify
-the actual patch/renderer ownership and filter stage for the three mobs.
+- Existing Epic Fight patch is `CustomHumanoidMobPatch`
+- Armature is `HumanoidArmature`
+- A SHORT or LONG hit reaction is configured
+- No usable NEUTRALIZE animation exists
+- The entity type is not in EFPI's entity blacklist
+
+The repair updates the existing Epic Fight provider's stun-animation table,
+preserving datapack-provided animations, original mob AI, and renderer
+ownership. Its guard-break animation is thereby visible both to Epic Fight
+stun application and Combat Evolution execution checks. Remnant and Forlorn
+(`soulsweapons`) were verified in game through the complete posture-break
+and execution sequence.
+
+This applies structurally, not by specific mob ID, but does **not** guarantee
+execution on arbitrary custom mobs. Normal Combat Evolution execution
+conditions and renderer compatibility still apply. The fix uses reflective
+access to the private Epic Fight `CustomHumanoidMobPatch.provider` field;
+check compatibility when upgrading Epic Fight. The first successful repair
+for each entity type is logged as `EFPI generic humanoid neutralize fallback
+ACTIVE`; failure is logged as `REJECTED`.
 
 ## Server configuration
 

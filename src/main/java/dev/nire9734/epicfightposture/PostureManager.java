@@ -142,10 +142,6 @@ public final class PostureManager {
             return false;
         }
 
-        // Diagnose the Soul's Weapons integration even when no posture state
-        // has ever been created and no HUD/guard-break callback can fire.
-        SoulsWeaponryDiagnostics.onServerTick(entity);
-
         // Damage listeners execute before vanilla subtracts HP. Flush at the
         // next entity tick, after all later listeners and HP changes have run.
         flushPendingDamage(entity);
@@ -331,7 +327,6 @@ public final class PostureManager {
             }
             state.brokenTicks = 0;
             state.postureState = PostureState.BROKEN;
-            SoulsWeaponryDiagnostics.onBreakApplied(entity, patch, true);
         } else {
             logGuardBreakFailure(entity, patch,
                     applied ? "neutralize returned true but the required animation is not playing"
