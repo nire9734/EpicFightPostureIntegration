@@ -2,27 +2,36 @@
 
 ## 3.0.1
 
-### Added
-- Per-mob repeat-break resistance, configured by `posture.posture_break_resistance_step = 1.0` and `posture.posture_break_resistance_max = 3.0`. Successive breaks require 1x, 2x, and 3x posture damage (both normal attacks and parries); the counter resets on unload.
-- Two configurable parry **base** percentages: `posture.parry_base_max_percent = 18.0` for innate EHP ≤20, and `posture.parry_base_min_percent = 6.0` as innate EHP approaches infinity (before the HP-finisher penalty).
+Posture balance, execution compatibility and stability update relative to the **3.0.0 release**.
 
-### Changed
-- Normal player hits now deplete posture from final actual HP damage as a fraction of maximum HP, using an integrated quadratic health-finisher curve and bounded Impact efficiency.
-- Retain EHP^0.7 maximum posture and its global/per-entity multipliers; using unmultipled base posture for attack pressure keeps increased maximum posture meaningful.
-- Use *innate/base-attribute EHP* to determine parry resistance and the parry finisher penalty, so leveled low-base-health mobs do not become parry-resistant bosses. Clamp parry-scaling EHP to at least 20, enforcing the low-EHP endpoint even for weaker mobs.
-- Apply attack finisher progression to all mobs; parries retain their base-EHP dependent finisher strength.
-- Attack posture now uses internal **2.1** HP-normalized pressure (previous 3.0.1 development builds: 2.7, then 2.2; pre-3.0.1 damage-based formula used 0.55). `posture_damage_multiplier = 1.0` remains the default; previously customized settings such as 0.8 should be reset or retuned.
-- Remove obsolete `posture.parry_percent`, interim `posture.parry_low_ehp_percent` / `posture.parry_high_ehp_percent`, and `entities.parry_multipliers`. No migration of old parry customizations: existing TOML gains the new default keys via Forge config correction, while unrelated options remain unchanged.
-- Updated unit tests, configuration explanations, and version number to 3.0.1.
+### Posture balance
 
-### Fixed
-- Gate EFPI's posture HUD behind a distinct neutralize animation and Combat Evolution's target/executor compatibility. Do not treat `LONG` stun as an executable guard break. Interrupted stuns recover without blacklisting the mob or removing its HUD.
-- Add a generic `NEUTRALIZE` fallback for datapack `CustomHumanoidMobPatch` entities with a humanoid armature and existing SHORT/LONG reactions, preserving original animations, AI and rendering. Verified Remnant and Forlorn through guard break and execution.
-- Match Combat Evolution's active `NEUTRALIZE` animation predicate without also requiring the transient `isStunned()` flag, and trust the server's synchronized posture state for multiplayer HUD eligibility.
-- Remove temporary first-break renderer and other diagnosis-only log output. Retain warnings for genuine integration failures.
-- Prevent immediate subsequent posture breaks during the existing `RECOVERING` state, when the bar is still refilling.
-- Fix Forge 1.20.1 compilation: `EventPriority.MONITOR` does not exist. Listen at `LOWEST` and defer attack posture until actual HP reduction is observed. This prevents false posture damage if a later same-priority KubeJS damage-cap handler nullifies the hit. Added a regression test for capped/cancelled HP loss.
+- Reworked direct-hit posture damage to use **final observed HP loss** as a fraction of target maximum HP, instead of 3.0.0's `(dealt damage / 8)^0.7` scaling. Canceled or fully capped damage that removes no HP no longer generates posture pressure.
+- Integrated the `0.25 + 0.75 * (missing HP fraction)^2` finisher curve over the damage interval. A single large hit and several small hits removing the same HP fraction produce similar pressure when Impact and other conditions match. The curve now applies to attacks against all eligible mobs.
+- Added bounded Impact efficiency for direct hits. Epic Fight attacks use their Impact; eligible non-Epic-Fight player damage gets a bounded estimated Impact. Zero-Impact Epic Fight attacks do not contribute posture damage.
+- Reworked parries around the target's **innate/base-attribute EHP**, rather than level/affix-inflated attributes. The old `posture.parry_percent` (default 6%) is replaced by `posture.parry_base_max_percent=18.0` at innate EHP ≤20 and `posture.parry_base_min_percent=6.0` approached at high innate EHP, before the EHP-dependent finisher modifier.
+- Added per-target resistance to repeated successful guard breaks, shared by attacks and parries: first break 1× required pressure, second 2×, third and subsequent 3× with default `posture_break_resistance_step=1.0` and `posture_break_resistance_max=3.0`. The counter resets when the mob unloads.
+- Kept EHP-based maximum posture `3.2 * (EHP / 20)^0.7`, per-entity/global maximum-posture multipliers, and ordinary delayed regeneration. Attack pressure uses the **unmultiplied** base posture, so increasing maximum posture increases attack difficulty; parry pressure scales with the actual maximum posture.
 
+### Guard breaks and executions
+
+- Require an actual distinct `NEUTRALIZE` animation for server-side posture eligibility and guard breaks; a `LONG` hit reaction is no longer treated as an executable guard break. Failed/briefly interrupted stuns recover without blacklisting the mob.
+- Add a **generic** missing-`NEUTRALIZE` fallback to existing Epic Fight datapack-backed `CustomHumanoidMobPatch` instances that have a humanoid armature and SHORT/LONG reaction. Preserve user-defined animations, the original patch, attack AI and renderer. Remnant and Forlorn from Soul's Weapons were verified in-game through HUD, guard break and execution.
+- Match Combat Evolution's active guard-break animation check without requiring an additional `isStunned()` value during animation transitions.
+- Display the combined Health + Posture HUD only for eligible, server-synchronized posture targets that satisfy Combat Evolution's executor-dependent target support check. Avoid rechecking server-only stun tables on multiplayer clients.
+
+### Reliability
+
+- Prevent new posture breaks during the existing break/execution/recovery sequence.
+- Improve automatic humanoid discovery and renderer handling across reloads, ambiguous model layouts, third-party renderers and secondary model layers. Keep conservative fail-closed behavior when safe compatibility cannot be established.
+- Reduce repeated client renderer/debug instrumentation and ensure compatibility state is reconciled against validated renderer registrations.
+- Remove development-only diagnostic output; retain warnings for actual compatibility failures.
+
+### Updating from 3.0.0
+
+- Keep the existing `server.toml` and renderer-discovery cache. Network protocol `3`, cache schema `2`, configuration paths and supported dependency ranges are unchanged.
+- Forge adds the new parry base-percent and repeat-break-resistance settings at their defaults. **Customized 3.0.0 `posture.parry_percent` values are not migrated.** Review the updated formula before retuning.
+- Because direct-hit posture damage has a new formula, existing customized `posture.posture_damage_multiplier` values may require adjustment; the default remains `1.0`.
 
 ## 3.0.0
 
