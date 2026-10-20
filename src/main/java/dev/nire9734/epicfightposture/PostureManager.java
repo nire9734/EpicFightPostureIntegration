@@ -372,6 +372,10 @@ public final class PostureManager {
         if (patch == null) {
             return false;
         }
+        // Repair the Epic Fight datapack provider before testing eligibility.
+        // The provider, not a return-value Mixin, is the canonical source read
+        // by applyStun and Combat Evolution.
+        dev.nire9734.epicfightposture.compat.humanoid.MissingHumanoidNeutralize.installIfNeeded(patch);
         try {
             AssetAccessor<? extends StaticAnimation> neutralize = patch.getHitAnimation(StunType.NEUTRALIZE);
             if (neutralize == null || neutralize.isEmpty()) {

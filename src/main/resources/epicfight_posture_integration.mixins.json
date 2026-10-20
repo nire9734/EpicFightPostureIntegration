@@ -9,8 +9,7 @@
   },
   "mixins": [
     "SpiderExecutionMixin",
-    "ParryDetectionMixin",
-    "MissingHumanoidNeutralizeMixin"
+    "ParryDetectionMixin"
   ],
   "client": [
     "client.BridgeHealthBarMixin",

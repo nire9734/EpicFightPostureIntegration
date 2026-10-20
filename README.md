@@ -114,18 +114,19 @@ Server/client diagnostics appear the first time each type spawns and reaches
 neutralize animation is accepted. This logging does not try to stun mobs in
 advance or blacklist failed instances.
 
-The diagnostic logs showed `NEUTRALIZE=null` for Remnant/Forlorn even
-though their datapack-provided `CustomHumanoidMobPatch` uses a humanoid
-armature and defines ordinary hit reactions. The experimental fallback is now
-**generic**, not keyed to Soul's Weapons: when a `CustomHumanoidMobPatch`
-has a `HumanoidArmature`, at least one SHORT or LONG hit animation, and
-**no usable NEUTRALIZE animation**, it exposes Epic Fight's canonical
-`BIPED_COMMON_NEUTRALIZED`. Explicit datapack animations still win and
-blacklisted mobs are skipped. A log line beginning `EFPI generic humanoid
-neutralize fallback ACTIVE` confirms the runtime fix was actually invoked;
-absence of the marker with a missing `NEUTRALIZE` points to a stale jar or a
-Mixin activation issue. This does not guarantee every such entity can be
-stunned, rendered correctly, or executed; that remains runtime-dependent.
+The diagnostics showed `NEUTRALIZE=null` for Remnant/Forlorn even though
+their datapack-provided `CustomHumanoidMobPatch` uses a humanoid armature and
+defines ordinary hit reactions. The generic fallback now repairs the
+**provider stun-animation map** directly, rather than relying on a
+return-value Mixin, whenever a `CustomHumanoidMobPatch` has a
+`HumanoidArmature`, at least one SHORT or LONG hit reaction, and
+**no usable NEUTRALIZE animation**. This respects explicit datapack entries,
+preserves the original Epic Fight patch/AI/renderer, and also makes the
+animation visible to Epic Fight's own `applyStun` and Combat Evolution's
+execution checks. The log marker `EFPI generic humanoid neutralize fallback
+ACTIVE` indicates that the actual provider was updated and verified;
+`REJECTED` indicates a diagnostic failure. This does not guarantee every
+renderer/execution sequence is visually correct; test in-game.
 
 A behavioral correction also aligns the broken-state check with Combat
 Evolution's execution predicate: only the actual `NEUTRALIZE` animation
