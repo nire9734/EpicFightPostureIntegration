@@ -145,17 +145,24 @@ public final class SourceModelPreparation {
             }
             root.getAllParts().forEach(part -> {
                 if (visited.add(part)) {
-                    saved.add(new PartState(part, part.storePose(), part.visible, part.skipDraw));
+                    saved.add(new PartState(
+                            part, part.storePose(), part.visible, part.skipDraw,
+                            part.xScale, part.yScale, part.zScale
+                    ));
                 }
             });
         }
     }
 
-    private record PartState(ModelPart part, PartPose pose, boolean visible, boolean skipDraw)
-            implements Runnable {
+    private record PartState(ModelPart part, PartPose pose, boolean visible, boolean skipDraw,
+                             float scaleX, float scaleY, float scaleZ) implements Runnable {
         @Override
         public void run() {
             part.loadPose(pose);
+            // Minecraft 1.20.1 PartPose stores translation/rotation, not scale.
+            part.xScale = scaleX;
+            part.yScale = scaleY;
+            part.zScale = scaleZ;
             part.visible = visible;
             part.skipDraw = skipDraw;
         }

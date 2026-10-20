@@ -22,6 +22,8 @@ class SourceModelPreparationTest {
         root.x = 2.0F;
         child.yRot = 0.4F;
         child.xScale = 1.2F;
+        child.yScale = 1.3F;
+        child.zScale = 1.4F;
         child.visible = false;
         child.skipDraw = true;
         DummyHierarchical model = new DummyHierarchical(root);
@@ -33,6 +35,8 @@ class SourceModelPreparationTest {
             root.x = 15.0F;
             child.yRot = 2.3F;
             child.xScale = 0.5F;
+            child.yScale = 0.6F;
+            child.zScale = 0.7F;
             child.visible = true;
             child.skipDraw = false;
             model.riding = false;
@@ -46,6 +50,8 @@ class SourceModelPreparationTest {
         assertEquals(2.0F, root.x);
         assertEquals(0.4F, child.yRot);
         assertEquals(1.2F, child.xScale);
+        assertEquals(1.3F, child.yScale);
+        assertEquals(1.4F, child.zScale);
         assertFalse(child.visible);
         assertTrue(child.skipDraw);
         assertTrue(model.riding);
@@ -81,6 +87,7 @@ class SourceModelPreparationTest {
         root.xRot = 1.1F;
         child.z = 4.0F;
         DummyListModel model = new DummyListModel(root);
+        model.young = false;
 
         SourceModelPreparation.Scope scope = SourceModelPreparation.openPrepared(model, () -> {
             root.xRot = 0.0F;
