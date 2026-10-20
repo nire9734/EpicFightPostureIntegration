@@ -50,11 +50,15 @@ public final class VanillaHumanoidClientCompat {
         if (ModList.get().isLoaded("geckolib")) {
             // The renderers (and their baked models) may have changed after F3+T.
             GeckoArmorSkinnedMeshBridge.clearCache();
+            SpecialStateGeckoRenderer.clearFallbackCache();
             HumanoidBackendRegistry.register(GeckoHumanoidClientCompat.INSTANCE);
         }
         if (ModList.get().isLoaded("lionfishapi")) {
             HumanoidBackendRegistry.register(LionfishHumanoidClientCompat.INSTANCE);
         }
+        // Plans and secondary meshes depend on the previous model/armature identity.
+        LayerPoseOverrideContext.clearCache();
+        LionfishSecondaryModelLayerBridge.clearCache();
 
         HumanoidClientDiscovery.ScanSnapshot scan = HumanoidClientDiscovery.scan(
                 event.getContext().getEntityRenderDispatcher().renderers
@@ -71,6 +75,13 @@ public final class VanillaHumanoidClientCompat {
         Set<ResourceLocation> verifiedVanillaIds = idsOf(verifiedVanilla);
         Set<ResourceLocation> verifiedPreparedIds = idsOf(verifiedPreparedHumanoids);
         Set<ResourceLocation> verifiedSpiderIds = idsOf(verifiedSpider);
+
+        // Fail closed for EFPI-owned patches no longer supported by the latest
+        // renderer scan, and recover patches whose renderer now registered safely.
+        Set<ResourceLocation> verifiedAll = new HashSet<>(verifiedVanillaIds);
+        verifiedAll.addAll(verifiedPreparedIds);
+        verifiedAll.addAll(verifiedSpiderIds);
+        VanillaHumanoidCompat.reconcileClientRuntimeCompatibility(verifiedAll);
 
         VanillaHumanoidCompat.replaceDetectedCache(
                 verifiedVanillaIds,
@@ -123,6 +134,7 @@ public final class VanillaHumanoidClientCompat {
 
             AssetAccessor<SkinnedMesh> runtimeMesh = bakeRuntimeMesh(event, entityType, entityId);
             if (runtimeMesh == null) {
+                VanillaHumanoidCompat.rejectRuntimeCompatibility(entityType);
                 continue;
             }
 
@@ -132,10 +144,16 @@ public final class VanillaHumanoidClientCompat {
                 continue;
             }
 
-            event.addPatchedEntityRenderer(
-                    entityType,
-                    type -> new SpecialStateHumanoidRenderer(event.getContext(), type, runtimeMesh)
-            );
+            if (!RendererRegistrationGuard.install(
+                    () -> event.addPatchedEntityRenderer(
+                            entityType,
+                            type -> new SpecialStateHumanoidRenderer(event.getContext(), type, runtimeMesh)
+                    ),
+                    () -> VanillaHumanoidCompat.rejectRuntimeCompatibility(entityType),
+                    throwable -> LOGGER.warn("EFPI could not install vanilla humanoid renderer for {}",
+                            entityId, throwable))) {
+                continue;
+            }
             verified.add(entityType);
         }
 
@@ -165,10 +183,16 @@ public final class VanillaHumanoidClientCompat {
                 continue;
             }
 
-            event.addPatchedEntityRenderer(
-                    entityType,
-                    type -> new SpecialStateSpiderRenderer(event.getContext(), type)
-            );
+            if (!RendererRegistrationGuard.install(
+                    () -> event.addPatchedEntityRenderer(
+                            entityType,
+                            type -> new SpecialStateSpiderRenderer(event.getContext(), type)
+                    ),
+                    () -> VanillaHumanoidCompat.rejectRuntimeCompatibility(entityType),
+                    throwable -> LOGGER.warn("EFPI could not install vanilla spider renderer for {}",
+                            entityId, throwable))) {
+                continue;
+            }
             verified.add(entityType);
         }
 

@@ -16,7 +16,6 @@ import yesman.epicfight.api.utils.math.OpenMatrix4f;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
@@ -37,11 +36,19 @@ import java.util.WeakHashMap;
  */
 public final class LionfishSecondaryModelLayerBridge {
     private static final float MATRIX_EPSILON = 1.0E-8F;
+    private static final int MAX_SECONDARY_VARIANTS_PER_MODEL = 64;
     private static final ThreadLocal<Frame> ACTIVE = new ThreadLocal<>();
 
     /** Model identity changes naturally invalidate resource-reloaded models. */
     private static final Map<AdvancedEntityModel<?>, Map<CacheKey, CachedSecondary>> CACHE =
             Collections.synchronizedMap(new WeakHashMap<>());
+
+    /** Renderer reload invalidates baked secondary meshes and their descriptors. */
+    static void clearCache() {
+        synchronized (CACHE) {
+            CACHE.clear();
+        }
+    }
 
     static Scope open(
             Object primaryModel,
@@ -114,7 +121,9 @@ public final class LionfishSecondaryModelLayerBridge {
         CachedSecondary cached = cachedSecondary(secondaryModel, cacheKey);
         if (cached == null) {
             cached = bakeSecondary(secondaryModel, cacheKey, frame.primaryDescriptor);
-            cacheSecondary(secondaryModel, cacheKey, cached);
+            if (shouldCache(cached)) {
+                cacheSecondary(secondaryModel, cacheKey, cached);
+            }
         }
         if (!shouldReplace(cached)) {
             return false;
@@ -144,6 +153,11 @@ public final class LionfishSecondaryModelLayerBridge {
 
     static boolean shouldReplace(CachedSecondary cached) {
         return cached != null && cached.supported() && cached.mesh() != null;
+    }
+
+    /** Unsupported results can be transient; never freeze one in the cache. */
+    static boolean shouldCache(CachedSecondary cached) {
+        return shouldReplace(cached);
     }
 
     private static CachedSecondary bakeSecondary(
@@ -179,7 +193,9 @@ public final class LionfishSecondaryModelLayerBridge {
             CacheKey key,
             CachedSecondary cached) {
         synchronized (CACHE) {
-            CACHE.computeIfAbsent(model, ignored -> new HashMap<>()).put(key, cached);
+            CACHE.computeIfAbsent(model,
+                    ignored -> new BoundedLruCache<>(MAX_SECONDARY_VARIANTS_PER_MODEL))
+                    .put(key, cached);
         }
     }
 

@@ -64,8 +64,16 @@ public final class LayerPoseOverrideContext {
             "dev.nire9734.epicfightposture.compat.humanoid.client.LionfishSourceRigAdapter";
 
     private static final ThreadLocal<Context> ACTIVE = new ThreadLocal<>();
+    private static final int MAX_PLANS_PER_MODEL = 64;
     private static final Map<Object, Map<DescriptorCacheKey, ModelPlan>> MODEL_PLANS =
             Collections.synchronizedMap(new WeakHashMap<>());
+
+    /** Renderer/armature reload invalidates source-layer retargeting plans. */
+    static void clearCache() {
+        synchronized (MODEL_PLANS) {
+            MODEL_PLANS.clear();
+        }
+    }
     private static final ClassValue<Field[]> DECLARED_FIELDS = new ClassValue<>() {
         @Override
         protected Field[] computeValue(Class<?> type) {
@@ -247,7 +255,8 @@ public final class LayerPoseOverrideContext {
             ModelPlan built = buildModelPlan(model, keyFor(model));
             synchronized (MODEL_PLANS) {
                 Map<DescriptorCacheKey, ModelPlan> byDescriptor =
-                        MODEL_PLANS.computeIfAbsent(model, ignored -> new HashMap<>());
+                        MODEL_PLANS.computeIfAbsent(
+                                model, ignored -> new BoundedLruCache<>(MAX_PLANS_PER_MODEL));
                 ModelPlan raced = byDescriptor.get(descriptorCacheKey);
                 if (raced != null) {
                     return raced;

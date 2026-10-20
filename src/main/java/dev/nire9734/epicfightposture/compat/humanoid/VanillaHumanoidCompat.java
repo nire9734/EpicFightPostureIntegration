@@ -244,6 +244,25 @@ public final class VanillaHumanoidCompat {
         }
     }
 
+    /**
+     * Match client-owned lightweight patches to the renderers that actually passed
+     * this scan. A previous failed/replaced model stays inert, while a later
+     * successful renderer scan can reactivate an existing EFPI-owned patch.
+     *
+     * <p>Only used on the client. Server-side authority and ownership are unchanged.</p>
+     */
+    public static synchronized void reconcileClientRuntimeCompatibility(
+            Set<ResourceLocation> verified) {
+        Set<ResourceLocation> accepted = verified == null ? Set.of() : verified;
+        for (ResourceLocation id : registeredByEfpi.keySet()) {
+            if (accepted.contains(id)) {
+                runtimeRejected.remove(id);
+            } else {
+                runtimeRejected.add(id);
+            }
+        }
+    }
+
     public static boolean isCompatibilityBlacklisted(EntityType<?> entityType) {
         return entityType == null || PostureServerConfig.isBlacklisted(EntityType.getKey(entityType));
     }
