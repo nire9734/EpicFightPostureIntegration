@@ -74,6 +74,32 @@ The default resistance step is **1.0** and the cap is **3.0**: the first break n
 
 Ordinary regeneration starts after the configured delay and restores the configured percentage of maximum posture per second. Posture-break recovery is a separate state.
 
+### Guard-break and execution eligibility (3.0.1)
+
+A posture HUD does **not** imply that an arbitrary entity can be executed just
+because its model resembles a humanoid. EFPI requires a distinct
+`StunType.NEUTRALIZE` animation and an Epic Fight humanoid armature (or a
+Combat Evolution `CustomExecuteEntity` contract). On the client, the HUD is
+shown only when Combat Evolution considers the target compatible with the
+local player's execution capability.
+
+On reaching zero posture, EFPI now accepts only an actually active
+`NEUTRALIZE` animation with Epic Fight's stunned state. It no longer treats
+a `LONG` hit reaction as an executable guard break. If the animation cannot
+start, or disappears immediately, EFPI removes posture tracking and the HUD
+for that **entity instance** until it leaves the level. This also avoids
+repeatedly misleading players with a bar that reaches zero without a usable
+stun. An ordinary end to a confirmed guard break still starts recovery as
+before.
+
+A purely static scan cannot guarantee a future execution: other mods may
+cancel stuns, replace animations, apply temporary immunity, or alter execution
+rules at runtime. The first failed attempt can therefore still have a visible
+bar; the failure is detected at runtime and subsequent hits to that instance
+do not recreate it. When a specific modpack has targets with visually broken
+animations, add those IDs to `entities.entity_blacklist` to hide their bar
+immediately, without hardcoding mod-specific behavior into EFPI.
+
 ## Server configuration
 
 Server policy is stored at:

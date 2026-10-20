@@ -1,5 +1,6 @@
 package dev.nire9734.epicfightposture;
 
+import com.mojang.logging.LogUtils;
 import dev.nire9734.epicfightposture.sync.PostureSyncEvents;
 import dev.nire9734.epicfightposture.sync.RuntimeAccess;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -20,12 +21,16 @@ import yesman.epicfight.world.capabilities.EpicFightCapabilities;
 import yesman.epicfight.world.capabilities.entitypatch.LivingEntityPatch;
 import yesman.epicfight.world.damagesource.StunType;
 
+import java.util.Collections;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.WeakHashMap;
+import org.slf4j.Logger;
 
 /** Owns server-authoritative posture state for eligible Epic Fight entity patches. */
 public final class PostureManager {
+    private static final Logger LOGGER = LogUtils.getLogger();
     private static final int MAX_POSTURE_REFRESH_INTERVAL_TICKS = 10;
     private static final int BREAK_RECOVERY_TICKS = 60;
 
@@ -36,6 +41,13 @@ public final class PostureManager {
     private static final float MAX_SAFE_POSTURE = 1_000_000.0F;
 
     private static final Map<LivingEntity, State> STATES = new WeakHashMap<>();
+    /**
+     * A failed or immediately terminated neutralize animation is not a usable
+     * guard break. Keep this instance ineligible until it leaves the world.
+     * Weak identity lifetime avoids permanent restrictions on the mob type.
+     */
+    private static final Set<LivingEntity> INCOMPATIBLE_INSTANCES =
+            Collections.newSetFromMap(new WeakHashMap<>());
     /** One in-flight LivingDamageEvent per target, resolved after vanilla actually changes HP. */
     private static final Map<LivingEntity, PendingAttack> PENDING_ATTACKS = new WeakHashMap<>();
 
@@ -178,14 +190,19 @@ public final class PostureManager {
             }
 
             LivingEntityPatch<?> patch = getPatch(entity);
-            try {
-                if (patch == null || !patch.isStunned()) {
-                    startRecovering(state);
-                    PostureSyncEvents.syncNow(entity);
+            boolean guardBreakActive = isActiveNeutralize(patch);
+            if (!guardBreakActive) {
+                if (state.brokenTicks < 2) {
+                    // Animation disappeared before the break could be used.
+                    // Remove this instance's HUD rather than presenting a
+                    // guard break that cannot lead to an execution.
+                    disableIncompatibleInstance(entity, "neutralize ended immediately");
+                    return false;
                 }
-            } catch (Throwable ignored) {
                 startRecovering(state);
                 PostureSyncEvents.syncNow(entity);
+            } else {
+                state.brokenTicks++;
             }
             return true;
         }
@@ -241,7 +258,8 @@ public final class PostureManager {
         if (entity == null || !RuntimeAccess.isServerEntity(entity)) {
             return null;
         }
-        if (PostureServerConfig.isBlacklisted(entityTypeId(entity))) {
+        if (PostureServerConfig.isBlacklisted(entityTypeId(entity))
+                || INCOMPATIBLE_INSTANCES.contains(entity)) {
             return null;
         }
 
@@ -306,45 +324,37 @@ public final class PostureManager {
         boolean stunned = false;
         if (patch != null && hasNeutralizeAnimation(patch)) {
             try {
-                stunned = patch.applyStun(StunType.NEUTRALIZE, 0.0F);
+                stunned = patch.applyStun(StunType.NEUTRALIZE, 0.0F)
+                        && isActiveNeutralize(patch);
             } catch (Throwable ignored) {
-            }
-        }
-
-        if (!stunned && patch != null) {
-            try {
-                stunned = patch.applyStun(StunType.LONG, 0.0F);
-            } catch (Throwable ignored) {
+                // A failed animation installation is not a usable guard break.
             }
         }
 
         if (stunned) {
-            // Count only successfully applied breaks. Never persist this counter to NBT;
-            // EntityLeaveLevelEvent already removes the State via forgetState().
+            // Only a verified NEUTRALIZE animation is accepted: Combat Evolution
+            // explicitly checks this animation identity before permitting execution.
             if (state.completedBreaks < Integer.MAX_VALUE) {
                 state.completedBreaks++;
             }
+            state.brokenTicks = 0;
             state.postureState = PostureState.BROKEN;
         } else {
-            // Never leave a zero-posture entity in NORMAL if both stun paths fail.
-            startRecovering(state);
+            disableIncompatibleInstance(entity, "neutralize rejected or not active");
         }
     }
 
     private static boolean isEligiblePostureEntity(LivingEntity entity, LivingEntityPatch<?> targetPatch) {
-        if (entity == null || entity instanceof Player || targetPatch == null) {
-            return false;
-        }
-        if (PostureServerConfig.isBlacklisted(entityTypeId(entity))) {
-            return false;
-        }
-
-        // Combat Evolution already owns posture for its native humanoid patch.
-        if (targetPatch instanceof CEHumanoidPatch) {
+        if (entity == null || entity instanceof Player || targetPatch == null
+                || INCOMPATIBLE_INSTANCES.contains(entity)
+                || PostureServerConfig.isBlacklisted(entityTypeId(entity))
+                || targetPatch instanceof CEHumanoidPatch
+                || !hasNeutralizeAnimation(targetPatch)) {
             return false;
         }
 
-        // Do not call CustomExecuteEntity.canBeExecuted here: executor context is unknown.
+        // A CustomExecuteEntity may decide based on the actual executor; that
+        // check is repeated in the client HUD with the local player patch.
         if (targetPatch instanceof CustomExecuteEntity) {
             return true;
         }
@@ -356,7 +366,12 @@ public final class PostureManager {
         }
     }
 
-    private static boolean hasNeutralizeAnimation(LivingEntityPatch<?> patch) {
+    /**
+     * Whether the patch advertises an independent neutralize animation.
+     * Necessary for guard-break executions but not sufficient: applyStun may
+     * still reject the animation, or a mob may immediately replace it.
+     */
+    public static boolean hasNeutralizeAnimation(LivingEntityPatch<?> patch) {
         if (patch == null) {
             return false;
         }
@@ -371,6 +386,28 @@ public final class PostureManager {
         } catch (Throwable ignored) {
             return false;
         }
+    }
+
+    private static boolean isActiveNeutralize(LivingEntityPatch<?> patch) {
+        if (patch == null || !hasNeutralizeAnimation(patch)) {
+            return false;
+        }
+        try {
+            var player = patch.getAnimator().getPlayerFor(null);
+            AssetAccessor<? extends StaticAnimation> neutralize = patch.getHitAnimation(StunType.NEUTRALIZE);
+            return player != null
+                    && player.getRealAnimation() == neutralize
+                    && patch.isStunned();
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    private static void disableIncompatibleInstance(LivingEntity entity, String reason) {
+        INCOMPATIBLE_INSTANCES.add(entity);
+        LOGGER.debug("EFPI stopped tracking posture for {} ({}) because {}",
+                entityTypeId(entity), entity.getUUID(), reason);
+        forgetState(entity, true);
     }
 
     private static boolean sameAnimation(
@@ -642,6 +679,7 @@ public final class PostureManager {
     private static final class State {
         float max;
         float current;
+        int brokenTicks;
         int regenDelay;
         int recoveryTicksRemaining;
         int completedBreaks;

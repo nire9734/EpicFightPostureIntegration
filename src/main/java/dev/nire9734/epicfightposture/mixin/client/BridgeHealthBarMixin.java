@@ -1,6 +1,7 @@
 package dev.nire9734.epicfightposture.mixin.client;
 
 import com.mojang.blaze3d.vertex.PoseStack;
+import dev.nire9734.epicfightposture.PostureManager;
 import dev.nire9734.epicfightposture.client.ClientPostureStore;
 import dev.nire9734.epicfightposture.sync.RuntimeAccess;
 import net.minecraft.client.renderer.MultiBufferSource;
@@ -26,6 +27,7 @@ import yesman.epicfight.client.world.capabilites.entitypatch.player.LocalPlayerP
 import yesman.epicfight.world.capabilities.entitypatch.LivingEntityPatch;
 import yesman.epicfight.world.effect.VisibleMobEffect;
 import net.shelmarow.combat_evolution.ai.CEHumanoidPatch;
+import net.shelmarow.combat_evolution.execution.ExecutionHandler;
 
 import java.util.Collection;
 import java.util.Iterator;
@@ -50,7 +52,8 @@ public abstract class BridgeHealthBarMixin extends EntityUI {
             float partialTicks,
             CallbackInfoReturnable<Boolean> cir
     ) {
-        if (cir.getReturnValueZ() || !efpi$hasDamagedPosture(entity)) {
+        if (cir.getReturnValueZ() || !efpi$hasDamagedPosture(entity)
+                || !efpi$canRenderPosture(entityPatch, playerPatch)) {
             return;
         }
 
@@ -101,7 +104,9 @@ public abstract class BridgeHealthBarMixin extends EntityUI {
         int entityId = RuntimeAccess.entityId(entity);
         UUID uuid = RuntimeAccess.entityUuid(entity);
         ClientPostureStore.Entry posture = ClientPostureStore.get(entityId, uuid);
-        if (posture == null) {
+        if (posture == null || !efpi$canRenderPosture(entityPatch, playerPatch)) {
+            // Preserve Epic Fight's normal health bar for targets without
+            // a currently valid neutralize/execution contract.
             return;
         }
 
@@ -249,6 +254,23 @@ public abstract class BridgeHealthBarMixin extends EntityUI {
     private static boolean efpi$hasDamagedPosture(LivingEntity entity) {
         ClientPostureStore.Entry posture = ClientPostureStore.get(entity.getId(), entity.getUUID());
         return posture != null && (posture.current < posture.max || posture.broken);
+    }
+
+    @Unique
+    private static boolean efpi$canRenderPosture(
+            LivingEntityPatch<?> targetPatch, LocalPlayerPatch playerPatch) {
+        if (targetPatch == null || playerPatch == null
+                || targetPatch instanceof CEHumanoidPatch
+                || !PostureManager.hasNeutralizeAnimation(targetPatch)) {
+            return false;
+        }
+        try {
+            // CE's target-side predicate also checks CustomExecuteEntity's
+            // executor-dependent policy (e.g. spider and custom boss patches).
+            return ExecutionHandler.isTargetSupported(playerPatch, targetPatch);
+        } catch (Throwable ignored) {
+            return false;
+        }
     }
 
     @Unique
