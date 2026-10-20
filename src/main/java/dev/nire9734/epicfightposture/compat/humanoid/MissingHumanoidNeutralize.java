@@ -57,22 +57,20 @@ public final class MissingHumanoidNeutralize {
             return;
         }
         ResourceLocation id = EntityType.getKey(entity.getType());
-        if (id == null || PostureServerConfig.isBlacklisted(id)) {
+        if (id == null) {
             return;
         }
 
         try {
-            if (!(patch.getArmature() instanceof HumanoidArmature)) {
-                return;
-            }
-
             // The datapack author explicitly supplied a usable guard break;
-            // never overwrite it.
-            if (isPresent(patch.getHitAnimation(StunType.NEUTRALIZE))) {
-                return;
-            }
-            if (!isPresent(patch.getHitAnimation(StunType.SHORT))
-                    && !isPresent(patch.getHitAnimation(StunType.LONG))) {
+            // never overwrite it. Keep the fallback conservative for arbitrary
+            // datapack humanoids, not just the two validated Soul's Weapons mobs.
+            if (!HumanoidNeutralizeFallbackPolicy.shouldInstall(
+                    patch.getArmature() instanceof HumanoidArmature,
+                    isPresent(patch.getHitAnimation(StunType.NEUTRALIZE)),
+                    isPresent(patch.getHitAnimation(StunType.SHORT))
+                            || isPresent(patch.getHitAnimation(StunType.LONG)),
+                    PostureServerConfig.isBlacklisted(id))) {
                 return;
             }
             AnimationAccessor<? extends StaticAnimation> fallback =
