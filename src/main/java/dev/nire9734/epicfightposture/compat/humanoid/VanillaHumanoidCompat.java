@@ -253,14 +253,8 @@ public final class VanillaHumanoidCompat {
      */
     public static synchronized void reconcileClientRuntimeCompatibility(
             Set<ResourceLocation> verified) {
-        Set<ResourceLocation> accepted = verified == null ? Set.of() : verified;
-        for (ResourceLocation id : registeredByEfpi.keySet()) {
-            if (accepted.contains(id)) {
-                runtimeRejected.remove(id);
-            } else {
-                runtimeRejected.add(id);
-            }
-        }
+        ClientRuntimeCompatibilityReconciler.reconcile(
+                registeredByEfpi.keySet(), verified, runtimeRejected);
     }
 
     public static boolean isCompatibilityBlacklisted(EntityType<?> entityType) {
