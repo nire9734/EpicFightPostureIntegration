@@ -90,11 +90,9 @@ hit reaction as an executable guard break. If the animation cannot start or ends
 posture recovery **without removing the HUD or blacklisting the entity**.
 Such a failure alone does not establish that the mob is permanently
 incompatible: temporary effects and third-party animations may interrupt it.
-The server logs a diagnostic warning on failed or immediately terminated
-breaks (entity ID/UUID, patch class, expected and current animations,
-and `isStunned`). These diagnostics can distinguish the failure's stage
-without changing ordinary combat behavior. A confirmed guard break ending
-normally also enters recovery.
+An ordinary end to a valid guard break starts recovery. Transiently
+rejected stun attempts are recorded only at DEBUG level, while actual
+exceptions and inability to access required compatibility data remain warnings.
 
 A purely static scan cannot guarantee a future execution: other mods may
 cancel stuns, replace animations, apply temporary immunity, or alter execution
