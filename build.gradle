@@ -10,8 +10,7 @@ version = mod_version
 group = mod_group_id
 
 base {
-    // Diagnostic branch only: distinct filename avoids silently testing a stale 3.0.1 jar.
-    archivesName = "epicfight-posture-integration-humanoid-diagnostics"
+    archivesName = "epicfight-posture-integration"
 }
 
 java {

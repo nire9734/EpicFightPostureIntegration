@@ -131,9 +131,8 @@ This applies structurally, not by specific mob ID, but does **not** guarantee
 execution on arbitrary custom mobs. Normal Combat Evolution execution
 conditions and renderer compatibility still apply. The fix uses reflective
 access to the private Epic Fight `CustomHumanoidMobPatch.provider` field;
-check compatibility when upgrading Epic Fight. The first successful repair
-for each entity type is logged as `EFPI generic humanoid neutralize fallback
-ACTIVE`; failure is logged as `REJECTED`.
+check compatibility when upgrading Epic Fight. The first successful repair is logged at DEBUG level per entity type; failures
+are logged as `EFPI generic humanoid neutralize fallback REJECTED`.
 
 ## Server configuration
 
