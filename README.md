@@ -114,6 +114,15 @@ Server/client diagnostics appear the first time each type spawns and reaches
 neutralize animation is accepted. This logging does not try to stun mobs in
 advance or blacklist failed instances.
 
+For Remnant and Forlorn with an existing Epic Fight datapack-provided
+`CustomHumanoidMobPatch`, the diagnostic logs showed `NEUTRALIZE=null` while
+SHORT and LONG were present. An experimental narrowly scoped mixin now
+supplies Epic Fight's standard `BIPED_COMMON_NEUTRALIZED` as a fallback
+**only when the custom patch has no usable neutralize entry**. It does not
+replace the custom patch or modify its AI, other stun reactions, renderer,
+or user-provided neutralize animation. Its actual application/execution
+behavior still needs the follow-up in-game test.
+
 A behavioral correction also aligns the broken-state check with Combat
 Evolution's execution predicate: only the actual `NEUTRALIZE` animation
 accessor identity is required, not a redundant `isStunned()` flag that can
