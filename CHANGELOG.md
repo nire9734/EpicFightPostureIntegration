@@ -3,15 +3,15 @@
 ## 3.0.1
 
 ### Added
-- Two configurable parry endpoint percentages: `posture.parry_low_ehp_percent = 18.0` at innate EHP ≤20, and `posture.parry_high_ehp_percent = 6.0` in the infinite-EHP limit (with no HP-finisher penalty).
+- Two configurable parry **base** percentages: `posture.parry_base_max_percent = 18.0` for innate EHP ≤20, and `posture.parry_base_min_percent = 6.0` as innate EHP approaches infinity (before the HP-finisher penalty).
 
 ### Changed
 - Normal player hits now deplete posture from final actual HP damage as a fraction of maximum HP, using an integrated quadratic health-finisher curve and bounded Impact efficiency.
 - Retain EHP^0.7 maximum posture and its global/per-entity multipliers; using unmultipled base posture for attack pressure keeps increased maximum posture meaningful.
 - Use *innate/base-attribute EHP* to determine parry resistance and the parry finisher penalty, so leveled low-base-health mobs do not become parry-resistant bosses. Clamp parry-scaling EHP to at least 20, enforcing the low-EHP endpoint even for weaker mobs.
 - Apply attack finisher progression to all mobs; parries retain their base-EHP dependent finisher strength.
-- Attack coefficient changes from the old 0.55 Impact × damage^0.7 to internal 2.7 HP-normalized pressure. Retune custom `posture_damage_multiplier` values if needed.
-- Remove obsolete `posture.parry_percent` and `entities.parry_multipliers`. No migration of old parry customizations: existing TOML gains the new default keys via Forge config correction, while unrelated options remain unchanged.
+- Attack posture now uses internal **2.2** HP-normalized pressure (previous 3.0.1 development build: 2.7; pre-3.0.1 damage-based formula used 0.55). `posture_damage_multiplier = 1.0` remains the default; previously customized settings such as 0.8 should be reset or retuned.
+- Remove obsolete `posture.parry_percent`, interim `posture.parry_low_ehp_percent` / `posture.parry_high_ehp_percent`, and `entities.parry_multipliers`. No migration of old parry customizations: existing TOML gains the new default keys via Forge config correction, while unrelated options remain unchanged.
 - Updated unit tests, configuration explanations, and version number to 3.0.1.
 
 ### Fixed

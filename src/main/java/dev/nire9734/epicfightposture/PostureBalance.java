@@ -8,21 +8,21 @@ final class PostureBalance {
     private static final float DEFAULT_HEALTH_SCALING_EHP_END = 200.0F;
 
     /**
-     * Two anchored parry fractions: lowEhpFraction at innate EHP <= reference
-     * (20), and highEhpFraction as EHP tends to infinity. Innate EHP below 20
-     * is clamped, so parry pressure cannot exceed the configured low endpoint
+     * Two anchored parry fractions: maxBaseFraction at innate EHP <= reference
+     * (20), and minBaseFraction as EHP tends to infinity. Innate EHP below 20
+     * is clamped, so parry pressure cannot exceed the configured maximum base endpoint
      * solely because a mob has less than 20 innate EHP.
      *
      * The HP-dependent finisher modifier is applied separately by the caller.
      */
     static float parryPostureFraction(
-            float lowEhpFraction,
-            float highEhpFraction,
+            float maxBaseFraction,
+            float minBaseFraction,
             float effectiveHealth,
             float referenceEffectiveHealth,
             float scalingExponent) {
-        float low = sanitizeFraction(lowEhpFraction);
-        float high = sanitizeFraction(highEhpFraction);
+        float maxBase = sanitizeFraction(maxBaseFraction);
+        float minBase = sanitizeFraction(minBaseFraction);
         float reference = sanitizePositive(referenceEffectiveHealth, DEFAULT_EHP_REFERENCE);
         float ehp = sanitizePositive(effectiveHealth, reference);
         float exponent = Float.isFinite(scalingExponent)
@@ -30,16 +30,16 @@ final class PostureBalance {
                 : DEFAULT_PARRY_EHP_EXPONENT;
         double referenceRatio = Math.min(1.0D, (double) reference / Math.max((double) ehp, reference));
         double blend = Math.pow(referenceRatio, exponent);
-        double fraction = high + (low - high) * blend;
+        double fraction = minBase + (maxBase - minBase) * blend;
         return Double.isFinite(fraction)
                 ? (float) clamp((float) fraction, 0.0F, 1.0F)
-                : low;
+                : maxBase;
     }
 
     static float parryDamage(
             float maxPosture,
-            float lowEhpFraction,
-            float highEhpFraction,
+            float maxBaseFraction,
+            float minBaseFraction,
             float effectiveHealth,
             float referenceEffectiveHealth,
             float scalingExponent) {
@@ -47,8 +47,8 @@ final class PostureBalance {
             return 0.0F;
         }
         return maxPosture * parryPostureFraction(
-                lowEhpFraction,
-                highEhpFraction,
+                maxBaseFraction,
+                minBaseFraction,
                 effectiveHealth,
                 referenceEffectiveHealth,
                 scalingExponent

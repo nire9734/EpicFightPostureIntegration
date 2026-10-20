@@ -119,8 +119,8 @@ public final class PostureManager {
         float innateEhp = baseEffectiveHealth(target);
         float postureDamage = PostureBalance.parryDamage(
                 state.max,
-                PostureServerConfig.parryLowEhpFraction(),
-                PostureServerConfig.parryHighEhpFraction(),
+                PostureServerConfig.parryBaseMaxFraction(),
+                PostureServerConfig.parryBaseMinFraction(),
                 innateEhp,
                 EHP_REFERENCE_HEALTH,
                 (float) EHP_EXPONENT

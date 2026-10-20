@@ -41,7 +41,7 @@ Attack posture follows the **fraction of target maximum HP removed**, rather tha
 
 ```text
 Impact efficiency = clamp(0.7 + 0.3 * sqrt(Impact / 3), 0.7, 1.5)
-attack posture damage = 2.7 * P_base * Impact efficiency
+attack posture damage = 2.2 * P_base * Impact efficiency
                         * (F(u_after) - F(u_before))
                         * posture_damage_multiplier
 ```
@@ -51,14 +51,14 @@ The health-finisher curve `0.25 + 0.75*(1 - currentHealth/maxHealth)^2` applies 
 Parries intentionally work differently. They refer to **innate EHP** from base attribute values (unmodified max health, armor and toughness), not the mob's level/affix-scaled EHP:
 
 ```text
-parry base fraction = (parry_high_ehp_percent
-                     + (parry_low_ehp_percent - parry_high_ehp_percent)
+parry base fraction = (parry_base_min_percent
+                     + (parry_base_max_percent - parry_base_min_percent)
                      * (20 / max(20, innate EHP))^0.7) / 100
 parry damage = maximum posture * parry base fraction
              * innate-EHP health-finisher modifier
 ```
 
-The default endpoints are **18% at innate EHP 20 or below**, and **6% as innate EHP approaches infinity** (before finisher scaling). At innate EHP 20 the new value requires six parries instead of the previous nine, assuming no regeneration. The EHP exponent remains internal at 0.7. The parry finisher modifier is disabled at innate EHP ≤40, blended over 40–200, and fully active at 200+. It therefore further reduces parry damage against healthy, innately durable bosses. These endpoints describe the **base** fraction: a full-health boss may receive less than the configured high-EHP percentage after its finisher penalty. A mod that rewrites attribute base values instead of adding modifiers may also affect innate-EHP classification.
+The maximum/minimum **base** parry endpoints are **18% at innate EHP 20 or below**, and **6% as innate EHP approaches infinity** (before finisher scaling). At innate EHP 20 the new value requires six parries instead of the previous nine, assuming no regeneration. The EHP exponent remains internal at 0.7. The parry finisher modifier is disabled at innate EHP ≤40, blended over 40–200, and fully active at 200+. It therefore further reduces parry damage against healthy, innately durable bosses. These endpoints describe the **base** fraction: a full-health boss may receive less than the configured high-EHP percentage after its finisher penalty. A mod that rewrites attribute base values instead of adding modifiers may also affect innate-EHP classification.
 
 `maximum_posture_multiplier` and `posture_multipliers` still affect how much attack damage is needed to break posture; parries are intentionally a **percentage of maximum posture** and therefore their relative efficacy is unchanged by that multiplier. Execution damage remains Combat Evolution's responsibility.
 
@@ -82,19 +82,19 @@ config/epicfight_posture_integration/server.toml
 maximum_posture_multiplier = 1.0
 
 # Multiplier for attack Posture damage from final HP lost.
-# Impact gives a bounded bonus; 1.0 = 3.0.1 default pressure.
+# Impact gives a bounded bonus; 1.0 uses the internal 2.2 attack coefficient.
 # Default: 1.0 | Range: 0.0-100.0
 posture_damage_multiplier = 1.0
 
-# Base parry Posture damage (% of maximum) for mobs with innate EHP <= 20.
+# Maximum base parry Posture damage (% of maximum) for innate EHP <= 20.
 # Innate EHP below 20 is clamped to 20 for parry scaling.
 # Default: 18.0 | Range: 0.0-100.0
-parry_low_ehp_percent = 18.0
+parry_base_max_percent = 18.0
 
-# Base parry Posture damage (%) as innate EHP approaches infinity.
+# Minimum base parry Posture damage (%) as innate EHP approaches infinity.
 # This is the asymptote at 0% target HP, before the finisher modifier.
 # Default: 6.0 | Range: 0.0-100.0
-parry_high_ehp_percent = 6.0
+parry_base_min_percent = 6.0
 
 
 [regeneration]
@@ -169,7 +169,7 @@ The cache uses schema version `2`. It is generated state, not a user configurati
 
 ## Upgrading from 3.0.0
 
-3.0.1 retains the 3.0.0 config path and compatibility/network format. The obsolete `posture.parry_percent` and `entities.parry_multipliers` keys are no longer recognized. The Forge config specification provides new default entries `posture.parry_low_ehp_percent = 18.0` and `posture.parry_high_ehp_percent = 6.0` when loading an old config. There is **no migration of customized old parry values**; Forge may remove unknown old keys when it corrects/re-writes the TOML. Do not delete the entire file: other settings remain in place. Existing `posture_damage_multiplier` values now scale the HP-normalized attack formula and may need retuning. No renderer-discovery cache or network protocol reset is required.
+3.0.1 retains the 3.0.0 config path and compatibility/network format. The obsolete `posture.parry_percent`, interim `posture.parry_low_ehp_percent` / `posture.parry_high_ehp_percent`, and `entities.parry_multipliers` keys are no longer recognized. On loading an old TOML, Forge config correction adds `posture.parry_base_max_percent = 18.0` and `posture.parry_base_min_percent = 6.0` at their defaults. **Customized values of old parry keys are not migrated**; unknown keys may be removed when Forge rewrites the TOML. Do not delete the whole file: unrelated settings remain in place. The attack coefficient is now 2.2 (previous 3.0.1 development build: 2.7), while `posture_damage_multiplier` still defaults to 1.0. If `posture_damage_multiplier` was manually set to 0.8 to approximate the new balance, reset it to `1.0` after upgrading (2.2 is slightly stronger than 2.7 × 0.8 = 2.16). Other customized attack multipliers remain effective and may need retuning. No renderer-discovery cache or network protocol reset is required.
 
 ## Upgrading from 2.0.0 / development builds
 

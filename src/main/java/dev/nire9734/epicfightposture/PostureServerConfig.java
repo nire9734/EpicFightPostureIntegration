@@ -31,10 +31,10 @@ public final class PostureServerConfig {
     private static final ForgeConfigSpec.Builder BUILDER = new ForgeConfigSpec.Builder();
 
     /*
-     * 3.0.1 normalizes attack posture to actual HP depletion. 2.7 is the
-     * internal default coefficient; the public setting scales it.
+     * 3.0.1 normalizes attack posture to actual HP depletion. 2.2 is the
+     * internal default coefficient; the public multiplier defaults to 1.0.
      */
-    private static final float BASE_ATTACK_POSTURE_COEFFICIENT = 2.7F;
+    private static final float BASE_ATTACK_POSTURE_COEFFICIENT = 2.2F;
     private static final float FULL_HEALTH_POSTURE_DAMAGE_MULTIPLIER = 0.25F;
     private static final float ZERO_HEALTH_POSTURE_DAMAGE_MULTIPLIER = 1.0F;
     private static final float HEALTH_POSTURE_CURVE_EXPONENT = 2.0F;
@@ -54,8 +54,8 @@ public final class PostureServerConfig {
 
     public static final ForgeConfigSpec.DoubleValue MAXIMUM_POSTURE_MULTIPLIER;
     public static final ForgeConfigSpec.DoubleValue POSTURE_DAMAGE_MULTIPLIER;
-    public static final ForgeConfigSpec.DoubleValue PARRY_LOW_EHP_PERCENT;
-    public static final ForgeConfigSpec.DoubleValue PARRY_HIGH_EHP_PERCENT;
+    public static final ForgeConfigSpec.DoubleValue PARRY_BASE_MAX_PERCENT;
+    public static final ForgeConfigSpec.DoubleValue PARRY_BASE_MIN_PERCENT;
     public static final ForgeConfigSpec.DoubleValue REGEN_DELAY_SECONDS;
     public static final ForgeConfigSpec.DoubleValue REGEN_RATE_PERCENT;
     public static final ForgeConfigSpec.ConfigValue<List<? extends String>> POSTURE_MULTIPLIERS;
@@ -95,24 +95,24 @@ public final class PostureServerConfig {
         POSTURE_DAMAGE_MULTIPLIER = BUILDER
                 .comment(
                         "Multiplier for attack Posture damage from final HP lost.",
-                        "Impact gives a bounded bonus; 1.0 = 3.0.1 default pressure.",
+                        "Impact gives a bounded bonus; 1.0 uses the internal 2.2 attack coefficient.",
                         "Default: 1.0 | Range: 0.0-100.0"
                 )
                 .defineInRange("posture_damage_multiplier", 1.0D, 0.0D, 100.0D);
-        PARRY_LOW_EHP_PERCENT = BUILDER
+        PARRY_BASE_MAX_PERCENT = BUILDER
                 .comment(
-                        "Base parry Posture damage (% of maximum) for mobs with innate EHP <= 20.",
+                        "Maximum base parry Posture damage (% of maximum) for innate EHP <= 20.",
                         "Innate EHP below 20 is clamped to 20 for parry scaling.",
                         "Default: 18.0 | Range: 0.0-100.0"
                 )
-                .defineInRange("parry_low_ehp_percent", 18.0D, 0.0D, 100.0D);
-        PARRY_HIGH_EHP_PERCENT = BUILDER
+                .defineInRange("parry_base_max_percent", 18.0D, 0.0D, 100.0D);
+        PARRY_BASE_MIN_PERCENT = BUILDER
                 .comment(
-                        "Base parry Posture damage (%) as innate EHP approaches infinity.",
+                        "Minimum base parry Posture damage (%) as innate EHP approaches infinity.",
                         "This is the asymptote at 0% target HP, before the finisher modifier.",
                         "Default: 6.0 | Range: 0.0-100.0"
                 )
-                .defineInRange("parry_high_ehp_percent", 6.0D, 0.0D, 100.0D);
+                .defineInRange("parry_base_min_percent", 6.0D, 0.0D, 100.0D);
         BUILDER.pop();
 
         BUILDER.push("regeneration");
@@ -192,14 +192,14 @@ public final class PostureServerConfig {
         return BASE_ATTACK_POSTURE_COEFFICIENT * POSTURE_DAMAGE_MULTIPLIER.get().floatValue();
     }
 
-    /** Parry fraction against an innate-EHP 20 or lower mob. */
-    public static float parryLowEhpFraction() {
-        return PARRY_LOW_EHP_PERCENT.get().floatValue() / 100.0F;
+    /** Maximum base parry fraction, for innate EHP <= 20 (before the HP finisher modifier). */
+    public static float parryBaseMaxFraction() {
+        return PARRY_BASE_MAX_PERCENT.get().floatValue() / 100.0F;
     }
 
-    /** Parry fraction as innate EHP tends to infinity (at the finisher endpoint). */
-    public static float parryHighEhpFraction() {
-        return PARRY_HIGH_EHP_PERCENT.get().floatValue() / 100.0F;
+    /** Minimum base parry fraction, as innate EHP approaches infinity (before the HP finisher modifier). */
+    public static float parryBaseMinFraction() {
+        return PARRY_BASE_MIN_PERCENT.get().floatValue() / 100.0F;
     }
 
     public static float fullHealthPostureDamageMultiplier() {
