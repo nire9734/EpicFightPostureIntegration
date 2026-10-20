@@ -4,6 +4,7 @@ import com.mojang.logging.LogUtils;
 import dev.nire9734.epicfightposture.compat.humanoid.VanillaHumanoidCompat;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.EntityType;
 import net.shelmarow.combat_evolution.ai.CEHumanoidPatch;
 import net.shelmarow.combat_evolution.ai.iml.CustomExecuteEntity;
 import org.slf4j.Logger;
@@ -40,7 +41,7 @@ public final class SoulsWeaponryDiagnostics {
         if (entity.tickCount < 20) {
             return;
         }
-        ResourceLocation id = entity.getType().builtInRegistryHolder().key().location();
+        ResourceLocation id = EntityType.getKey(entity.getType());
         if (!isTarget(id) || !DIAGNOSED_SERVER_TYPES.add(id)) {
             return;
         }
@@ -80,7 +81,7 @@ public final class SoulsWeaponryDiagnostics {
 
     public static void onBreakApplied(
             LivingEntity entity, LivingEntityPatch<?> patch, boolean accepted) {
-        ResourceLocation id = entity.getType().builtInRegistryHolder().key().location();
+        ResourceLocation id = EntityType.getKey(entity.getType());
         if (!isTarget(id)) {
             return;
         }
