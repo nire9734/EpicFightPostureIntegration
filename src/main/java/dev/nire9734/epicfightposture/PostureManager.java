@@ -56,7 +56,8 @@ public final class PostureManager {
         }
         flushPendingDamage(target);
 
-        if (!playerHit || !Float.isFinite(eventDamage) || eventDamage <= 0.0F) {
+        if (!canReceivePosture(target)
+                || !playerHit || !Float.isFinite(eventDamage) || eventDamage <= 0.0F) {
             return;
         }
         LivingEntityPatch<?> patch = getPatch(target);
@@ -79,7 +80,10 @@ public final class PostureManager {
      */
     private static void flushPendingDamage(LivingEntity target) {
         PendingAttack pending = PENDING_ATTACKS.remove(target);
-        if (pending == null) {
+        // A lethal hit may have started the Epic Fight death animation after
+        // the damage event but before this delayed health-delta callback.
+        // Never apply NEUTRALIZE after death, even when actual HP loss > 0.
+        if (pending == null || !canReceivePosture(target)) {
             return;
         }
         float actualLoss = PostureBalance.actualHealthLoss(pending.healthBefore(), target.getHealth());
@@ -102,7 +106,7 @@ public final class PostureManager {
     }
 
     public static void onParried(LivingEntity target) {
-        if (target == null || !RuntimeAccess.isServerEntity(target)) {
+        if (!canReceivePosture(target) || !RuntimeAccess.isServerEntity(target)) {
             return;
         }
 
@@ -139,6 +143,17 @@ public final class PostureManager {
 
     public static boolean tick(LivingEntity entity) {
         if (entity == null || !RuntimeAccess.isServerEntity(entity)) {
+            return false;
+        }
+        if (!canReceivePosture(entity)) {
+            // Do not confirm a pending fatal hit as posture damage. A genuine
+            // Combat Evolution execution may intentionally outlive the killing
+            // blow, so retain its current special-render state until CE finishes.
+            PENDING_ATTACKS.remove(entity);
+            if (PostureDeathSafety.shouldForgetDeadState(
+                    entity.isAlive(), entity.getHealth(), isExecuting(entity))) {
+                forgetState(entity, true);
+            }
             return false;
         }
 
@@ -277,7 +292,7 @@ public final class PostureManager {
     }
 
     private static void damagePosture(LivingEntity entity, LivingEntityPatch<?> patch, float damage) {
-        if (damage <= 0.0F || !Float.isFinite(damage)) {
+        if (!canReceivePosture(entity) || damage <= 0.0F || !Float.isFinite(damage)) {
             return;
         }
 
@@ -295,7 +310,7 @@ public final class PostureManager {
     }
 
     private static void breakPosture(LivingEntity entity, LivingEntityPatch<?> patch, State state) {
-        if (!state.acceptsPostureDamage()) {
+        if (!canReceivePosture(entity) || !state.acceptsPostureDamage()) {
             return;
         }
 
@@ -332,7 +347,7 @@ public final class PostureManager {
     }
 
     private static boolean isEligiblePostureEntity(LivingEntity entity, LivingEntityPatch<?> targetPatch) {
-        if (entity == null || entity instanceof Player || targetPatch == null
+        if (!canReceivePosture(entity) || entity instanceof Player || targetPatch == null
                 || PostureServerConfig.isBlacklisted(entityTypeId(entity))
                 || targetPatch instanceof CEHumanoidPatch
                 || !hasNeutralizeAnimation(targetPatch)) {
@@ -580,6 +595,12 @@ public final class PostureManager {
             scaled = EHP_REFERENCE_POSTURE;
         }
         return clamp(Math.max(minimum, scaled), 0.1F, MAX_SAFE_POSTURE);
+    }
+
+    /** Terminal health states must not schedule or play a new posture-break animation. */
+    private static boolean canReceivePosture(LivingEntity entity) {
+        return entity != null && PostureDeathSafety.canReceivePosture(
+                entity.isAlive(), entity.getHealth());
     }
 
     private static ResourceLocation entityTypeId(LivingEntity entity) {

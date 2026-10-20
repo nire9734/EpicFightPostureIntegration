@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - '3.0.1'
+      - dev/death-guardbreak-safety
       - dev/vanilla-humanoid-ef-special-render
       - dev/spider-generalized-compat
       - dev/humanoid-retargeting
