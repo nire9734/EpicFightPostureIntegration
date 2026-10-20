@@ -23,6 +23,7 @@ Posture balance, execution compatibility and stability update relative to the **
 ### Reliability
 
 - Prevent new posture breaks during the existing break/execution/recovery sequence.
+- Prevent lethal damage from triggering a delayed guard-break animation after Epic Fight has started the death animation. Clear ordinary dead mobs' posture/rendering state while preserving an already-running Combat Evolution execution through its finishing animation.
 - Improve automatic humanoid discovery and renderer handling across reloads, ambiguous model layouts, third-party renderers and secondary model layers. Keep conservative fail-closed behavior when safe compatibility cannot be established.
 - Reduce repeated client renderer/debug instrumentation and ensure compatibility state is reconciled against validated renderer registrations.
 - Remove development-only diagnostic output; retain warnings for actual compatibility failures.

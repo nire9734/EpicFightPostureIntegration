@@ -144,9 +144,12 @@ hit reaction as an executable guard break. If the animation cannot start or ends
 posture recovery **without removing the HUD or blacklisting the entity**.
 Such a failure alone does not establish that the mob is permanently
 incompatible: temporary effects and third-party animations may interrupt it.
-An ordinary end to a valid guard break starts recovery. Transiently
-rejected stun attempts are recorded only at DEBUG level, while actual
-exceptions and inability to access required compatibility data remain warnings.
+An ordinary end to a valid guard break starts recovery. A lethal hit does not
+start a new guard-break stun after the target has died. Ordinary deaths clear
+EFPI's special posture/rendering state, while an already-running Combat
+Evolution execution retains its special state until the execution finishes.
+Transiently rejected stun attempts are recorded only at DEBUG level, while
+actual exceptions and inability to access required compatibility data remain warnings.
 
 A purely static scan cannot guarantee a future execution: other mods may
 cancel stuns, replace animations, apply temporary immunity, or alter execution
