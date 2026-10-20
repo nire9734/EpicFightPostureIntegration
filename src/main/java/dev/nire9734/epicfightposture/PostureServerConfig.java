@@ -31,10 +31,10 @@ public final class PostureServerConfig {
     private static final ForgeConfigSpec.Builder BUILDER = new ForgeConfigSpec.Builder();
 
     /*
-     * 3.0.1 normalizes attack posture to actual HP depletion. 2.2 is the
+     * 3.0.1 normalizes attack posture to actual HP depletion. 2.1 is the
      * internal default coefficient; the public multiplier defaults to 1.0.
      */
-    private static final float BASE_ATTACK_POSTURE_COEFFICIENT = 2.2F;
+    private static final float BASE_ATTACK_POSTURE_COEFFICIENT = 2.1F;
     private static final float FULL_HEALTH_POSTURE_DAMAGE_MULTIPLIER = 0.25F;
     private static final float ZERO_HEALTH_POSTURE_DAMAGE_MULTIPLIER = 1.0F;
     private static final float HEALTH_POSTURE_CURVE_EXPONENT = 2.0F;
@@ -56,6 +56,8 @@ public final class PostureServerConfig {
     public static final ForgeConfigSpec.DoubleValue POSTURE_DAMAGE_MULTIPLIER;
     public static final ForgeConfigSpec.DoubleValue PARRY_BASE_MAX_PERCENT;
     public static final ForgeConfigSpec.DoubleValue PARRY_BASE_MIN_PERCENT;
+    public static final ForgeConfigSpec.DoubleValue POSTURE_BREAK_RESISTANCE_STEP;
+    public static final ForgeConfigSpec.DoubleValue POSTURE_BREAK_RESISTANCE_MAX;
     public static final ForgeConfigSpec.DoubleValue REGEN_DELAY_SECONDS;
     public static final ForgeConfigSpec.DoubleValue REGEN_RATE_PERCENT;
     public static final ForgeConfigSpec.ConfigValue<List<? extends String>> POSTURE_MULTIPLIERS;
@@ -95,7 +97,7 @@ public final class PostureServerConfig {
         POSTURE_DAMAGE_MULTIPLIER = BUILDER
                 .comment(
                         "Multiplier for attack Posture damage from final HP lost.",
-                        "Impact gives a bounded bonus; 1.0 uses the internal 2.2 attack coefficient.",
+                        "Impact gives a bounded bonus; 1.0 uses the internal 2.1 attack coefficient.",
                         "Default: 1.0 | Range: 0.0-100.0"
                 )
                 .defineInRange("posture_damage_multiplier", 1.0D, 0.0D, 100.0D);
@@ -113,6 +115,20 @@ public final class PostureServerConfig {
                         "Default: 6.0 | Range: 0.0-100.0"
                 )
                 .defineInRange("parry_base_min_percent", 6.0D, 0.0D, 100.0D);
+        POSTURE_BREAK_RESISTANCE_STEP = BUILDER
+                .comment(
+                        "Extra required Posture damage multiplier after each successful break.",
+                        "0.0 disables scaling; 1.0 means 1x, 2x, 3x on successive breaks.",
+                        "Default: 1.0 | Range: 0.0-100.0"
+                )
+                .defineInRange("posture_break_resistance_step", 1.0D, 0.0D, 100.0D);
+        POSTURE_BREAK_RESISTANCE_MAX = BUILDER
+                .comment(
+                        "Cap on required Posture damage multiplier after repeated breaks.",
+                        "Applies to direct attacks and parries; first break always needs 1x.",
+                        "Default: 3.0 | Range: 1.0-100.0"
+                )
+                .defineInRange("posture_break_resistance_max", 3.0D, 1.0D, 100.0D);
         BUILDER.pop();
 
         BUILDER.push("regeneration");
@@ -200,6 +216,16 @@ public final class PostureServerConfig {
     /** Minimum base parry fraction, as innate EHP approaches infinity (before the HP finisher modifier). */
     public static float parryBaseMinFraction() {
         return PARRY_BASE_MIN_PERCENT.get().floatValue() / 100.0F;
+    }
+
+    /** Added resistance per completed posture break, e.g. 1.0 means +100% each time. */
+    public static float postureBreakResistanceStep() {
+        return POSTURE_BREAK_RESISTANCE_STEP.get().floatValue();
+    }
+
+    /** Upper cap for the required posture-damage multiplier. */
+    public static float postureBreakResistanceMax() {
+        return POSTURE_BREAK_RESISTANCE_MAX.get().floatValue();
     }
 
     public static float fullHealthPostureDamageMultiplier() {

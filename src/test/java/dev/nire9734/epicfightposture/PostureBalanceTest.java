@@ -20,23 +20,23 @@ class PostureBalanceTest {
 
     @Test
     void finalHpLossUsesIntegralFinisherCurve() {
-        assertEquals(11.0F, attack(10, 100, 100, 100, 3, 2.2F), EPS);
-        assertEquals(3.4375F, attack(10, 100, 100, 50, 3, 2.2F), EPS);
+        assertEquals(10.5F, attack(10, 100, 100, 100, 3, 2.1F), EPS);
+        assertEquals(3.28125F, attack(10, 100, 100, 50, 3, 2.1F), EPS);
     }
 
     @Test
     void splitHitsAreEquivalentToOneLargeHit() {
-        float one = attack(20, 100, 100, 80, 3, 2.2F);
-        float parts = attack(20, 100, 100, 30, 3, 2.2F)
-                + attack(20, 100, 70, 25, 3, 2.2F)
-                + attack(20, 100, 45, 25, 3, 2.2F);
+        float one = attack(20, 100, 100, 80, 3, 2.1F);
+        float parts = attack(20, 100, 100, 30, 3, 2.1F)
+                + attack(20, 100, 70, 25, 3, 2.1F)
+                + attack(20, 100, 45, 25, 3, 2.1F);
         assertEquals(one, parts, EPS);
     }
 
     @Test
     void sameFractionalHpLossMeansSameNormalizedPostureAcrossLevelScaling() {
-        float low = attack(3.2F, 20, 20, 4, 3, 2.2F) / 3.2F;
-        float high = attack(60.8F, 1214, 1214, 242.8F, 3, 2.2F) / 60.8F;
+        float low = attack(3.2F, 20, 20, 4, 3, 2.1F) / 3.2F;
+        float high = attack(60.8F, 1214, 1214, 242.8F, 3, 2.1F) / 60.8F;
         assertEquals(low, high, EPS);
     }
 
@@ -50,30 +50,53 @@ class PostureBalanceTest {
 
     @Test
     void overkillIsClippedAndZeroDamageIsIgnored() {
-        assertEquals(attack(10, 100, 10, 10, 3, 2.2F),
-                attack(10, 100, 10, 1000, 3, 2.2F), EPS);
-        assertEquals(0.0F, attack(10, 100, 100, 0, 3, 2.2F), EPS);
-        assertEquals(0.0F, attack(10, 100, 100, 50, 0, 2.2F), EPS);
-        assertEquals(0.0F, attack(10, 0, 100, 50, 3, 2.2F), EPS);
-        assertEquals(0.0F, attack(10, 100, 100, Float.NaN, 3, 2.2F), EPS);
+        assertEquals(attack(10, 100, 10, 10, 3, 2.1F),
+                attack(10, 100, 10, 1000, 3, 2.1F), EPS);
+        assertEquals(0.0F, attack(10, 100, 100, 0, 3, 2.1F), EPS);
+        assertEquals(0.0F, attack(10, 100, 100, 50, 0, 2.1F), EPS);
+        assertEquals(0.0F, attack(10, 0, 100, 50, 3, 2.1F), EPS);
+        assertEquals(0.0F, attack(10, 100, 100, Float.NaN, 3, 2.1F), EPS);
         assertEquals(0.0F, attack(10, 100, 100, 50, 3, 0), EPS);
     }
 
     @Test
-    void impactThreeFinisherBreaksNearFivePercentRemainingHp() {
-        // With the new 2.2 coefficient and Impact 3, the continuous threshold
-        // is approximately 95.29% HP depleted, assuming no regeneration.
-        assertTrue(2.2 * (.25 * .96 + .25 * Math.pow(.96, 3)) >= 1.0);
-        assertTrue(2.2 * (.25 * .95 + .25 * Math.pow(.95, 3)) < 1.0);
+    void impactThreeFinisherBreaksNearTwoPercentRemainingHp() {
+        // Coefficient 2.1 and Impact 3: continuous threshold at ~2.42% HP.
+        assertTrue(2.1 * (.25 * .98 + .25 * Math.pow(.98, 3)) >= 1.0);
+        assertTrue(2.1 * (.25 * .975 + .25 * Math.pow(.975, 3)) < 1.0);
     }
 
     @Test
-    void impactOnePointEightFinisherBreaksNearOnePercentRemainingHp() {
-        // Impact 1.8 gives ~0.93238 efficiency; full-health-to-death
-        // pressure barely exceeds max posture at coefficient 2.2.
+    void impactOnePointEightNeedsParriesOrOtherPostureSources() {
+        // Impact 1.8 no longer breaks posture from HP damage alone before death
+        // (no regeneration) at the new coefficient 2.1.
         double efficiency = PostureBalance.impactEfficiency(1.8F);
-        assertTrue(2.2 * efficiency * (.25 * .99 + .25 * Math.pow(.99, 3)) >= 1.0);
-        assertTrue(2.2 * efficiency * (.25 * .98 + .25 * Math.pow(.98, 3)) < 1.0);
+        assertTrue(2.1 * efficiency * .5 < 1.0);
+        assertTrue(2.1 * efficiency * .5 > .97);
+    }
+
+    @Test
+    void additionalBreakResistanceScalesAndCaps() {
+        assertEquals(1.0F, PostureBalance.breakResistanceMultiplier(0, 1.0F, 3.0F), EPS);
+        assertEquals(2.0F, PostureBalance.breakResistanceMultiplier(1, 1.0F, 3.0F), EPS);
+        assertEquals(3.0F, PostureBalance.breakResistanceMultiplier(2, 1.0F, 3.0F), EPS);
+        assertEquals(3.0F, PostureBalance.breakResistanceMultiplier(3, 1.0F, 3.0F), EPS);
+        assertEquals(3.0F, PostureBalance.breakResistanceMultiplier(
+                Integer.MAX_VALUE, 1.0F, 3.0F), EPS);
+        assertEquals(1.25F, PostureBalance.breakResistanceMultiplier(1, .25F, 2.0F), EPS);
+        assertEquals(2.0F, PostureBalance.breakResistanceMultiplier(20, .25F, 2.0F), EPS);
+        assertEquals(1.0F, PostureBalance.breakResistanceMultiplier(20, 0.0F, 3.0F), EPS);
+        assertEquals(1.0F, PostureBalance.breakResistanceMultiplier(20, 1.0F, 1.0F), EPS);
+    }
+
+    @Test
+    void resistanceMathHandlesInvalidTuningSafely() {
+        assertEquals(1.0F, PostureBalance.breakResistanceMultiplier(
+                -1, 1.0F, 3.0F), EPS);
+        assertEquals(1.0F, PostureBalance.breakResistanceMultiplier(
+                1, Float.NaN, 3.0F), EPS);
+        assertEquals(1.0F, PostureBalance.breakResistanceMultiplier(
+                1, 1.0F, Float.NaN), EPS);
     }
 
     @Test

@@ -63,7 +63,7 @@ public final class PostureManager {
         }
 
         float impact = CompatibilityDamage.calculateBaseImpact(source, eventDamage);
-        if (!Float.isFinite(impact) || impact <= 0.0F || state(target).isLocked()) {
+        if (!Float.isFinite(impact) || impact <= 0.0F || !state(target).acceptsPostureDamage()) {
             return;
         }
 
@@ -110,7 +110,7 @@ public final class PostureManager {
         }
 
         State state = state(target);
-        if (state.isLocked()) {
+        if (!state.acceptsPostureDamage()) {
             return;
         }
 
@@ -125,7 +125,8 @@ public final class PostureManager {
                 EHP_REFERENCE_HEALTH,
                 (float) EHP_EXPONENT
         ) * healthPostureDamageMultiplier(target, innateEhp);
-        state.current = Math.max(0.0F, state.current - postureDamage);
+        float resistance = breakResistanceMultiplier(state);
+        state.current = Math.max(0.0F, state.current - postureDamage / resistance);
         state.regenDelay = regenDelayTicks();
 
         if (state.current <= 0.0F) {
@@ -266,17 +267,26 @@ public final class PostureManager {
         }
     }
 
+    /** Final posture damage from direct hits. Successive breaks reduce the applied damage. */
+    private static float breakResistanceMultiplier(State state) {
+        return PostureBalance.breakResistanceMultiplier(
+                state.completedBreaks,
+                PostureServerConfig.postureBreakResistanceStep(),
+                PostureServerConfig.postureBreakResistanceMax()
+        );
+    }
+
     private static void damagePosture(LivingEntity entity, LivingEntityPatch<?> patch, float damage) {
         if (damage <= 0.0F || !Float.isFinite(damage)) {
             return;
         }
 
         State state = state(entity);
-        if (state.isLocked()) {
+        if (!state.acceptsPostureDamage()) {
             return;
         }
 
-        state.current = Math.max(0.0F, state.current - damage);
+        state.current = Math.max(0.0F, state.current - damage / breakResistanceMultiplier(state));
         state.regenDelay = regenDelayTicks();
         if (state.current <= 0.0F) {
             breakPosture(entity, patch, state);
@@ -285,7 +295,7 @@ public final class PostureManager {
     }
 
     private static void breakPosture(LivingEntity entity, LivingEntityPatch<?> patch, State state) {
-        if (state.isLocked()) {
+        if (!state.acceptsPostureDamage()) {
             return;
         }
 
@@ -309,6 +319,11 @@ public final class PostureManager {
         }
 
         if (stunned) {
+            // Count only successfully applied breaks. Never persist this counter to NBT;
+            // EntityLeaveLevelEvent already removes the State via forgetState().
+            if (state.completedBreaks < Integer.MAX_VALUE) {
+                state.completedBreaks++;
+            }
             state.postureState = PostureState.BROKEN;
         } else {
             // Never leave a zero-posture entity in NORMAL if both stun paths fail.
@@ -629,6 +644,7 @@ public final class PostureManager {
         float current;
         int regenDelay;
         int recoveryTicksRemaining;
+        int completedBreaks;
         PostureState postureState = PostureState.NORMAL;
 
         boolean inputsInitialized;
@@ -646,6 +662,11 @@ public final class PostureManager {
 
         boolean isLocked() {
             return postureState == PostureState.BROKEN || postureState == PostureState.EXECUTING;
+        }
+
+        /** Recovery must finish before another break can be triggered. */
+        boolean acceptsPostureDamage() {
+            return postureState == PostureState.NORMAL;
         }
 
         boolean isBrokenForHud() {

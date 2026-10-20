@@ -170,6 +170,21 @@ final class PostureBalance {
         return t * t * (3.0F - 2.0F * t);
     }
 
+    /**
+     * Required posture-damage multiplier after successful breaks.
+     * Defaults: first 1x, second 2x, third and later 3x.
+     * Called only on attack/parry, never every tick.
+     */
+    static float breakResistanceMultiplier(int completedBreaks, float step, float maximum) {
+        if (completedBreaks <= 0) {
+            return 1.0F;
+        }
+        float safeStep = Float.isFinite(step) ? Math.max(0.0F, step) : 0.0F;
+        float safeMaximum = Float.isFinite(maximum) ? Math.max(1.0F, maximum) : 1.0F;
+        double increased = 1.0D + (double) completedBreaks * safeStep;
+        return (float) Math.min((double) safeMaximum, increased);
+    }
+
     static int regenDelayTicks(float delaySeconds) {
         if (!Float.isFinite(delaySeconds) || delaySeconds <= 0.0F) {
             return 0;

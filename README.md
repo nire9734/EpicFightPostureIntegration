@@ -41,10 +41,12 @@ Attack posture follows the **fraction of target maximum HP removed**, rather tha
 
 ```text
 Impact efficiency = clamp(0.7 + 0.3 * sqrt(Impact / 3), 0.7, 1.5)
-attack posture damage = 2.2 * P_base * Impact efficiency
+attack posture damage = 2.1 * P_base * Impact efficiency
                         * (F(u_after) - F(u_before))
                         * posture_damage_multiplier
 ```
+
+The new default attack coefficient is **2.1**, with `posture_damage_multiplier = 1.0`. At Impact 1.8, direct attacks alone cannot completely deplete posture before a target dies if there is no other posture pressure (assuming equal base/max posture and no posture regeneration). Parries provide additional pressure.
 
 The health-finisher curve `0.25 + 0.75*(1 - currentHealth/maxHealth)^2` applies to direct attacks against **all** mobs. Integrating it over the hit's actual HP-loss interval prevents high-damage RPG weapons from losing posture efficacy and makes hits approximately split-independent at equal Impact efficiency. An Epic Fight source with **zero Impact** remains excluded; eligible non-EF direct player damage receives a bounded derived Impact.
 
@@ -61,6 +63,14 @@ parry damage = maximum posture * parry base fraction
 The maximum/minimum **base** parry endpoints are **18% at innate EHP 20 or below**, and **6% as innate EHP approaches infinity** (before finisher scaling). At innate EHP 20 the new value requires six parries instead of the previous nine, assuming no regeneration. The EHP exponent remains internal at 0.7. The parry finisher modifier is disabled at innate EHP ≤40, blended over 40–200, and fully active at 200+. It therefore further reduces parry damage against healthy, innately durable bosses. These endpoints describe the **base** fraction: a full-health boss may receive less than the configured high-EHP percentage after its finisher penalty. A mod that rewrites attribute base values instead of adding modifiers may also affect innate-EHP classification.
 
 `maximum_posture_multiplier` and `posture_multipliers` still affect how much attack damage is needed to break posture; parries are intentionally a **percentage of maximum posture** and therefore their relative efficacy is unchanged by that multiplier. Execution damage remains Combat Evolution's responsibility.
+
+After every **successful** posture break, the same per-mob counter increases the required posture damage for both attacks and parries:
+```text
+required damage multiplier = min(1 + completed_breaks * posture_break_resistance_step,
+                                 posture_break_resistance_max)
+actual posture damage = normal attack or parry posture damage / required damage multiplier
+```
+The default resistance step is **1.0** and the cap is **3.0**: the first break needs 1x, the second 2x, and the third and later 3x cumulative posture damage. A break is counted only if Epic Fight successfully applies the break stun. This resistance does **not** increase the maximum posture value or its ordinary regeneration rate; it instead reduces incoming posture damage. New breaks are blocked during the existing break/recovery state, preventing immediate re-breaks while the posture bar refills. The counter is kept in memory only and is reset when the entity leaves the level (including chunk unload); no NBT persistence, extra per-tick calculation, or network protocol change is required.
 
 Ordinary regeneration starts after the configured delay and restores the configured percentage of maximum posture per second. Posture-break recovery is a separate state.
 
@@ -82,7 +92,7 @@ config/epicfight_posture_integration/server.toml
 maximum_posture_multiplier = 1.0
 
 # Multiplier for attack Posture damage from final HP lost.
-# Impact gives a bounded bonus; 1.0 uses the internal 2.2 attack coefficient.
+# Impact gives a bounded bonus; 1.0 uses the internal 2.1 attack coefficient.
 # Default: 1.0 | Range: 0.0-100.0
 posture_damage_multiplier = 1.0
 
@@ -95,6 +105,16 @@ parry_base_max_percent = 18.0
 # This is the asymptote at 0% target HP, before the finisher modifier.
 # Default: 6.0 | Range: 0.0-100.0
 parry_base_min_percent = 6.0
+
+# Extra required posture-damage multiplier per successful break.
+# 1.0 = first break 1x, second 2x, third and later 3x.
+# Default: 1.0 | Range: 0.0-100.0
+posture_break_resistance_step = 1.0
+
+# Maximum required posture-damage multiplier.
+# Affects both normal attacks and parries.
+# Default: 3.0 | Range: 1.0-100.0
+posture_break_resistance_max = 3.0
 
 
 [regeneration]
@@ -169,7 +189,7 @@ The cache uses schema version `2`. It is generated state, not a user configurati
 
 ## Upgrading from 3.0.0
 
-3.0.1 retains the 3.0.0 config path and compatibility/network format. The obsolete `posture.parry_percent`, interim `posture.parry_low_ehp_percent` / `posture.parry_high_ehp_percent`, and `entities.parry_multipliers` keys are no longer recognized. On loading an old TOML, Forge config correction adds `posture.parry_base_max_percent = 18.0` and `posture.parry_base_min_percent = 6.0` at their defaults. **Customized values of old parry keys are not migrated**; unknown keys may be removed when Forge rewrites the TOML. Do not delete the whole file: unrelated settings remain in place. The attack coefficient is now 2.2 (previous 3.0.1 development build: 2.7), while `posture_damage_multiplier` still defaults to 1.0. If `posture_damage_multiplier` was manually set to 0.8 to approximate the new balance, reset it to `1.0` after upgrading (2.2 is slightly stronger than 2.7 × 0.8 = 2.16). Other customized attack multipliers remain effective and may need retuning. No renderer-discovery cache or network protocol reset is required.
+3.0.1 retains the 3.0.0 config path and compatibility/network format. The obsolete `posture.parry_percent`, interim `posture.parry_low_ehp_percent` / `posture.parry_high_ehp_percent`, and `entities.parry_multipliers` keys are no longer recognized. On loading an old TOML, Forge config correction adds `posture.parry_base_max_percent = 18.0` and `posture.parry_base_min_percent = 6.0` at their defaults. **Customized values of old parry keys are not migrated**; unknown keys may be removed when Forge rewrites the TOML. Do not delete the whole file: unrelated settings remain in place. The attack coefficient is now 2.1 (previous 3.0.1 development builds: 2.7, then 2.2), while `posture_damage_multiplier` still defaults to 1.0. If `posture_damage_multiplier` was manually set to 0.8 to approximate a previous balance, reset it to `1.0` after upgrading. Two new optional per-entity-break-resistance keys default to `1.0` and `3.0`; unlike the previous builds, second and later breaks now require progressively more posture damage. Other customized attack multipliers remain effective and may need retuning. No renderer-discovery cache or network protocol reset is required.
 
 ## Upgrading from 2.0.0 / development builds
 
