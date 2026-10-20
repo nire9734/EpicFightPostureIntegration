@@ -48,6 +48,8 @@ public final class VanillaHumanoidClientCompat {
         HumanoidBackendRegistry.clear();
         HumanoidBackendRegistry.register(ModelPartHumanoidClientCompat.INSTANCE);
         if (ModList.get().isLoaded("geckolib")) {
+            // The renderers (and their baked models) may have changed after F3+T.
+            GeckoArmorSkinnedMeshBridge.clearCache();
             HumanoidBackendRegistry.register(GeckoHumanoidClientCompat.INSTANCE);
         }
         if (ModList.get().isLoaded("lionfishapi")) {
