@@ -85,20 +85,23 @@ local player's execution capability.
 
 On reaching zero posture, EFPI now accepts only an actually active
 `NEUTRALIZE` animation with Epic Fight's stunned state. It no longer treats
-a `LONG` hit reaction as an executable guard break. If the animation cannot
-start, or disappears immediately, EFPI removes posture tracking and the HUD
-for that **entity instance** until it leaves the level. This also avoids
-repeatedly misleading players with a bar that reaches zero without a usable
-stun. An ordinary end to a confirmed guard break still starts recovery as
-before.
+a `LONG` hit reaction as an executable guard break. If the animation cannot start or ends almost immediately, EFPI returns to
+posture recovery **without removing the HUD or blacklisting the entity**.
+Such a failure alone does not establish that the mob is permanently
+incompatible: temporary effects and third-party animations may interrupt it.
+The server logs a diagnostic warning on failed or immediately terminated
+breaks (entity ID/UUID, patch class, expected and current animations,
+and `isStunned`). These diagnostics can distinguish the failure's stage
+without changing ordinary combat behavior. A confirmed guard break ending
+normally also enters recovery.
 
 A purely static scan cannot guarantee a future execution: other mods may
 cancel stuns, replace animations, apply temporary immunity, or alter execution
-rules at runtime. The first failed attempt can therefore still have a visible
-bar; the failure is detected at runtime and subsequent hits to that instance
-do not recreate it. When a specific modpack has targets with visually broken
-animations, add those IDs to `entities.entity_blacklist` to hide their bar
-immediately, without hardcoding mod-specific behavior into EFPI.
+rules at runtime. The presence of a bar does not prove a future break will succeed. EFPI does
+not infer permanent incompatibility from a single failed attempt. When a
+specific modpack has targets confirmed to be unsupported, operators can
+manually add their IDs to `entities.entity_blacklist`, without hardcoding
+mod-specific behavior into EFPI.
 
 ## Server configuration
 

@@ -21,10 +21,8 @@ import yesman.epicfight.world.capabilities.EpicFightCapabilities;
 import yesman.epicfight.world.capabilities.entitypatch.LivingEntityPatch;
 import yesman.epicfight.world.damagesource.StunType;
 
-import java.util.Collections;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 import java.util.WeakHashMap;
 import org.slf4j.Logger;
 
@@ -41,13 +39,6 @@ public final class PostureManager {
     private static final float MAX_SAFE_POSTURE = 1_000_000.0F;
 
     private static final Map<LivingEntity, State> STATES = new WeakHashMap<>();
-    /**
-     * A failed or immediately terminated neutralize animation is not a usable
-     * guard break. Keep this instance ineligible until it leaves the world.
-     * Weak identity lifetime avoids permanent restrictions on the mob type.
-     */
-    private static final Set<LivingEntity> INCOMPATIBLE_INSTANCES =
-            Collections.newSetFromMap(new WeakHashMap<>());
     /** One in-flight LivingDamageEvent per target, resolved after vanilla actually changes HP. */
     private static final Map<LivingEntity, PendingAttack> PENDING_ATTACKS = new WeakHashMap<>();
 
@@ -193,11 +184,9 @@ public final class PostureManager {
             boolean guardBreakActive = isActiveNeutralize(patch);
             if (!guardBreakActive) {
                 if (state.brokenTicks < 2) {
-                    // Animation disappeared before the break could be used.
-                    // Remove this instance's HUD rather than presenting a
-                    // guard break that cannot lead to an execution.
-                    disableIncompatibleInstance(entity, "neutralize ended immediately");
-                    return false;
+                    // Diagnostic only: a transient animation interruption
+                    // must not blacklist an otherwise compatible mob.
+                    logGuardBreakFailure(entity, patch, "neutralize ended before 2 ticks");
                 }
                 startRecovering(state);
                 PostureSyncEvents.syncNow(entity);
@@ -258,8 +247,7 @@ public final class PostureManager {
         if (entity == null || !RuntimeAccess.isServerEntity(entity)) {
             return null;
         }
-        if (PostureServerConfig.isBlacklisted(entityTypeId(entity))
-                || INCOMPATIBLE_INSTANCES.contains(entity)) {
+        if (PostureServerConfig.isBlacklisted(entityTypeId(entity))) {
             return null;
         }
 
@@ -321,32 +309,37 @@ public final class PostureManager {
         state.regenDelay = regenDelayTicks();
         stopUsingItem(entity);
 
-        boolean stunned = false;
+        boolean applied = false;
+        boolean active = false;
         if (patch != null && hasNeutralizeAnimation(patch)) {
             try {
-                stunned = patch.applyStun(StunType.NEUTRALIZE, 0.0F)
-                        && isActiveNeutralize(patch);
-            } catch (Throwable ignored) {
-                // A failed animation installation is not a usable guard break.
+                applied = patch.applyStun(StunType.NEUTRALIZE, 0.0F);
+                active = applied && isActiveNeutralize(patch);
+            } catch (Throwable failure) {
+                LOGGER.warn("EFPI neutralize threw for {} ({}) using patch {}",
+                        entityTypeId(entity), entity.getUUID(), patch.getClass().getName(), failure);
             }
         }
 
-        if (stunned) {
-            // Only a verified NEUTRALIZE animation is accepted: Combat Evolution
-            // explicitly checks this animation identity before permitting execution.
+        if (active) {
+            // CE checks the *NEUTRALIZE* animation identity, not arbitrary LONG stuns.
             if (state.completedBreaks < Integer.MAX_VALUE) {
                 state.completedBreaks++;
             }
             state.brokenTicks = 0;
             state.postureState = PostureState.BROKEN;
         } else {
-            disableIncompatibleInstance(entity, "neutralize rejected or not active");
+            logGuardBreakFailure(entity, patch,
+                    applied ? "neutralize returned true but its state was not active"
+                            : "neutralize was unavailable or applyStun returned false");
+            // Preserve posture tracking: a temporary failed stun is not proof of
+            // permanent incompatibility.
+            startRecovering(state);
         }
     }
 
     private static boolean isEligiblePostureEntity(LivingEntity entity, LivingEntityPatch<?> targetPatch) {
         if (entity == null || entity instanceof Player || targetPatch == null
-                || INCOMPATIBLE_INSTANCES.contains(entity)
                 || PostureServerConfig.isBlacklisted(entityTypeId(entity))
                 || targetPatch instanceof CEHumanoidPatch
                 || !hasNeutralizeAnimation(targetPatch)) {
@@ -403,11 +396,45 @@ public final class PostureManager {
         }
     }
 
-    private static void disableIncompatibleInstance(LivingEntity entity, String reason) {
-        INCOMPATIBLE_INSTANCES.add(entity);
-        LOGGER.debug("EFPI stopped tracking posture for {} ({}) because {}",
-                entityTypeId(entity), entity.getUUID(), reason);
-        forgetState(entity, true);
+    /**
+     * Emits one diagnostic per failed or immediately interrupted break, never per
+     * ordinary entity tick. The server log distinguishes failed stun application
+     * from a later animation/state replacement and identifies the actual patch.
+     */
+    private static void logGuardBreakFailure(
+            LivingEntity entity, LivingEntityPatch<?> patch, String reason) {
+        String details = "patch=none";
+        if (patch != null) {
+            try {
+                var animator = patch.getAnimator();
+                var animationPlayer = animator == null ? null : animator.getPlayerFor(null);
+                var expected = patch.getHitAnimation(StunType.NEUTRALIZE);
+                var actual = animationPlayer == null ? null : animationPlayer.getRealAnimation();
+                details = "patch=" + patch.getClass().getName()
+                        + ", animator=" + (animator == null ? "null" : animator.getClass().getSimpleName())
+                        + ", expected=" + animationName(expected)
+                        + ", current=" + animationName(actual)
+                        + ", matching=" + (actual != null && actual == expected)
+                        + ", isStunned=" + patch.isStunned();
+            } catch (Throwable failure) {
+                details = "patch=" + patch.getClass().getName()
+                        + ", inspectionFailure=" + failure.getClass().getSimpleName()
+                        + ": " + failure.getMessage();
+            }
+        }
+        LOGGER.warn("EFPI guard break unavailable for {} (UUID {}): {}; {}",
+                entityTypeId(entity), entity.getUUID(), reason, details);
+    }
+
+    private static String animationName(AssetAccessor<? extends StaticAnimation> animation) {
+        if (animation == null) {
+            return "null";
+        }
+        try {
+            return String.valueOf(animation.registryName());
+        } catch (Throwable ignored) {
+            return animation.getClass().getSimpleName();
+        }
     }
 
     private static boolean sameAnimation(

@@ -16,7 +16,7 @@
 - Updated unit tests, configuration explanations, and version number to 3.0.1.
 
 ### Fixed
-- Gate EFPI's posture HUD behind a distinct neutralize animation and Combat Evolution's current target/executor compatibility; stop tracking individual mobs whose neutralize animation fails or immediately terminates. Do not treat `LONG` stun as executable guard break. This cannot pre-validate all runtime renderer/animation failures without an actual stun.
+- Gate EFPI's posture HUD behind a distinct neutralize animation and Combat Evolution's current target/executor compatibility. Do not treat `LONG` stun as executable guard break. Diagnose failed/interrupted neutralize attempts without blacklisting an individual mob or removing its posture HUD, since transient interruptions do not imply permanent incompatibility.
 - Prevent immediate subsequent posture breaks during the existing `RECOVERING` state, when the bar is still refilling.
 - Fix Forge 1.20.1 compilation: `EventPriority.MONITOR` does not exist. Listen at `LOWEST` and defer attack posture until actual HP reduction is observed. This prevents false posture damage if a later same-priority KubeJS damage-cap handler nullifies the hit. Added a regression test for capped/cancelled HP loss.
 
