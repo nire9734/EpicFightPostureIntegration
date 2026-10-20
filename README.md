@@ -114,14 +114,18 @@ Server/client diagnostics appear the first time each type spawns and reaches
 neutralize animation is accepted. This logging does not try to stun mobs in
 advance or blacklist failed instances.
 
-For Remnant and Forlorn with an existing Epic Fight datapack-provided
-`CustomHumanoidMobPatch`, the diagnostic logs showed `NEUTRALIZE=null` while
-SHORT and LONG were present. An experimental narrowly scoped mixin now
-supplies Epic Fight's standard `BIPED_COMMON_NEUTRALIZED` as a fallback
-**only when the custom patch has no usable neutralize entry**. It does not
-replace the custom patch or modify its AI, other stun reactions, renderer,
-or user-provided neutralize animation. Its actual application/execution
-behavior still needs the follow-up in-game test.
+The diagnostic logs showed `NEUTRALIZE=null` for Remnant/Forlorn even
+though their datapack-provided `CustomHumanoidMobPatch` uses a humanoid
+armature and defines ordinary hit reactions. The experimental fallback is now
+**generic**, not keyed to Soul's Weapons: when a `CustomHumanoidMobPatch`
+has a `HumanoidArmature`, at least one SHORT or LONG hit animation, and
+**no usable NEUTRALIZE animation**, it exposes Epic Fight's canonical
+`BIPED_COMMON_NEUTRALIZED`. Explicit datapack animations still win and
+blacklisted mobs are skipped. A log line beginning `EFPI generic humanoid
+neutralize fallback ACTIVE` confirms the runtime fix was actually invoked;
+absence of the marker with a missing `NEUTRALIZE` points to a stale jar or a
+Mixin activation issue. This does not guarantee every such entity can be
+stunned, rendered correctly, or executed; that remains runtime-dependent.
 
 A behavioral correction also aligns the broken-state check with Combat
 Evolution's execution predicate: only the actual `NEUTRALIZE` animation

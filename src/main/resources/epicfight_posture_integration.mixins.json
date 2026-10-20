@@ -10,7 +10,7 @@
   "mixins": [
     "SpiderExecutionMixin",
     "ParryDetectionMixin",
-    "SoulsWeaponryNeutralizeMixin"
+    "MissingHumanoidNeutralizeMixin"
   ],
   "client": [
     "client.BridgeHealthBarMixin",
