@@ -103,6 +103,24 @@ specific modpack has targets confirmed to be unsupported, operators can
 manually add their IDs to `entities.entity_blacklist`, without hardcoding
 mod-specific behavior into EFPI.
 
+### Soul's Weapons diagnostic branch
+
+The development branch `dev/soulsweapons-compat-diagnostics` contains temporary,
+read-only `EFPI souls-diagnostic/scan`, `/server`, `/client` and `/break`
+logging for `soulsweapons:remnant`, `soulsweapons:dark_sorcerer` and
+`soulsweapons:forlorn`. Scan diagnostics are emitted even if no mobs spawn.
+Server/client diagnostics appear the first time each type spawns and reaches
+20 ticks, even if no posture bar is shown. Break diagnostics appear when a
+neutralize animation is accepted. This logging does not try to stun mobs in
+advance or blacklist failed instances.
+
+A behavioral correction also aligns the broken-state check with Combat
+Evolution's execution predicate: only the actual `NEUTRALIZE` animation
+accessor identity is required, not a redundant `isStunned()` flag that can
+disagree during transitions. Unsupported targets still cannot be guaranteed
+executable without an in-game attempt; captured diagnostics will identify
+the actual patch/renderer ownership and filter stage for the three mobs.
+
 ## Server configuration
 
 Server policy is stored at:

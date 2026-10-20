@@ -22,7 +22,6 @@ import yesman.epicfight.world.capabilities.entitypatch.LivingEntityPatch;
 import yesman.epicfight.world.damagesource.StunType;
 
 import java.util.Map;
-import java.util.Objects;
 import java.util.WeakHashMap;
 import org.slf4j.Logger;
 
@@ -142,6 +141,10 @@ public final class PostureManager {
         if (entity == null || !RuntimeAccess.isServerEntity(entity)) {
             return false;
         }
+
+        // Diagnose the Soul's Weapons integration even when no posture state
+        // has ever been created and no HUD/guard-break callback can fire.
+        SoulsWeaponryDiagnostics.onServerTick(entity);
 
         // Damage listeners execute before vanilla subtracts HP. Flush at the
         // next entity tick, after all later listeners and HP changes have run.
@@ -328,9 +331,10 @@ public final class PostureManager {
             }
             state.brokenTicks = 0;
             state.postureState = PostureState.BROKEN;
+            SoulsWeaponryDiagnostics.onBreakApplied(entity, patch, true);
         } else {
             logGuardBreakFailure(entity, patch,
-                    applied ? "neutralize returned true but its state was not active"
+                    applied ? "neutralize returned true but the required animation is not playing"
                             : "neutralize was unavailable or applyStun returned false");
             // Preserve posture tracking: a temporary failed stun is not proof of
             // permanent incompatibility.
@@ -388,9 +392,11 @@ public final class PostureManager {
         try {
             var player = patch.getAnimator().getPlayerFor(null);
             AssetAccessor<? extends StaticAnimation> neutralize = patch.getHitAnimation(StunType.NEUTRALIZE);
-            return player != null
-                    && player.getRealAnimation() == neutralize
-                    && patch.isStunned();
+            // Combat Evolution's isTargetGuardBreak compares these accessor
+            // identities directly. isStunned() is a separate state-spectrum
+            // predicate and need not agree during an animation transition.
+            // Requiring both caused false-negative breaks/recovery.
+            return player != null && player.getRealAnimation() == neutralize;
         } catch (Throwable ignored) {
             return false;
         }
@@ -447,7 +453,10 @@ public final class PostureManager {
             return false;
         }
         try {
-            return Objects.equals(first.registryName(), second.registryName());
+            ResourceLocation firstName = first.registryName();
+            ResourceLocation secondName = second.registryName();
+            // Distinct unregistered accessors may both expose a null name.
+            return firstName != null && firstName.equals(secondName);
         } catch (Throwable ignored) {
             return false;
         }

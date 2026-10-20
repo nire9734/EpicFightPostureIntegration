@@ -108,6 +108,7 @@ public final class VanillaHumanoidClientCompat {
         if (!verifiedSpider.isEmpty()) {
             summary.put("spider", verifiedSpider.size());
         }
+        SoulsWeaponryClientDiagnostics.onRendererScan(scan, verifiedAll);
         LOGGER.info(
                 "EFPI compatibility: {} target(s) {}",
                 verifiedVanillaIds.size() + verifiedPreparedIds.size() + verifiedSpiderIds.size(),
