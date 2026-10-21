@@ -1,5 +1,37 @@
 # Changelog
 
+## 3.0.1
+
+Posture balance, execution compatibility and stability update relative to the **3.0.0 release**.
+
+### Posture balance
+
+- Reworked ordinary-attack posture damage from the 3.0.0 dealt-damage formula to **actual final HP loss as a fraction of maximum HP**, with a linear internal coefficient of **0.54** when `posture.posture_damage_multiplier=1.0`. Removed the previous current-HP finisher curve from attacks and parries.
+- Added a bounded Impact efficiency for direct attacks: `clamp(0.7 + 0.3 * sqrt(Impact / 3), 0.7, 1.5)`. Nonpositive Impact from Epic Fight does not create attack posture damage; eligible non-Epic-Fight direct hits use a bounded fallback.
+- Reworked parry scaling around **EntityType registered default maximum HP, armor and toughness** to reduce sensitivity to instance-level changes from mods that scale Mob stats. Fall back to instance base attributes only when registered defaults are unavailable.
+- Replaced 3.0.0's `posture.parry_percent` with `posture.parry_base_max_percent=22.0` at innate EHP 20 or below and `posture.parry_base_min_percent=8.0` as innate EHP increases; the fraction is independent of current HP and uses the 0.7 EHP exponent.
+- Added resistance to repeated successful posture breaks, shared by attacks and parries. Defaults `posture_break_resistance_step=0.5` and `posture_break_resistance_max=2.0` give 1×, 1.5× and 2× required posture damage across successive breaks, with no hard limit on break count.
+- Preserved EHP-based maximum posture and per-entity/global multipliers. Direct attacks use unmultiplied base posture, while parries scale with current maximum posture.
+- Increased the **ordinary regeneration delay from 10 to 15 seconds**, keeping the 2%-per-second regeneration rate and separate 3-second post-break recovery. Combat Evolution still controls execution damage.
+
+### Guard breaks and executions
+
+- Require a distinct active Epic Fight `NEUTRALIZE` animation for executable posture breaks rather than accepting a `LONG` hit reaction. Recover from temporarily failed or interrupted stuns without permanently blacklisting the entity.
+- Add a generic missing-`NEUTRALIZE` fallback for supported datapack-backed `CustomHumanoidMobPatch` entities with a humanoid armature and existing SHORT/LONG reactions. Preserve original AI, animations and patch ownership; Remnant and Forlorn were verified in game.
+- Align guard-break animation recognition with Combat Evolution and restrict the combined Health + Posture HUD to eligible, executable targets.
+
+### Reliability and compatibility
+
+- Prevent new posture breaks during guard-break, execution or recovery states, and avoid starting a guard-break animation from lethal damage. Preserve ongoing execution animations during death processing.
+- Improve automatic humanoid discovery, animation retargeting, renderer ownership, secondary model layers and reload stability, while skipping unsupported or ambiguous models safely.
+- Reduce unnecessary client instrumentation and development diagnostics; retain warnings for real compatibility failures. Expand automated tests for balance, level-scaling fallback, guard-break behavior and rendering helpers.
+
+### Updating from 3.0.0
+
+- Keep the existing `server.toml` and renderer-discovery cache. Network protocol `3`, cache schema `2` and configuration paths are unchanged.
+- The old `posture.parry_percent` value is **not migrated** to the new 22% / 8% parry settings. Review customized attack posture multipliers because the underlying formula changed.
+- New repeated-break settings default to `0.5` and `2.0`. The default regeneration delay is `15.0`, but a saved 3.0.0 value of `10.0` remains until the user edits or regenerates the configuration.
+
 ## 3.0.0
 
 Major automatic-compatibility and posture-balance update.

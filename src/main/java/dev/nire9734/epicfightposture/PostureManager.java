@@ -1,11 +1,17 @@
 package dev.nire9734.epicfightposture;
 
+import com.mojang.logging.LogUtils;
 import dev.nire9734.epicfightposture.sync.PostureSyncEvents;
 import dev.nire9734.epicfightposture.sync.RuntimeAccess;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
+import net.minecraft.world.entity.ai.attributes.DefaultAttributes;
+import net.minecraft.world.entity.ai.attributes.Attribute;
+import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.player.Player;
 import net.shelmarow.combat_evolution.ai.CEHumanoidPatch;
@@ -19,11 +25,12 @@ import yesman.epicfight.world.capabilities.entitypatch.LivingEntityPatch;
 import yesman.epicfight.world.damagesource.StunType;
 
 import java.util.Map;
-import java.util.Objects;
 import java.util.WeakHashMap;
+import org.slf4j.Logger;
 
 /** Owns server-authoritative posture state for eligible Epic Fight entity patches. */
 public final class PostureManager {
+    private static final Logger LOGGER = LogUtils.getLogger();
     private static final int MAX_POSTURE_REFRESH_INTERVAL_TICKS = 10;
     private static final int BREAK_RECOVERY_TICKS = 60;
 
@@ -34,30 +41,75 @@ public final class PostureManager {
     private static final float MAX_SAFE_POSTURE = 1_000_000.0F;
 
     private static final Map<LivingEntity, State> STATES = new WeakHashMap<>();
+    /** One in-flight LivingDamageEvent per target, resolved after vanilla actually changes HP. */
+    private static final Map<LivingEntity, PendingAttack> PENDING_ATTACKS = new WeakHashMap<>();
 
-    public static void onPlayerDamage(LivingEntity target, float damageAmount, DamageSource source) {
-        if (target == null || damageAmount <= 0.0F || !RuntimeAccess.isServerEntity(target)) {
+    /**
+     * Called at the lowest Forge event priority. Another mod (including a KubeJS
+     * LOWEST handler) may still change/cancel this event. Store attack metadata and
+     * calculate posture only when the real health change can be observed.
+     *
+     * A new damage event closes the previous one; the ordinary entity tick closes
+     * the last attack. This also handles multiple hits in the same server tick.
+     */
+    public static void observeDamageEvent(
+            LivingEntity target, float eventDamage, DamageSource source, boolean playerHit) {
+        if (target == null || !RuntimeAccess.isServerEntity(target)) {
             return;
         }
+        flushPendingDamage(target);
 
+        if (!canReceivePosture(target)
+                || !playerHit || !Float.isFinite(eventDamage) || eventDamage <= 0.0F) {
+            return;
+        }
         LivingEntityPatch<?> patch = getPatch(target);
         if (!isEligiblePostureEntity(target, patch)) {
             return;
         }
 
-        float impact = CompatibilityDamage.calculateImpact(source, damageAmount);
-        if (impact <= 0.0F || !Float.isFinite(impact)) {
+        float impact = CompatibilityDamage.calculateBaseImpact(source, eventDamage);
+        if (!Float.isFinite(impact) || impact <= 0.0F || !state(target).acceptsPostureDamage()) {
             return;
         }
 
-        float postureDamage = impact
-                * PostureServerConfig.postureDamageMultiplier()
-                * healthPostureDamageMultiplier(target);
+        PENDING_ATTACKS.put(target, new PendingAttack(
+                target.getHealth(), target.getMaxHealth(), impact));
+    }
+
+    /**
+     * Uses observed HP loss instead of the LivingDamageEvent amount so a later
+     * same-priority damage cap/cancellation cannot produce phantom posture.
+     */
+    private static void flushPendingDamage(LivingEntity target) {
+        PendingAttack pending = PENDING_ATTACKS.remove(target);
+        // A lethal hit may have started the Epic Fight death animation after
+        // the damage event but before this delayed health-delta callback.
+        // Never apply NEUTRALIZE after death, even when actual HP loss > 0.
+        if (pending == null || !canReceivePosture(target)) {
+            return;
+        }
+        float actualLoss = PostureBalance.actualHealthLoss(pending.healthBefore(), target.getHealth());
+        if (actualLoss <= 0.0F || !RuntimeAccess.isServerEntity(target)) {
+            return;
+        }
+        LivingEntityPatch<?> patch = getPatch(target);
+        if (!isEligiblePostureEntity(target, patch)) {
+            return;
+        }
+        float postureDamage = PostureBalance.attackPostureDamage(
+                calculateBasePosture(target),
+                pending.maxHealth(),
+                pending.healthBefore(),
+                actualLoss,
+                pending.impact(),
+                PostureServerConfig.attackPostureCoefficient()
+        );
         damagePosture(target, patch, postureDamage);
     }
 
     public static void onParried(LivingEntity target) {
-        if (target == null || !RuntimeAccess.isServerEntity(target)) {
+        if (!canReceivePosture(target) || !RuntimeAccess.isServerEntity(target)) {
             return;
         }
 
@@ -67,19 +119,23 @@ public final class PostureManager {
         }
 
         State state = state(target);
-        if (state.isLocked()) {
+        if (!state.acceptsPostureDamage()) {
             return;
         }
 
-        float targetEffectiveHealth = targetEffectiveHealth(target);
+        // EntityType defaults keep parry percentages stable across level mods,
+        // including those that mutate a mob's AttributeInstance base values.
+        float innateEhp = baseEffectiveHealth(target);
         float postureDamage = PostureBalance.parryDamage(
                 state.max,
-                PostureServerConfig.parryPostureFraction(),
-                targetEffectiveHealth,
+                PostureServerConfig.parryBaseMaxFraction(),
+                PostureServerConfig.parryBaseMinFraction(),
+                innateEhp,
                 EHP_REFERENCE_HEALTH,
                 (float) EHP_EXPONENT
-        ) * healthPostureDamageMultiplier(target, targetEffectiveHealth);
-        state.current = Math.max(0.0F, state.current - postureDamage);
+        );
+        float resistance = breakResistanceMultiplier(state);
+        state.current = Math.max(0.0F, state.current - postureDamage / resistance);
         state.regenDelay = regenDelayTicks();
 
         if (state.current <= 0.0F) {
@@ -92,7 +148,21 @@ public final class PostureManager {
         if (entity == null || !RuntimeAccess.isServerEntity(entity)) {
             return false;
         }
+        if (!canReceivePosture(entity)) {
+            // Do not confirm a pending fatal hit as posture damage. A genuine
+            // Combat Evolution execution may intentionally outlive the killing
+            // blow, so retain its current special-render state until CE finishes.
+            PENDING_ATTACKS.remove(entity);
+            if (PostureDeathSafety.shouldForgetDeadState(
+                    entity.isAlive(), entity.getHealth(), isExecuting(entity))) {
+                forgetState(entity, true);
+            }
+            return false;
+        }
 
+        // Damage listeners execute before vanilla subtracts HP. Flush at the
+        // next entity tick, after all later listeners and HP changes have run.
+        flushPendingDamage(entity);
         State state = STATES.get(entity);
         if (state == null) {
             return false;
@@ -128,14 +198,12 @@ public final class PostureManager {
             }
 
             LivingEntityPatch<?> patch = getPatch(entity);
-            try {
-                if (patch == null || !patch.isStunned()) {
-                    startRecovering(state);
-                    PostureSyncEvents.syncNow(entity);
-                }
-            } catch (Throwable ignored) {
+            boolean guardBreakActive = isActiveNeutralize(patch);
+            if (!guardBreakActive) {
                 startRecovering(state);
                 PostureSyncEvents.syncNow(entity);
+            } else {
+                state.brokenTicks++;
             }
             return true;
         }
@@ -210,23 +278,33 @@ public final class PostureManager {
         if (entity == null) {
             return;
         }
+        PENDING_ATTACKS.remove(entity);
         State removed = STATES.remove(entity);
         if (removed != null && notifyClients && RuntimeAccess.isServerEntity(entity)) {
             PostureSyncEvents.removeNow(entity);
         }
     }
 
+    /** Final posture damage from direct hits. Successive breaks reduce the applied damage. */
+    private static float breakResistanceMultiplier(State state) {
+        return PostureBalance.breakResistanceMultiplier(
+                state.completedBreaks,
+                PostureServerConfig.postureBreakResistanceStep(),
+                PostureServerConfig.postureBreakResistanceMax()
+        );
+    }
+
     private static void damagePosture(LivingEntity entity, LivingEntityPatch<?> patch, float damage) {
-        if (damage <= 0.0F || !Float.isFinite(damage)) {
+        if (!canReceivePosture(entity) || damage <= 0.0F || !Float.isFinite(damage)) {
             return;
         }
 
         State state = state(entity);
-        if (state.isLocked()) {
+        if (!state.acceptsPostureDamage()) {
             return;
         }
 
-        state.current = Math.max(0.0F, state.current - damage);
+        state.current = Math.max(0.0F, state.current - damage / breakResistanceMultiplier(state));
         state.regenDelay = regenDelayTicks();
         if (state.current <= 0.0F) {
             breakPosture(entity, patch, state);
@@ -235,7 +313,7 @@ public final class PostureManager {
     }
 
     private static void breakPosture(LivingEntity entity, LivingEntityPatch<?> patch, State state) {
-        if (state.isLocked()) {
+        if (!canReceivePosture(entity) || !state.acceptsPostureDamage()) {
             return;
         }
 
@@ -243,43 +321,44 @@ public final class PostureManager {
         state.regenDelay = regenDelayTicks();
         stopUsingItem(entity);
 
-        boolean stunned = false;
+        boolean applied = false;
+        boolean active = false;
         if (patch != null && hasNeutralizeAnimation(patch)) {
             try {
-                stunned = patch.applyStun(StunType.NEUTRALIZE, 0.0F);
-            } catch (Throwable ignored) {
+                applied = patch.applyStun(StunType.NEUTRALIZE, 0.0F);
+                active = applied && isActiveNeutralize(patch);
+            } catch (Throwable failure) {
+                LOGGER.warn("EFPI neutralize threw for {} ({}) using patch {}",
+                        entityTypeId(entity), entity.getUUID(), patch.getClass().getName(), failure);
             }
         }
 
-        if (!stunned && patch != null) {
-            try {
-                stunned = patch.applyStun(StunType.LONG, 0.0F);
-            } catch (Throwable ignored) {
+        if (active) {
+            // CE checks the *NEUTRALIZE* animation identity, not arbitrary LONG stuns.
+            if (state.completedBreaks < Integer.MAX_VALUE) {
+                state.completedBreaks++;
             }
-        }
-
-        if (stunned) {
+            state.brokenTicks = 0;
             state.postureState = PostureState.BROKEN;
         } else {
-            // Never leave a zero-posture entity in NORMAL if both stun paths fail.
+            // A transiently rejected stun does not justify removing posture tracking.
+            LOGGER.debug("EFPI neutralize unavailable for {} (applied={}, patch={})",
+                    entityTypeId(entity), applied,
+                    patch == null ? "none" : patch.getClass().getName());
             startRecovering(state);
         }
     }
 
     private static boolean isEligiblePostureEntity(LivingEntity entity, LivingEntityPatch<?> targetPatch) {
-        if (entity == null || entity instanceof Player || targetPatch == null) {
-            return false;
-        }
-        if (PostureServerConfig.isBlacklisted(entityTypeId(entity))) {
-            return false;
-        }
-
-        // Combat Evolution already owns posture for its native humanoid patch.
-        if (targetPatch instanceof CEHumanoidPatch) {
+        if (!canReceivePosture(entity) || entity instanceof Player || targetPatch == null
+                || PostureServerConfig.isBlacklisted(entityTypeId(entity))
+                || targetPatch instanceof CEHumanoidPatch
+                || !hasNeutralizeAnimation(targetPatch)) {
             return false;
         }
 
-        // Do not call CustomExecuteEntity.canBeExecuted here: executor context is unknown.
+        // A CustomExecuteEntity may decide based on the actual executor; that
+        // check is repeated in the client HUD with the local player patch.
         if (targetPatch instanceof CustomExecuteEntity) {
             return true;
         }
@@ -291,10 +370,19 @@ public final class PostureManager {
         }
     }
 
-    private static boolean hasNeutralizeAnimation(LivingEntityPatch<?> patch) {
+    /**
+     * Whether the patch advertises an independent neutralize animation.
+     * Necessary for guard-break executions but not sufficient: applyStun may
+     * still reject the animation, or a mob may immediately replace it.
+     */
+    public static boolean hasNeutralizeAnimation(LivingEntityPatch<?> patch) {
         if (patch == null) {
             return false;
         }
+        // Repair the Epic Fight datapack provider before testing eligibility.
+        // The provider, not a return-value Mixin, is the canonical source read
+        // by applyStun and Combat Evolution.
+        dev.nire9734.epicfightposture.compat.humanoid.MissingHumanoidNeutralize.installIfNeeded(patch);
         try {
             AssetAccessor<? extends StaticAnimation> neutralize = patch.getHitAnimation(StunType.NEUTRALIZE);
             if (neutralize == null || neutralize.isEmpty()) {
@@ -303,6 +391,23 @@ public final class PostureManager {
             AssetAccessor<? extends StaticAnimation> shortHit = patch.getHitAnimation(StunType.SHORT);
             AssetAccessor<? extends StaticAnimation> longHit = patch.getHitAnimation(StunType.LONG);
             return !sameAnimation(neutralize, shortHit) && !sameAnimation(neutralize, longHit);
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    private static boolean isActiveNeutralize(LivingEntityPatch<?> patch) {
+        if (patch == null || !hasNeutralizeAnimation(patch)) {
+            return false;
+        }
+        try {
+            var player = patch.getAnimator().getPlayerFor(null);
+            AssetAccessor<? extends StaticAnimation> neutralize = patch.getHitAnimation(StunType.NEUTRALIZE);
+            // Combat Evolution's isTargetGuardBreak compares these accessor
+            // identities directly. isStunned() is a separate state-spectrum
+            // predicate and need not agree during an animation transition.
+            // Requiring both caused false-negative breaks/recovery.
+            return player != null && player.getRealAnimation() == neutralize;
         } catch (Throwable ignored) {
             return false;
         }
@@ -318,7 +423,10 @@ public final class PostureManager {
             return false;
         }
         try {
-            return Objects.equals(first.registryName(), second.registryName());
+            ResourceLocation firstName = first.registryName();
+            ResourceLocation secondName = second.registryName();
+            // Distinct unregistered accessors may both expose a null name.
+            return firstName != null && firstName.equals(secondName);
         } catch (Throwable ignored) {
             return false;
         }
@@ -423,6 +531,51 @@ public final class PostureManager {
         }
     }
 
+    /** Live, unmultipled max posture used to normalize attack-derived pressure. */
+    private static float calculateBasePosture(LivingEntity entity) {
+        float effective = targetEffectiveHealth(entity);
+        return clamp(EHP_REFERENCE_POSTURE
+                * (float) Math.pow(Math.max(0.01F, effective / EHP_REFERENCE_HEALTH), EHP_EXPONENT),
+                0.1F, MAX_SAFE_POSTURE);
+    }
+
+    /**
+     * EHP classification uses the EntityType's registered default attributes,
+     * not mutable instance base values (which level mods may rewrite).
+     * If no supplier/attribute exists, fall back to the original instance base.
+     */
+    private static float baseEffectiveHealth(LivingEntity entity) {
+        float health = baseAttribute(entity, Attributes.MAX_HEALTH, entity.getMaxHealth());
+        if (health <= 0.0F) {
+            health = EHP_REFERENCE_HEALTH;
+        }
+        float armor = PostureServerConfig.useArmorScaling()
+                ? baseAttribute(entity, Attributes.ARMOR, 0.0F) : 0.0F;
+        float toughness = PostureServerConfig.useArmorScaling()
+                ? baseAttribute(entity, Attributes.ARMOR_TOUGHNESS, 0.0F) : 0.0F;
+        float value = PostureBalance.effectiveHealth(health, armor, toughness, EHP_REFERENCE_DAMAGE);
+        return Float.isFinite(value) && value > 0.0F ? value : EHP_REFERENCE_HEALTH;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static float baseAttribute(LivingEntity entity, Attribute attribute, float fallback) {
+        AttributeInstance instance = entity.getAttribute(attribute);
+        float instanceBase = instance == null ? Float.NaN : (float) instance.getBaseValue();
+        float typeDefault = Float.NaN;
+        try {
+            EntityType<? extends LivingEntity> type = (EntityType<? extends LivingEntity>) entity.getType();
+            if (DefaultAttributes.hasSupplier(type)) {
+                AttributeSupplier defaults = DefaultAttributes.getSupplier(type);
+                if (defaults != null && defaults.hasAttribute(attribute)) {
+                    typeDefault = (float) defaults.getBaseValue(attribute);
+                }
+            }
+        } catch (RuntimeException ignored) {
+            // Non-standard entity registrations must not break parry handling.
+        }
+        return PostureBalance.innateAttributeValue(typeDefault, instanceBase, fallback);
+    }
+
     private static float calculateMaxPosture(LivingEntity entity) {
         boolean useArmor = PostureServerConfig.useArmorScaling();
         float maxHealth = finiteOr(entity.getMaxHealth(), EHP_REFERENCE_HEALTH);
@@ -446,7 +599,7 @@ public final class PostureManager {
         if (maxHealth <= 0.0F) {
             maxHealth = EHP_REFERENCE_HEALTH;
         }
-        float effectiveHealth = effectiveHealth(maxHealth, armor, toughness, EHP_REFERENCE_DAMAGE);
+        float effectiveHealth = PostureBalance.effectiveHealth(maxHealth, armor, toughness, EHP_REFERENCE_DAMAGE);
         if (!Float.isFinite(effectiveHealth) || effectiveHealth <= 0.0F) {
             effectiveHealth = EHP_REFERENCE_HEALTH;
         }
@@ -462,23 +615,14 @@ public final class PostureManager {
         return clamp(Math.max(minimum, scaled), 0.1F, MAX_SAFE_POSTURE);
     }
 
+    /** Terminal health states must not schedule or play a new posture-break animation. */
+    private static boolean canReceivePosture(LivingEntity entity) {
+        return entity != null && PostureDeathSafety.canReceivePosture(
+                entity.isAlive(), entity.getHealth());
+    }
+
     private static ResourceLocation entityTypeId(LivingEntity entity) {
         return BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType());
-    }
-
-    private static float effectiveHealth(float health, float armor, float toughness, float referenceDamage) {
-        float fraction = damageFractionAfterArmor(referenceDamage, armor, toughness);
-        if (fraction <= 1.0E-4F) {
-            fraction = 1.0E-4F;
-        }
-        return health / fraction;
-    }
-
-    private static float damageFractionAfterArmor(float damage, float armor, float toughness) {
-        float divisor = Math.max(0.01F, 2.0F + toughness / 4.0F);
-        float armorPoints = clamp(armor - damage / divisor, armor * 0.2F, 20.0F);
-        float reduction = armorPoints / 25.0F;
-        return clamp(1.0F - reduction, 0.2F, 1.0F);
     }
 
     private static LivingEntityPatch<?> getPatch(LivingEntity entity) {
@@ -502,36 +646,10 @@ public final class PostureManager {
         boolean useArmor = PostureServerConfig.useArmorScaling();
         float armor = useArmor ? finiteOr((float) entity.getAttributeValue(Attributes.ARMOR), 0.0F) : 0.0F;
         float toughness = useArmor ? finiteOr((float) entity.getAttributeValue(Attributes.ARMOR_TOUGHNESS), 0.0F) : 0.0F;
-        float targetEffectiveHealth = effectiveHealth(maxHealth, armor, toughness, EHP_REFERENCE_DAMAGE);
+        float targetEffectiveHealth = PostureBalance.effectiveHealth(maxHealth, armor, toughness, EHP_REFERENCE_DAMAGE);
         return Float.isFinite(targetEffectiveHealth) && targetEffectiveHealth > 0.0F
                 ? targetEffectiveHealth
                 : EHP_REFERENCE_HEALTH;
-    }
-
-    private static float healthPostureDamageMultiplier(LivingEntity entity) {
-        return healthPostureDamageMultiplier(entity, targetEffectiveHealth(entity));
-    }
-
-    private static float healthPostureDamageMultiplier(LivingEntity entity, float targetEffectiveHealth) {
-        float maxHealth = finiteOr(entity.getMaxHealth(), EHP_REFERENCE_HEALTH);
-        if (maxHealth <= 0.0F) {
-            maxHealth = EHP_REFERENCE_HEALTH;
-        }
-        float currentHealth = finiteOr(entity.getHealth(), maxHealth);
-        float healthFraction = clamp(currentHealth / maxHealth, 0.0F, 1.0F);
-        float effectiveHealth = Float.isFinite(targetEffectiveHealth) && targetEffectiveHealth > 0.0F
-                ? targetEffectiveHealth
-                : EHP_REFERENCE_HEALTH;
-
-        return PostureBalance.healthPostureDamageMultiplier(
-                healthFraction,
-                PostureServerConfig.fullHealthPostureDamageMultiplier(),
-                PostureServerConfig.zeroHealthPostureDamageMultiplier(),
-                PostureServerConfig.healthPostureCurveExponent(),
-                effectiveHealth,
-                PostureServerConfig.healthScalingEhpStart(),
-                PostureServerConfig.healthScalingEhpEnd()
-        );
     }
 
     private static float finiteOr(float value, float fallback) {
@@ -545,11 +663,16 @@ public final class PostureManager {
     private PostureManager() {
     }
 
+    private record PendingAttack(float healthBefore, float maxHealth, float impact) {
+    }
+
     private static final class State {
         float max;
         float current;
+        int brokenTicks;
         int regenDelay;
         int recoveryTicksRemaining;
+        int completedBreaks;
         PostureState postureState = PostureState.NORMAL;
 
         boolean inputsInitialized;
@@ -567,6 +690,11 @@ public final class PostureManager {
 
         boolean isLocked() {
             return postureState == PostureState.BROKEN || postureState == PostureState.EXECUTING;
+        }
+
+        /** Recovery must finish before another break can be triggered. */
+        boolean acceptsPostureDamage() {
+            return postureState == PostureState.NORMAL;
         }
 
         boolean isBrokenForHud() {

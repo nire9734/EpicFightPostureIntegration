@@ -51,6 +51,12 @@ public final class SpecialStateGeckoRenderer extends PatchedEntityRenderer<
     private static final Map<HumanoidModel<?>, Map<EntityType<?>, SpecialStateHumanoidRenderer>> HUMANOID_FALLBACKS =
             Collections.synchronizedMap(new WeakHashMap<>());
 
+    static void clearFallbackCache() {
+        synchronized (HUMANOID_FALLBACKS) {
+            HUMANOID_FALLBACKS.clear();
+        }
+    }
+
     private final AssetAccessor<SkinnedMesh> mesh;
     private final HumanoidSkeletonDescriptor skeleton;
     private final EntityRendererProvider.Context context;
@@ -200,7 +206,9 @@ public final class SpecialStateGeckoRenderer extends PatchedEntityRenderer<
             }
 
             try {
-                SkinnedMesh baked = HumanoidModelBaker.VANILLA_TRANSFORMER.transformArmorModel(humanoidModel);
+                SkinnedMesh baked = RuntimeMeshOwnership.callOwned(
+                        () -> HumanoidModelBaker.VANILLA_TRANSFORMER.transformArmorModel(humanoidModel)
+                );
                 if (baked == null) {
                     return null;
                 }

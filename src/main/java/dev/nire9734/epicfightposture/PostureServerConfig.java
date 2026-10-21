@@ -31,18 +31,10 @@ public final class PostureServerConfig {
     private static final ForgeConfigSpec.Builder BUILDER = new ForgeConfigSpec.Builder();
 
     /*
-     * Internal 3.0.0 balance constants. These were previously exposed as config
-     * keys. Keeping the established defaults here preserves the current balance
-     * while presenting only useful high-level controls to users.
+     * 3.0.1 uses observed HP depletion with an internal 0.54
+     * attack coefficient and public multiplier defaulting to 1.0.
      */
-    private static final float BASE_IMPACT_POSTURE_DAMAGE_MULTIPLIER = 0.55F;
-    private static final float ATTACK_DAMAGE_REFERENCE = 8.0F;
-    private static final float ATTACK_DAMAGE_SCALING_EXPONENT = 0.7F;
-    private static final float FULL_HEALTH_POSTURE_DAMAGE_MULTIPLIER = 0.25F;
-    private static final float ZERO_HEALTH_POSTURE_DAMAGE_MULTIPLIER = 1.0F;
-    private static final float HEALTH_POSTURE_CURVE_EXPONENT = 2.0F;
-    private static final float HEALTH_SCALING_EHP_START = 40.0F;
-    private static final float HEALTH_SCALING_EHP_END = 200.0F;
+    private static final float BASE_ATTACK_POSTURE_COEFFICIENT = 0.54F;
     private static final float MINIMUM_POSTURE = 1.0F;
     private static final boolean USE_ARMOR_SCALING = true;
 
@@ -57,7 +49,10 @@ public final class PostureServerConfig {
 
     public static final ForgeConfigSpec.DoubleValue MAXIMUM_POSTURE_MULTIPLIER;
     public static final ForgeConfigSpec.DoubleValue POSTURE_DAMAGE_MULTIPLIER;
-    public static final ForgeConfigSpec.DoubleValue PARRY_PERCENT;
+    public static final ForgeConfigSpec.DoubleValue PARRY_BASE_MAX_PERCENT;
+    public static final ForgeConfigSpec.DoubleValue PARRY_BASE_MIN_PERCENT;
+    public static final ForgeConfigSpec.DoubleValue POSTURE_BREAK_RESISTANCE_STEP;
+    public static final ForgeConfigSpec.DoubleValue POSTURE_BREAK_RESISTANCE_MAX;
     public static final ForgeConfigSpec.DoubleValue REGEN_DELAY_SECONDS;
     public static final ForgeConfigSpec.DoubleValue REGEN_RATE_PERCENT;
     public static final ForgeConfigSpec.ConfigValue<List<? extends String>> POSTURE_MULTIPLIERS;
@@ -96,26 +91,48 @@ public final class PostureServerConfig {
                 .defineInRange("maximum_posture_multiplier", 1.0D, 0.1D, 100.0D);
         POSTURE_DAMAGE_MULTIPLIER = BUILDER
                 .comment(
-                        "Multiplier for Posture damage dealt by attacks.",
-                        "1.0 = EFPI default balance, 0.5 = half, 2.0 = double.",
+                        "Multiplier for attack Posture damage from final HP lost.",
+                        "Impact gives a bounded bonus; 1.0 uses the internal 0.54 attack coefficient.",
                         "Default: 1.0 | Range: 0.0-100.0"
                 )
                 .defineInRange("posture_damage_multiplier", 1.0D, 0.0D, 100.0D);
-        PARRY_PERCENT = BUILDER
+        PARRY_BASE_MAX_PERCENT = BUILDER
                 .comment(
-                        "Posture damage dealt by a parry, as a percentage of maximum Posture.",
-                        "Default: 6.0 | Range: 0.0-100.0"
+                        "Maximum base parry Posture damage (% of maximum) for innate EHP <= 20.",
+                        "Innate EHP below 20 is clamped to 20 for parry scaling.",
+                        "Default: 22.0 | Range: 0.0-100.0"
                 )
-                .defineInRange("parry_percent", 6.0D, 0.0D, 100.0D);
+                .defineInRange("parry_base_max_percent", 22.0D, 0.0D, 100.0D);
+        PARRY_BASE_MIN_PERCENT = BUILDER
+                .comment(
+                        "Minimum base parry Posture damage (%) as innate EHP approaches infinity.",
+                        "Independent of current HP; asymptote as innate EHP grows.",
+                        "Default: 8.0 | Range: 0.0-100.0"
+                )
+                .defineInRange("parry_base_min_percent", 8.0D, 0.0D, 100.0D);
+        POSTURE_BREAK_RESISTANCE_STEP = BUILDER
+                .comment(
+                        "Extra required Posture damage multiplier after each successful break.",
+                        "0.0 disables scaling; 0.5 means 1x, 1.5x, 2x on successive breaks.",
+                        "Default: 0.5 | Range: 0.0-100.0"
+                )
+                .defineInRange("posture_break_resistance_step", 0.5D, 0.0D, 100.0D);
+        POSTURE_BREAK_RESISTANCE_MAX = BUILDER
+                .comment(
+                        "Cap on required Posture damage multiplier after repeated breaks.",
+                        "Applies to direct attacks and parries; first break always needs 1x.",
+                        "Default: 2.0 | Range: 1.0-100.0"
+                )
+                .defineInRange("posture_break_resistance_max", 2.0D, 1.0D, 100.0D);
         BUILDER.pop();
 
         BUILDER.push("regeneration");
         REGEN_DELAY_SECONDS = BUILDER
                 .comment(
                         "Seconds before Posture regeneration starts.",
-                        "Default: 10.0 | Range: 0.0-60.0"
+                        "Default: 15.0 | Range: 0.0-60.0"
                 )
-                .defineInRange("delay_seconds", 10.0D, 0.0D, 60.0D);
+                .defineInRange("delay_seconds", 15.0D, 0.0D, 60.0D);
         REGEN_RATE_PERCENT = BUILDER
                 .comment(
                         "Percentage of maximum Posture regenerated per second.",
@@ -181,45 +198,29 @@ public final class PostureServerConfig {
         return override != null ? override : MAXIMUM_POSTURE_MULTIPLIER.get().floatValue();
     }
 
-    /**
-     * Effective Impact-derived posture multiplier. The public config is a simple
-     * scale around the established 3.0.0 base coefficient of 0.55.
-     */
-    public static float postureDamageMultiplier() {
-        return BASE_IMPACT_POSTURE_DAMAGE_MULTIPLIER * POSTURE_DAMAGE_MULTIPLIER.get().floatValue();
+    /** Linear observed-HP-loss coefficient with configurable attack scaling. */
+    public static float attackPostureCoefficient() {
+        return BASE_ATTACK_POSTURE_COEFFICIENT * POSTURE_DAMAGE_MULTIPLIER.get().floatValue();
     }
 
-    public static float attackDamageReference() {
-        return ATTACK_DAMAGE_REFERENCE;
+    /** Maximum base parry fraction, for innate EHP <= 20 (independent of current HP). */
+    public static float parryBaseMaxFraction() {
+        return PARRY_BASE_MAX_PERCENT.get().floatValue() / 100.0F;
     }
 
-    public static float attackDamageScalingExponent() {
-        return ATTACK_DAMAGE_SCALING_EXPONENT;
+    /** Minimum base parry fraction, as innate EHP approaches infinity (independent of current HP). */
+    public static float parryBaseMinFraction() {
+        return PARRY_BASE_MIN_PERCENT.get().floatValue() / 100.0F;
     }
 
-    /** Base parry posture damage as a fraction of target maximum posture. */
-    public static float parryPostureFraction() {
-        return PARRY_PERCENT.get().floatValue() / 100.0F;
+    /** Added resistance per completed posture break, e.g. 1.0 means +100% each time. */
+    public static float postureBreakResistanceStep() {
+        return POSTURE_BREAK_RESISTANCE_STEP.get().floatValue();
     }
 
-    public static float fullHealthPostureDamageMultiplier() {
-        return FULL_HEALTH_POSTURE_DAMAGE_MULTIPLIER;
-    }
-
-    public static float zeroHealthPostureDamageMultiplier() {
-        return ZERO_HEALTH_POSTURE_DAMAGE_MULTIPLIER;
-    }
-
-    public static float healthPostureCurveExponent() {
-        return HEALTH_POSTURE_CURVE_EXPONENT;
-    }
-
-    public static float healthScalingEhpStart() {
-        return HEALTH_SCALING_EHP_START;
-    }
-
-    public static float healthScalingEhpEnd() {
-        return HEALTH_SCALING_EHP_END;
+    /** Upper cap for the required posture-damage multiplier. */
+    public static float postureBreakResistanceMax() {
+        return POSTURE_BREAK_RESISTANCE_MAX.get().floatValue();
     }
 
     /** Server-side delay before ordinary posture regeneration begins. */

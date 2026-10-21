@@ -42,7 +42,6 @@ import yesman.epicfight.api.utils.math.Vec3f;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
@@ -75,12 +74,21 @@ import java.util.function.Supplier;
 public final class GeckoArmorSkinnedMeshBridge {
     private static final float EPSILON = 1.0E-6F;
 
+    /** Limit transient visibility and deformation variants for each baked model. */
+    private static final int MAX_MESH_VARIANTS_PER_MODEL = 128;
     private static final MeshPartDefinition PART = new RuntimeArmorPart("gecko_armor");
     private static final ThreadLocal<Frame> ACTIVE = new ThreadLocal<>();
 
     /** Weak baked-model keys naturally invalidate after Gecko resource reloads. */
     private static final Map<BakedGeoModel, Map<MeshCacheKey, BakedArmor>> CACHE =
             Collections.synchronizedMap(new WeakHashMap<>());
+
+    /** Invalidate meshes when the source renderer/model registry is rebuilt. */
+    public static void clearCache() {
+        synchronized (CACHE) {
+            CACHE.clear();
+        }
+    }
 
     public static FrameScope openFrame(
             LivingEntity entity,
@@ -354,7 +362,8 @@ public final class GeckoArmorSkinnedMeshBridge {
             Vector3f fitScale) {
         synchronized (CACHE) {
             Map<MeshCacheKey, BakedArmor> meshes =
-                    CACHE.computeIfAbsent(model, ignored -> new HashMap<>());
+                    CACHE.computeIfAbsent(
+                            model, ignored -> new BoundedLruCache<>(MAX_MESH_VARIANTS_PER_MODEL));
             BakedArmor cached = meshes.get(key);
             if (cached != null) {
                 return cached;

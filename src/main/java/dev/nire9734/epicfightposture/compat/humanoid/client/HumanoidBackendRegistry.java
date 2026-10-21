@@ -194,12 +194,12 @@ public final class HumanoidBackendRegistry {
                 continue;
             }
 
-            try {
-                backend.addPatchedRenderer(event, prepared);
-            } catch (Throwable throwable) {
+            if (!RendererRegistrationGuard.install(
+                    () -> backend.addPatchedRenderer(event, prepared),
+                    () -> VanillaHumanoidCompat.rejectRuntimeCompatibility(entityType),
+                    throwable -> LOGGER.debug("EFPI backend {} could not install special renderer for {}",
+                            prepared.backendId(), entityId, throwable))) {
                 rendererInstallationFailures++;
-                LOGGER.debug("EFPI backend {} could not install special renderer for {}",
-                        prepared.backendId(), entityId, throwable);
                 continue;
             }
 

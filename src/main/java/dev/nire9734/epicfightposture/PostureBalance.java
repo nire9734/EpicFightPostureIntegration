@@ -2,38 +2,42 @@ package dev.nire9734.epicfightposture;
 
 /** Pure balance math shared by the server posture runtime and unit tests. */
 final class PostureBalance {
-    private static final float DEFAULT_ATTACK_DAMAGE_REFERENCE = 8.0F;
-    private static final float DEFAULT_ATTACK_DAMAGE_EXPONENT = 0.7F;
+    private static final float DEFAULT_PARRY_EHP_EXPONENT = 0.7F;
     private static final float DEFAULT_EHP_REFERENCE = 20.0F;
-    private static final float DEFAULT_HEALTH_SCALING_EHP_START = 40.0F;
-    private static final float DEFAULT_HEALTH_SCALING_EHP_END = 200.0F;
-    private static final float MIN_EHP_RATIO = 0.01F;
-    private static final float MAX_ATTACK_DAMAGE_SCALE = 100.0F;
 
+    /**
+     * Two anchored parry fractions: maxBaseFraction at innate EHP <= reference
+     * (20), and minBaseFraction as EHP tends to infinity. Innate EHP below 20
+     * is clamped, so parry pressure cannot exceed the configured maximum base endpoint
+     * solely because a mob has less than 20 innate EHP.
+     *
+     * The fraction is independent of the target's current HP.
+     */
     static float parryPostureFraction(
-            float baseMaxPostureFraction,
+            float maxBaseFraction,
+            float minBaseFraction,
             float effectiveHealth,
             float referenceEffectiveHealth,
             float scalingExponent) {
-        float baseFraction = sanitizeFraction(baseMaxPostureFraction);
+        float maxBase = sanitizeFraction(maxBaseFraction);
+        float minBase = sanitizeFraction(minBaseFraction);
         float reference = sanitizePositive(referenceEffectiveHealth, DEFAULT_EHP_REFERENCE);
         float ehp = sanitizePositive(effectiveHealth, reference);
         float exponent = Float.isFinite(scalingExponent)
                 ? clamp(scalingExponent, 0.0F, 4.0F)
-                : DEFAULT_ATTACK_DAMAGE_EXPONENT;
-
-        float ehpRatio = Math.max(MIN_EHP_RATIO, ehp / reference);
-        double lowEhpBonus = Math.pow(1.0D / ehpRatio, exponent);
-        double scaledFraction = baseFraction * (1.0D + lowEhpBonus);
-        if (!Double.isFinite(scaledFraction)) {
-            return baseFraction;
-        }
-        return (float) Math.max(0.0D, scaledFraction);
+                : DEFAULT_PARRY_EHP_EXPONENT;
+        double referenceRatio = Math.min(1.0D, (double) reference / Math.max((double) ehp, reference));
+        double blend = Math.pow(referenceRatio, exponent);
+        double fraction = minBase + (maxBase - minBase) * blend;
+        return Double.isFinite(fraction)
+                ? (float) clamp((float) fraction, 0.0F, 1.0F)
+                : maxBase;
     }
 
     static float parryDamage(
             float maxPosture,
-            float baseMaxPostureFraction,
+            float maxBaseFraction,
+            float minBaseFraction,
             float effectiveHealth,
             float referenceEffectiveHealth,
             float scalingExponent) {
@@ -41,87 +45,95 @@ final class PostureBalance {
             return 0.0F;
         }
         return maxPosture * parryPostureFraction(
-                baseMaxPostureFraction,
+                maxBaseFraction,
+                minBaseFraction,
                 effectiveHealth,
                 referenceEffectiveHealth,
                 scalingExponent
         );
     }
 
-    static float attackDamageScale(float damageAmount, float referenceDamage, float exponent) {
-        if (!Float.isFinite(damageAmount) || damageAmount <= 0.0F) {
+    /**
+     * Observe only real positive HP reductions; a canceled or fully capped
+     * damage event may have had a positive amount before the final listeners.
+     */
+    static float actualHealthLoss(float before, float after) {
+        if (!Float.isFinite(before) || !Float.isFinite(after)) {
             return 0.0F;
         }
-        float reference = sanitizePositive(referenceDamage, DEFAULT_ATTACK_DAMAGE_REFERENCE);
-        float scalingExponent = Float.isFinite(exponent)
-                ? clamp(exponent, 0.0F, 4.0F)
-                : DEFAULT_ATTACK_DAMAGE_EXPONENT;
-        double scaled = Math.pow(damageAmount / reference, scalingExponent);
-        if (!Double.isFinite(scaled)) {
-            return MAX_ATTACK_DAMAGE_SCALE;
-        }
-        return clamp((float) scaled, 0.0F, MAX_ATTACK_DAMAGE_SCALE);
+        return Math.max(0.0F, before - after);
     }
 
-    static float healthPostureDamageMultiplier(
-            float healthFraction,
-            float fullHealthMultiplier,
-            float zeroHealthMultiplier,
-            float curveExponent) {
-        if (!Float.isFinite(healthFraction)) {
-            healthFraction = 1.0F;
+    /** Bounded, secondary weapon-weight bonus for nonzero Epic Fight Impact. */
+    static float impactEfficiency(float impact) {
+        if (!Float.isFinite(impact) || impact <= 0.0F) {
+            return 0.0F;
         }
-        float health = clamp(healthFraction, 0.0F, 1.0F);
-        float full = sanitizeNonNegative(fullHealthMultiplier, 1.0F);
-        float zero = sanitizeNonNegative(zeroHealthMultiplier, full);
-        float exponent = sanitizePositive(curveExponent, 1.0F);
-        float depleted = 1.0F - health;
-        float progress = (float) Math.pow(depleted, exponent);
-        return full + (zero - full) * progress;
+        return clamp((float) (0.7D + 0.3D * Math.sqrt(impact / 3.0D)), 0.7F, 1.5F);
     }
 
     /**
-     * Blends the health-based finisher curve in according to target effective health.
-     * Low-EHP mobs use a neutral x1.0 multiplier; high-EHP enemies use the full configured curve.
+     * Final observed HP loss drives direct-hit pressure linearly. The internal
+     * default coefficient is 0.54: at Impact 3, removing the entire HP bar
+     * removes 54% of unmultiplied base posture, before break resistance.
+     * A larger maximum-posture multiplier makes attacks relatively weaker.
      */
-    static float healthPostureDamageMultiplier(
-            float healthFraction,
-            float fullHealthMultiplier,
-            float zeroHealthMultiplier,
-            float curveExponent,
-            float effectiveHealth,
-            float scalingEhpStart,
-            float scalingEhpEnd) {
-        float bossCurve = healthPostureDamageMultiplier(
-                healthFraction,
-                fullHealthMultiplier,
-                zeroHealthMultiplier,
-                curveExponent
-        );
-        float strength = healthScalingStrength(effectiveHealth, scalingEhpStart, scalingEhpEnd);
-        return interpolate(1.0F, bossCurve, strength);
+    static float attackPostureDamage(float baseMaxPosture, float maxHealth,
+            float healthBefore, float finalDamage, float impact, float coefficient) {
+        if (!Float.isFinite(baseMaxPosture) || baseMaxPosture <= 0.0F
+                || !Float.isFinite(maxHealth) || maxHealth <= 0.0F
+                || !Float.isFinite(healthBefore) || healthBefore <= 0.0F
+                || !Float.isFinite(finalDamage) || finalDamage <= 0.0F
+                || !Float.isFinite(coefficient) || coefficient <= 0.0F) {
+            return 0.0F;
+        }
+        float impactScale = impactEfficiency(impact);
+        if (impactScale <= 0.0F) {
+            return 0.0F;
+        }
+
+        double before = clamp(healthBefore / maxHealth, 0.0F, 1.0F);
+        double after = clamp((healthBefore - finalDamage) / maxHealth, 0.0F, 1.0F);
+        if (after >= before) {
+            return 0.0F;
+        }
+        double posture = baseMaxPosture * coefficient * impactScale * (before - after);
+        return Double.isFinite(posture) && posture > 0.0D
+                ? (float) Math.min(posture, 1_000_000_000.0D) : 0.0F;
     }
 
-    static float healthScalingStrength(float effectiveHealth, float scalingEhpStart, float scalingEhpEnd) {
-        float ehp = Float.isFinite(effectiveHealth) ? Math.max(0.0F, effectiveHealth) : 0.0F;
-        float start = Float.isFinite(scalingEhpStart)
-                ? Math.max(0.0F, scalingEhpStart)
-                : DEFAULT_HEALTH_SCALING_EHP_START;
-        float end = Float.isFinite(scalingEhpEnd)
-                ? Math.max(0.0F, scalingEhpEnd)
-                : DEFAULT_HEALTH_SCALING_EHP_END;
-
-        if (end < start) {
-            float swap = start;
-            start = end;
-            end = swap;
+    /** Prefer an EntityType's registered baseline over a mutable instance base. */
+    static float innateAttributeValue(float typeDefault, float instanceBase, float fallback) {
+        if (Float.isFinite(typeDefault)) {
+            return typeDefault;
         }
-        if (Math.abs(end - start) <= 1.0E-4F) {
-            return ehp >= end ? 1.0F : 0.0F;
+        if (Float.isFinite(instanceBase)) {
+            return instanceBase;
         }
+        return fallback;
+    }
 
-        float t = clamp((ehp - start) / (end - start), 0.0F, 1.0F);
-        return t * t * (3.0F - 2.0F * t);
+    /** Reference-hit EHP shared by runtime posture calculations and unit tests. */
+    static float effectiveHealth(float health, float armor, float toughness, float referenceDamage) {
+        float divisor = Math.max(0.01F, 2.0F + toughness / 4.0F);
+        float armorPoints = clamp(armor - referenceDamage / divisor, armor * 0.2F, 20.0F);
+        float receivedFraction = clamp(1.0F - armorPoints / 25.0F, 0.2F, 1.0F);
+        return health / Math.max(receivedFraction, 1.0E-4F);
+    }
+
+    /**
+     * Required posture-damage multiplier after successful breaks.
+     * New defaults: first 1x, second 1.5x, third and later 2x.
+     * Called only on attack/parry, never every tick.
+     */
+    static float breakResistanceMultiplier(int completedBreaks, float step, float maximum) {
+        if (completedBreaks <= 0) {
+            return 1.0F;
+        }
+        float safeStep = Float.isFinite(step) ? Math.max(0.0F, step) : 0.0F;
+        float safeMaximum = Float.isFinite(maximum) ? Math.max(1.0F, maximum) : 1.0F;
+        double increased = 1.0D + (double) completedBreaks * safeStep;
+        return (float) Math.min((double) safeMaximum, increased);
     }
 
     static int regenDelayTicks(float delaySeconds) {
@@ -135,16 +147,8 @@ final class PostureBalance {
         return Float.isFinite(value) ? clamp(value, 0.0F, 1.0F) : 0.0F;
     }
 
-    private static float sanitizeNonNegative(float value, float fallback) {
-        return Float.isFinite(value) ? Math.max(0.0F, value) : fallback;
-    }
-
     private static float sanitizePositive(float value, float fallback) {
         return Float.isFinite(value) && value > 0.0F ? value : fallback;
-    }
-
-    private static float interpolate(float start, float end, float progress) {
-        return start + (end - start) * clamp(progress, 0.0F, 1.0F);
     }
 
     private static float clamp(float value, float min, float max) {

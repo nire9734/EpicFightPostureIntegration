@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - '3.0.1'
       - dev/vanilla-humanoid-ef-special-render
       - dev/spider-generalized-compat
       - dev/humanoid-retargeting
@@ -19,10 +20,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Java 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
@@ -35,8 +36,25 @@ jobs:
         run: ./gradlew clean build --stacktrace
 
       - name: Upload JAR
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: epicfight-posture-integration
           path: build/libs/*.jar
           if-no-files-found: error
+
+  wrapper-smoke-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Verify Windows Gradle bootstrap
+        shell: cmd
+        run: gradlew.bat --version
