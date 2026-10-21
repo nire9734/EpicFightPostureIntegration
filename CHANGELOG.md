@@ -1,6 +1,6 @@
 # Changelog
 
-## 3.0.1 (unreleased)
+## 3.0.1
 
 Posture balance, execution compatibility and stability update relative to the **3.0.0 release**.
 
@@ -31,7 +31,6 @@ Posture balance, execution compatibility and stability update relative to the **
 - Keep the existing `server.toml` and renderer-discovery cache. Network protocol `3`, cache schema `2` and configuration paths are unchanged.
 - The old `posture.parry_percent` value is **not migrated** to the new 22% / 8% parry settings. Review customized attack posture multipliers because the underlying formula changed.
 - New repeated-break settings default to `0.5` and `2.0`. The default regeneration delay is `15.0`, but a saved 3.0.0 value of `10.0` remains until the user edits or regenerates the configuration.
-- Version 3.0.1 is still **unreleased**.
 
 ## 3.0.0
 

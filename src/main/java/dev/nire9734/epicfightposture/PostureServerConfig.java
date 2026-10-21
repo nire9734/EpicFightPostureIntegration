@@ -31,7 +31,7 @@ public final class PostureServerConfig {
     private static final ForgeConfigSpec.Builder BUILDER = new ForgeConfigSpec.Builder();
 
     /*
-     * Parry-focus balance uses observed HP depletion with an internal 0.54
+     * 3.0.1 uses observed HP depletion with an internal 0.54
      * attack coefficient and public multiplier defaulting to 1.0.
      */
     private static final float BASE_ATTACK_POSTURE_COEFFICIENT = 0.54F;
