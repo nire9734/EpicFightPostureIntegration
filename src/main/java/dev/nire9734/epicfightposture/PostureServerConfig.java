@@ -85,42 +85,47 @@ public final class PostureServerConfig {
         BUILDER.push("posture");
         MAXIMUM_POSTURE_MULTIPLIER = BUILDER
                 .comment(
-                        "Multiplier for the maximum Posture of all entities.",
+                        "Changes how much maximum Posture mobs have.",
+                        "1.0 = normal, 0.5 = half, 2.0 = double. Higher values make attack-based guard breaks harder.",
                         "Default: 1.0 | Range: 0.1-100.0"
                 )
                 .defineInRange("maximum_posture_multiplier", 1.0D, 0.1D, 100.0D);
         POSTURE_DAMAGE_MULTIPLIER = BUILDER
                 .comment(
-                        "Multiplier for attack Posture damage from final HP lost.",
-                        "Impact gives a bounded bonus; 1.0 uses the internal 0.54 attack coefficient.",
+                        "Changes how much Posture damage attacks deal (not parries).",
+                        "0.0 = no attack Posture damage, 0.5 = half, 1.0 = normal, 2.0 = double.",
                         "Default: 1.0 | Range: 0.0-100.0"
                 )
                 .defineInRange("posture_damage_multiplier", 1.0D, 0.0D, 100.0D);
         PARRY_BASE_MAX_PERCENT = BUILDER
                 .comment(
-                        "Maximum base parry Posture damage (% of maximum) for innate EHP <= 20.",
-                        "Innate EHP below 20 is clamped to 20 for parry scaling.",
+                        "Posture damage from parries against mobs with low base health and armor.",
+                        "22.0 = up to 22% of maximum Posture per parry, before repeated-break resistance.",
+                        "The game uses each mob type's original stats, not its current HP or level bonuses.",
                         "Default: 22.0 | Range: 0.0-100.0"
                 )
                 .defineInRange("parry_base_max_percent", 22.0D, 0.0D, 100.0D);
         PARRY_BASE_MIN_PERCENT = BUILDER
                 .comment(
-                        "Minimum base parry Posture damage (%) as innate EHP approaches infinity.",
-                        "Independent of current HP; asymptote as innate EHP grows.",
+                        "Posture damage from parries against mobs with high base health and armor.",
+                        "8.0 = damage approaches 8% of maximum Posture per parry for very tough mobs.",
+                        "Actual parry damage varies between these two settings, before repeated-break resistance.",
                         "Default: 8.0 | Range: 0.0-100.0"
                 )
                 .defineInRange("parry_base_min_percent", 8.0D, 0.0D, 100.0D);
         POSTURE_BREAK_RESISTANCE_STEP = BUILDER
                 .comment(
-                        "Extra required Posture damage multiplier after each successful break.",
-                        "0.0 disables scaling; 0.5 means 1x, 1.5x, 2x on successive breaks.",
+                        "How much harder it becomes to break a mob's Posture after each successful guard break.",
+                        "0.5 = normal damage before the first break, then 1.5x and 2x resistance.",
+                        "0.0 = no increase. Higher values make repeated guard breaks harder.",
                         "Default: 0.5 | Range: 0.0-100.0"
                 )
                 .defineInRange("posture_break_resistance_step", 0.5D, 0.0D, 100.0D);
         POSTURE_BREAK_RESISTANCE_MAX = BUILDER
                 .comment(
-                        "Cap on required Posture damage multiplier after repeated breaks.",
-                        "Applies to direct attacks and parries; first break always needs 1x.",
+                        "Maximum resistance a mob can build up from repeated guard breaks.",
+                        "2.0 = up to twice as much Posture damage is needed for another break.",
+                        "This resistance reduces Posture damage from both attacks and parries.",
                         "Default: 2.0 | Range: 1.0-100.0"
                 )
                 .defineInRange("posture_break_resistance_max", 2.0D, 1.0D, 100.0D);
@@ -129,13 +134,15 @@ public final class PostureServerConfig {
         BUILDER.push("regeneration");
         REGEN_DELAY_SECONDS = BUILDER
                 .comment(
-                        "Seconds before Posture regeneration starts.",
+                        "Seconds a mob must go without taking Posture damage before regeneration starts.",
+                        "Does not affect the separate 3-second recovery after a guard break.",
                         "Default: 15.0 | Range: 0.0-60.0"
                 )
                 .defineInRange("delay_seconds", 15.0D, 0.0D, 60.0D);
         REGEN_RATE_PERCENT = BUILDER
                 .comment(
-                        "Percentage of maximum Posture regenerated per second.",
+                        "How much maximum Posture a mob regenerates each second after the delay.",
+                        "2.0 = 2% per second. 0.0 disables normal regeneration (not guard-break recovery).",
                         "Default: 2.0 | Range: 0.0-100.0"
                 )
                 .defineInRange("percent_per_second", 2.0D, 0.0D, 100.0D);
@@ -144,15 +151,16 @@ public final class PostureServerConfig {
         BUILDER.push("entities");
         POSTURE_MULTIPLIERS = BUILDER
                 .comment(
-                        "Per-entity maximum Posture multipliers.",
-                        "Overrides maximum_posture_multiplier for the specified entity.",
+                        "Override maximum Posture for specific mob types.",
+                        "Format: [\"modid:mob_id=multiplier\"]. Replaces the global setting for that mob.",
                         "Default: [] | Multiplier range: 0.01-100.0",
-                        "Example: [\"cataclysm:ignis=0.25\"]"
+                        "Example: [\"cataclysm:ignis=0.25\"] (Ignis has 25% of normal maximum Posture)"
                 )
                 .defineListAllowEmpty("posture_multipliers", List.of(), value -> value instanceof String);
         ENTITY_BLACKLIST = BUILDER
                 .comment(
-                        "Entities completely excluded from EFPI.",
+                        "Mobs excluded from this mod's Posture system and Posture bar.",
+                        "Does not remove existing Epic Fight patches or change the mob's normal behavior.",
                         "Default: []",
                         "Example: [\"minecraft:zombie\"]"
                 )
@@ -162,21 +170,25 @@ public final class PostureServerConfig {
         BUILDER.push("compatibility");
         AUTOMATIC_COMPATIBILITY = BUILDER
                 .comment(
-                        "Automatically add EFPI compatibility to supported mobs that do not already have an Epic Fight patch.",
-                        "false = only mobs already patched by Epic Fight or another mod are supported.",
+                        "Automatically add Posture support to compatible mobs without an Epic Fight patch.",
+                        "false = only mobs already supported by Epic Fight or another addon can use Posture.",
                         "Default: true"
                 )
                 .define("automatic_compatibility", true);
         MOD_ALLOWLIST = BUILDER
                 .comment(
-                        "If non-empty, automatic compatibility is limited to these mod IDs.",
+                        "Only automatically add Posture support to mobs from these mods.",
+                        "[] = allow all mods. Does not restrict mobs with existing Epic Fight patches.",
+                        "Vanilla Minecraft mobs are not restricted by this list.",
                         "Default: []",
                         "Example: [\"cataclysm\", \"irons_spellbooks\"]"
                 )
                 .defineListAllowEmpty("mod_allowlist", List.of(), value -> value instanceof String);
         MOD_DENYLIST = BUILDER
                 .comment(
-                        "Mod IDs excluded from automatic compatibility. Denylist takes priority over allowlist.",
+                        "Do not automatically add Posture support to mobs from these mods.",
+                        "Overrides mod_allowlist. Existing Epic Fight patches are not disabled.",
+                        "Vanilla Minecraft mobs are not restricted by this list.",
                         "Default: []",
                         "Example: [\"some_mod\"]"
                 )

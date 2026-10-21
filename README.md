@@ -279,7 +279,13 @@ config/epicfight_posture_integration/cache/renderer-discovery.json
 
 The cache uses schema version `2`. It is generated state, not a user configuration file. A trusted operator client reports renderer compatibility; when pending discovery data changes, restart the server to promote it to active data.
 
-## Upgrading from 3.0.0
+## Updating from 3.0.1 to 3.0.2
+
+3.0.2 improves the comments in newly generated `config/epicfight_posture_integration/server.toml` so each setting is easier to understand. **All configuration keys, defaults and gameplay behavior are unchanged.** Replace the 3.0.1 JAR with the 3.0.2 JAR on client and server.
+
+Forge may keep existing configuration comments unchanged when upgrading. To get the clearer comments, back up your `server.toml`, then let Forge regenerate it and reapply any customized settings. Do not delete your configuration without saving those values first.
+
+## Upgrading from 3.0.0 to 3.0.1
 
 3.0.1 updates the **3.0.0 release on `main`**. The release incorporates the posture balance, execution compatibility and rendering fixes described in the [changelog](CHANGELOG.md).
 
