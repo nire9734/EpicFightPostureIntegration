@@ -74,8 +74,8 @@ final class PostureBalance {
 
     /**
      * Final observed HP loss drives direct-hit pressure linearly. The internal
-     * default coefficient is 0.30: at Impact 3, removing the entire HP bar
-     * removes only 30% of unmultiplied base posture, before break resistance.
+     * default coefficient is 0.54: at Impact 3, removing the entire HP bar
+     * removes 54% of unmultiplied base posture, before break resistance.
      * A larger maximum-posture multiplier makes attacks relatively weaker.
      */
     static float attackPostureDamage(float baseMaxPosture, float maxHealth,

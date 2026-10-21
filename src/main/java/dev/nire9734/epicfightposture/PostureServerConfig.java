@@ -31,10 +31,10 @@ public final class PostureServerConfig {
     private static final ForgeConfigSpec.Builder BUILDER = new ForgeConfigSpec.Builder();
 
     /*
-     * 3.0.1 normalizes attack posture to actual HP depletion. 2.1 is the
-     * internal default coefficient; the public multiplier defaults to 1.0.
+     * Parry-focus balance uses observed HP depletion with an internal 0.54
+     * attack coefficient and public multiplier defaulting to 1.0.
      */
-    private static final float BASE_ATTACK_POSTURE_COEFFICIENT = 0.30F;
+    private static final float BASE_ATTACK_POSTURE_COEFFICIENT = 0.54F;
     private static final float MINIMUM_POSTURE = 1.0F;
     private static final boolean USE_ARMOR_SCALING = true;
 
@@ -92,7 +92,7 @@ public final class PostureServerConfig {
         POSTURE_DAMAGE_MULTIPLIER = BUILDER
                 .comment(
                         "Multiplier for attack Posture damage from final HP lost.",
-                        "Impact gives a bounded bonus; 1.0 uses the internal 0.30 attack coefficient.",
+                        "Impact gives a bounded bonus; 1.0 uses the internal 0.54 attack coefficient.",
                         "Default: 1.0 | Range: 0.0-100.0"
                 )
                 .defineInRange("posture_damage_multiplier", 1.0D, 0.0D, 100.0D);
@@ -100,16 +100,16 @@ public final class PostureServerConfig {
                 .comment(
                         "Maximum base parry Posture damage (% of maximum) for innate EHP <= 20.",
                         "Innate EHP below 20 is clamped to 20 for parry scaling.",
-                        "Default: 18.0 | Range: 0.0-100.0"
+                        "Default: 22.0 | Range: 0.0-100.0"
                 )
-                .defineInRange("parry_base_max_percent", 18.0D, 0.0D, 100.0D);
+                .defineInRange("parry_base_max_percent", 22.0D, 0.0D, 100.0D);
         PARRY_BASE_MIN_PERCENT = BUILDER
                 .comment(
                         "Minimum base parry Posture damage (%) as innate EHP approaches infinity.",
                         "Independent of current HP; asymptote as innate EHP grows.",
-                        "Default: 6.0 | Range: 0.0-100.0"
+                        "Default: 8.0 | Range: 0.0-100.0"
                 )
-                .defineInRange("parry_base_min_percent", 6.0D, 0.0D, 100.0D);
+                .defineInRange("parry_base_min_percent", 8.0D, 0.0D, 100.0D);
         POSTURE_BREAK_RESISTANCE_STEP = BUILDER
                 .comment(
                         "Extra required Posture damage multiplier after each successful break.",
@@ -130,9 +130,9 @@ public final class PostureServerConfig {
         REGEN_DELAY_SECONDS = BUILDER
                 .comment(
                         "Seconds before Posture regeneration starts.",
-                        "Default: 10.0 | Range: 0.0-60.0"
+                        "Default: 15.0 | Range: 0.0-60.0"
                 )
-                .defineInRange("delay_seconds", 10.0D, 0.0D, 60.0D);
+                .defineInRange("delay_seconds", 15.0D, 0.0D, 60.0D);
         REGEN_RATE_PERCENT = BUILDER
                 .comment(
                         "Percentage of maximum Posture regenerated per second.",

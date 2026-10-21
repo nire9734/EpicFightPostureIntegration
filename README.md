@@ -55,14 +55,14 @@ Direct hits retain the existing `LOWEST` damage-event observation: posture damag
 HP_loss_fraction = clamp(H_before / H_max, 0, 1)
                    - clamp((H_before - L) / H_max, 0, 1)
 Impact_scale = clamp(0.7 + 0.3*sqrt(Impact / 3), 0.7, 1.5)
-raw_attack_posture = P_base * 0.30 * Impact_scale
+raw_attack_posture = P_base * 0.54 * Impact_scale
                      * HP_loss_fraction * posture_damage_multiplier
 attack_posture_damage = raw_attack_posture / R
 ```
 
-Nonpositive or invalid Impact generates zero direct-hit posture. Epic Fight attacks retain their actual Impact; other eligible direct player hits retain the existing bounded Impact estimate. Indirect/environmental hits remain excluded. The existing `posture.posture_damage_multiplier` setting still defaults to `1.0`, but now scales an internal **0.30** coefficient instead of 2.1.
+Nonpositive or invalid Impact generates zero direct-hit posture. Epic Fight attacks retain their actual Impact; other eligible direct player hits retain the existing bounded Impact estimate. Indirect/environmental hits remain excluded. The existing `posture.posture_damage_multiplier` setting still defaults to `1.0`, but now scales an internal **0.54** coefficient instead of 2.1.
 
-At Impact 3, maximum-posture multiplier 1.0 and zero regeneration, reducing an entire HP bar generates only **about 30% maximum posture**, before resistance. Equal fractions of HP loss always yield equal posture pressure regardless of remaining HP. For example, with `P_base = P_max = 3.2`, an Impact-3 hit removing 10 of 20 HP generates `0.48` posture; a second equal hit generates another `0.48`, with no late-HP finisher bonus. Increasing maximum posture by a global/per-entity multiplier still lowers attacks' relative effectiveness.
+At Impact 3, maximum-posture multiplier 1.0 and zero regeneration, reducing an entire HP bar generates only **about 54% maximum posture**, before resistance. Equal fractions of HP loss always yield equal posture pressure regardless of remaining HP. For example, with `P_base = P_max = 3.2`, an Impact-3 hit removing 10 of 20 HP generates `0.864` posture; a second equal hit generates another `0.864`, with no late-HP finisher bonus. Increasing maximum posture by a global/per-entity multiplier still lowers attacks' relative effectiveness.
 
 Unrelated healing between the event and observed HP change can still influence attribution, as in 3.0.1.
 
@@ -75,16 +75,16 @@ E_innate = EHP(EntityType default max health, armor, toughness)
 parry_fraction = [p_min + (p_max - p_min)
                   * (20 / max(20, E_innate))^0.7] / 100
 
-p_max = parry_base_max_percent  (default 18)
-p_min = parry_base_min_percent  (default 6)
+p_max = parry_base_max_percent  (default 22)
+p_min = parry_base_min_percent  (default 8)
 
 raw_parry_posture = P_max * parry_fraction
 parry_posture_damage = raw_parry_posture / R
 ```
 
-The parry percentage is **independent of current HP**. It starts at 18% for innate EHP 20 or below and approaches 6% for very large innate EHP; the 3.0.1 EHP curve and exponent are unchanged. Unlike direct attacks, parries use actual `P_max`, which continues to scale with live HP/armor and maximum-posture multipliers.
+The parry percentage is **independent of current HP**. It starts at 22% for innate EHP 20 or below and approaches 8% for very large innate EHP; the 3.0.1 EHP curve and exponent are unchanged. Unlike direct attacks, parries use actual `P_max`, which continues to scale with live HP/armor and maximum-posture multipliers.
 
-Cataclysm's standard Maledictus default attributes (420 HP, 10 armor, 0 toughness) give innate EHP about **552.63** and parry damage about **7.18%** maximum posture. Provided those EntityType defaults remain the same, a Soulrend Lv.250 Maledictus uses that same percentage. A mod-supplied different EntityType baseline must be validated in game.
+Cataclysm's standard Maledictus default attributes (420 HP, 10 armor, 0 toughness) give innate EHP about **552.63** and parry damage about **9.37%** maximum posture. Provided those EntityType defaults remain the same, a Soulrend Lv.250 Maledictus uses that same percentage. A mod-supplied different EntityType baseline must be validated in game.
 
 ### 4. Repeat-break resistance
 
@@ -97,11 +97,11 @@ R = min(1 + completed_breaks * posture_break_resistance_step,
 
 New defaults: `step=0.5`, `max=2.0`. The first break uses 1x resistance, second 1.5x, third and later 2x; further breaks are possible, not prohibited. Failed or interrupted guard-break animations do not increment the counter. It resets on entity unload and is not persisted to NBT.
 
-With **no regeneration or attack contribution**, the above baseline Maledictus needs approximately **14 parries for the first break**, **21 more for the second**, and **28 more for the third**. These are theoretical counts, not expected actual fight counts: normal attacks assist, while recovery can erase posture pressure if successful parries are spaced too far apart. EFPI does not change CE execution damage.
+With **no regeneration or attack contribution**, the above baseline Maledictus needs approximately **11 parries for the first break**, **17 more for the second**, and **22 more for the third**. These are theoretical counts, not expected actual fight counts: normal attacks assist, while recovery can erase posture pressure if successful parries are spaced too far apart. EFPI does not change CE execution damage.
 
 ### 5. Recovery and regeneration
 
-- **Ordinary regeneration:** after `regeneration.delay_seconds` without posture damage (default `10` seconds), regain `regeneration.percent_per_second` of `P_max` per second (default `2%`); implemented as a fixed amount per server tick.
+- **Ordinary regeneration:** after `regeneration.delay_seconds` without posture damage (default `15` seconds), regain `regeneration.percent_per_second` of `P_max` per second (default `2%`); implemented as a fixed amount per server tick.
 - **After a guard break or execution:** use a distinct **60-tick (3-second) recovery** that fills posture from zero to maximum. No new posture break can occur during the guard-break, execution or recovery states.
 - Execution damage and execution animation selection remain Combat Evolution's responsibility.
 
@@ -184,19 +184,19 @@ Parry-focus branch defaults (for newly generated configurations):
 maximum_posture_multiplier = 1.0
 
 # Multiplier for attack Posture damage from final HP lost.
-# Impact gives a bounded bonus; 1.0 uses the internal 0.30 attack coefficient.
+# Impact gives a bounded bonus; 1.0 uses the internal 0.54 attack coefficient.
 # Default: 1.0 | Range: 0.0-100.0
 posture_damage_multiplier = 1.0
 
 # Maximum base parry Posture damage (% of maximum) for innate EHP <= 20.
 # Innate EHP below 20 is clamped to 20 for parry scaling.
-# Default: 18.0 | Range: 0.0-100.0
-parry_base_max_percent = 18.0
+# Default: 22.0 | Range: 0.0-100.0
+parry_base_max_percent = 22.0
 
 # Minimum base parry Posture damage (%) as innate EHP approaches infinity.
 # The high-EHP asymptote; independent of current HP.
-# Default: 6.0 | Range: 0.0-100.0
-parry_base_min_percent = 6.0
+# Default: 8.0 | Range: 0.0-100.0
+parry_base_min_percent = 8.0
 
 # Extra required posture-damage multiplier per successful break.
 # 0.5 = first break 1x, second 1.5x, third and later 2x.
@@ -212,8 +212,8 @@ posture_break_resistance_max = 2.0
 [regeneration]
 
 # Seconds before Posture regeneration starts.
-# Default: 10.0 | Range: 0.0-60.0
-delay_seconds = 10.0
+# Default: 15.0 | Range: 0.0-60.0
+delay_seconds = 15.0
 
 # Percentage of maximum Posture regenerated per second.
 # Default: 2.0 | Range: 0.0-100.0
@@ -283,9 +283,9 @@ The cache uses schema version `2`. It is generated state, not a user configurati
 
 This experimental branch produces `epicfight-posture-integration-3.0.1-parry-focus-SNAPSHOT.jar`; do not install it alongside the 3.0.1 release JAR. Install exactly one EFPI JAR on client and server. The multiplayer protocol, renderer-discovery cache schema, death-safe animation guards and execution integration remain unchanged.
 
-**Previously saved configuration values are retained.** Existing `server.toml` files may still explicitly contain `posture_break_resistance_step = 1.0` and `posture_break_resistance_max = 3.0` despite the new defaults. To test the new balance, edit them manually to `0.5` and `2.0` or regenerate that configuration after backing it up. The `posture_damage_multiplier` key is still supported, but customized values may need retuning because the internal coefficient changed to 0.30.
+**Previously saved configuration values are retained.** Existing `server.toml` files may still explicitly contain `posture_break_resistance_step = 1.0` and `posture_break_resistance_max = 3.0` despite the new defaults. To test the new balance, edit them manually to `0.5` and `2.0` or regenerate that configuration after backing it up. The `posture_damage_multiplier` key is still supported, but its new internal coefficient is 0.54: set a previously tested value of `1.8` back to `1.0` for equivalent direct-hit posture damage. To use all updated defaults with an existing file, also set parry percentages to `22.0`/`8.0`, regeneration delay to `15.0`, and repeat-break settings to `0.5`/`2.0`. Old explicitly saved values are not overwritten.
 
-For the provided Soulrend Lv.250 live stats (HP 38152.8007, armor 37.3899, toughness 0), the **live EHP** is about 190,764, giving `P_max ~= 1953.33` with the default 1.0 maximum-posture multiplier. This **does not determine innate parry EHP**. If the Mob uses the standard Maledictus EntityType defaults, parry damage remains about 7.18% irrespective of the level; inspect the modpack's actual registered EntityType defaults to verify. Real break frequency depends on fight duration, successful parries, normal-attack damage and 10-second-delayed regeneration.
+For the provided Soulrend Lv.250 live stats (HP 38152.8007, armor 37.3899, toughness 0), the **live EHP** is about 190,764, giving `P_max ~= 1953.33` with the default 1.0 maximum-posture multiplier. This **does not determine innate parry EHP**. If the Mob uses the standard Maledictus EntityType defaults, parry damage remains about 9.37% irrespective of the level; inspect the modpack's actual registered EntityType defaults to verify. Real break frequency depends on fight duration, successful parries, normal-attack damage and 15-second-delayed regeneration.
 
 ## Upgrading from 3.0.0
 

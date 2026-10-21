@@ -4,13 +4,13 @@
 
 This experimental branch is based on `3.0.1` and is **not merged** into `3.0.1` or `main`.
 
-- Changed the internal normal-attack posture coefficient from `2.1` to `0.30`; kept final observed HP-loss measurement, Impact efficiency, per-entity/global maximum-posture multipliers and the `posture_damage_multiplier` configuration key. At Impact 3, a full HP bar is now worth about 30% maximum posture (with default maximum-posture multiplier and zero regeneration).
-- Removed HP-progress finisher scaling from normal attacks and from parries. The parry 18–6% innate-EHP curve and exponent are unchanged, and parries remain proportional to live maximum posture.
+- Normalized the user-tested `posture_damage_multiplier=1.8` with internal coefficient `0.30` to new defaults `posture_damage_multiplier=1.0` with coefficient `0.54`, retaining equivalent attack pressure. Kept final observed HP-loss measurement, Impact efficiency, and maximum-posture multipliers. At Impact 3, a full HP bar is worth about 54% maximum posture (with default maximum-posture multiplier and zero regeneration).
+- Removed HP-progress finisher scaling from normal attacks and from parries. The parry 22–8% innate-EHP defaults retain the same curve and exponent, and parries remain proportional to live maximum posture.
 - Prefer EntityType registered default attributes for innate parry EHP to resist mutable level-scaled instance base values. Fall back to the prior instance-base method when defaults cannot be read.
 - New configuration defaults for repeat-break resistance are `step=0.5` and `max=2.0` (1x, 1.5x, 2x). No hard limit on the number of guard breaks.
-- Retained 10-second delayed ordinary regeneration, 2%-per-second rate, 3-second break recovery, execution damage, death-animation safety guards, animations and compatibility machinery unchanged.
+- Increased default ordinary-regeneration delay from 10 to 15 seconds; retained its 2%-per-second rate, 3-second break recovery, execution damage, death-animation safety guards, animations and compatibility machinery unchanged.
 - Expanded JUnit coverage of linear damage, hit splitting, innate attribute-source priority, reference EHP, high-level scaling, parry thresholds and break resistance.
-- Existing explicitly saved `server.toml` values are not silently overwritten. Change saved resistance values manually to test new defaults; customized attack posture multiplier values may need retuning.
+- Existing explicitly saved `server.toml` values are not silently overwritten. Set saved attack multiplier `1.8` to `1.0` to preserve tested attack posture pressure; adjust saved parry percentages to `22`/`8`, regeneration delay to `15`, and repeat-break resistance to `0.5`/`2.0` as needed.
 - Development version: `3.0.1-parry-focus-SNAPSHOT`; GitHub Actions artifact: `epicfight-posture-integration-parry-focus`.
 
 
