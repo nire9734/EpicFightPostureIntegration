@@ -6,7 +6,10 @@ import dev.nire9734.epicfightposture.sync.RuntimeAccess;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
+import net.minecraft.world.entity.ai.attributes.DefaultAttributes;
 import net.minecraft.world.entity.ai.attributes.Attribute;
 import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.ai.attributes.Attributes;
@@ -120,8 +123,8 @@ public final class PostureManager {
             return;
         }
 
-        // Base attribute values preserve the parry-vulnerability of leveled mobs.
-        // Naturally durable bosses retain their health-dependent parry resistance.
+        // EntityType defaults keep parry percentages stable across level mods,
+        // including those that mutate a mob's AttributeInstance base values.
         float innateEhp = baseEffectiveHealth(target);
         float postureDamage = PostureBalance.parryDamage(
                 state.max,
@@ -130,7 +133,7 @@ public final class PostureManager {
                 innateEhp,
                 EHP_REFERENCE_HEALTH,
                 (float) EHP_EXPONENT
-        ) * healthPostureDamageMultiplier(target, innateEhp);
+        );
         float resistance = breakResistanceMultiplier(state);
         state.current = Math.max(0.0F, state.current - postureDamage / resistance);
         state.regenDelay = regenDelayTicks();
@@ -537,8 +540,9 @@ public final class PostureManager {
     }
 
     /**
-     * Ignores attribute modifiers from mob levels/affixes.
-     * Mods rewriting the base value itself may affect the innate-EHP classification.
+     * EHP classification uses the EntityType's registered default attributes,
+     * not mutable instance base values (which level mods may rewrite).
+     * If no supplier/attribute exists, fall back to the original instance base.
      */
     private static float baseEffectiveHealth(LivingEntity entity) {
         float health = baseAttribute(entity, Attributes.MAX_HEALTH, entity.getMaxHealth());
@@ -549,13 +553,27 @@ public final class PostureManager {
                 ? baseAttribute(entity, Attributes.ARMOR, 0.0F) : 0.0F;
         float toughness = PostureServerConfig.useArmorScaling()
                 ? baseAttribute(entity, Attributes.ARMOR_TOUGHNESS, 0.0F) : 0.0F;
-        float value = effectiveHealth(health, armor, toughness, EHP_REFERENCE_DAMAGE);
+        float value = PostureBalance.effectiveHealth(health, armor, toughness, EHP_REFERENCE_DAMAGE);
         return Float.isFinite(value) && value > 0.0F ? value : EHP_REFERENCE_HEALTH;
     }
 
+    @SuppressWarnings("unchecked")
     private static float baseAttribute(LivingEntity entity, Attribute attribute, float fallback) {
         AttributeInstance instance = entity.getAttribute(attribute);
-        return instance == null ? fallback : finiteOr((float) instance.getBaseValue(), fallback);
+        float instanceBase = instance == null ? Float.NaN : (float) instance.getBaseValue();
+        float typeDefault = Float.NaN;
+        try {
+            EntityType<? extends LivingEntity> type = (EntityType<? extends LivingEntity>) entity.getType();
+            if (DefaultAttributes.hasSupplier(type)) {
+                AttributeSupplier defaults = DefaultAttributes.getSupplier(type);
+                if (defaults != null && defaults.hasAttribute(attribute)) {
+                    typeDefault = (float) defaults.getBaseValue(attribute);
+                }
+            }
+        } catch (RuntimeException ignored) {
+            // Non-standard entity registrations must not break parry handling.
+        }
+        return PostureBalance.innateAttributeValue(typeDefault, instanceBase, fallback);
     }
 
     private static float calculateMaxPosture(LivingEntity entity) {
@@ -581,7 +599,7 @@ public final class PostureManager {
         if (maxHealth <= 0.0F) {
             maxHealth = EHP_REFERENCE_HEALTH;
         }
-        float effectiveHealth = effectiveHealth(maxHealth, armor, toughness, EHP_REFERENCE_DAMAGE);
+        float effectiveHealth = PostureBalance.effectiveHealth(maxHealth, armor, toughness, EHP_REFERENCE_DAMAGE);
         if (!Float.isFinite(effectiveHealth) || effectiveHealth <= 0.0F) {
             effectiveHealth = EHP_REFERENCE_HEALTH;
         }
@@ -607,21 +625,6 @@ public final class PostureManager {
         return BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType());
     }
 
-    private static float effectiveHealth(float health, float armor, float toughness, float referenceDamage) {
-        float fraction = damageFractionAfterArmor(referenceDamage, armor, toughness);
-        if (fraction <= 1.0E-4F) {
-            fraction = 1.0E-4F;
-        }
-        return health / fraction;
-    }
-
-    private static float damageFractionAfterArmor(float damage, float armor, float toughness) {
-        float divisor = Math.max(0.01F, 2.0F + toughness / 4.0F);
-        float armorPoints = clamp(armor - damage / divisor, armor * 0.2F, 20.0F);
-        float reduction = armorPoints / 25.0F;
-        return clamp(1.0F - reduction, 0.2F, 1.0F);
-    }
-
     private static LivingEntityPatch<?> getPatch(LivingEntity entity) {
         try {
             return EpicFightCapabilities.getEntityPatch(entity, LivingEntityPatch.class);
@@ -643,32 +646,10 @@ public final class PostureManager {
         boolean useArmor = PostureServerConfig.useArmorScaling();
         float armor = useArmor ? finiteOr((float) entity.getAttributeValue(Attributes.ARMOR), 0.0F) : 0.0F;
         float toughness = useArmor ? finiteOr((float) entity.getAttributeValue(Attributes.ARMOR_TOUGHNESS), 0.0F) : 0.0F;
-        float targetEffectiveHealth = effectiveHealth(maxHealth, armor, toughness, EHP_REFERENCE_DAMAGE);
+        float targetEffectiveHealth = PostureBalance.effectiveHealth(maxHealth, armor, toughness, EHP_REFERENCE_DAMAGE);
         return Float.isFinite(targetEffectiveHealth) && targetEffectiveHealth > 0.0F
                 ? targetEffectiveHealth
                 : EHP_REFERENCE_HEALTH;
-    }
-
-    private static float healthPostureDamageMultiplier(LivingEntity entity, float targetEffectiveHealth) {
-        float maxHealth = finiteOr(entity.getMaxHealth(), EHP_REFERENCE_HEALTH);
-        if (maxHealth <= 0.0F) {
-            maxHealth = EHP_REFERENCE_HEALTH;
-        }
-        float currentHealth = finiteOr(entity.getHealth(), maxHealth);
-        float healthFraction = clamp(currentHealth / maxHealth, 0.0F, 1.0F);
-        float effectiveHealth = Float.isFinite(targetEffectiveHealth) && targetEffectiveHealth > 0.0F
-                ? targetEffectiveHealth
-                : EHP_REFERENCE_HEALTH;
-
-        return PostureBalance.healthPostureDamageMultiplier(
-                healthFraction,
-                PostureServerConfig.fullHealthPostureDamageMultiplier(),
-                PostureServerConfig.zeroHealthPostureDamageMultiplier(),
-                PostureServerConfig.healthPostureCurveExponent(),
-                effectiveHealth,
-                PostureServerConfig.healthScalingEhpStart(),
-                PostureServerConfig.healthScalingEhpEnd()
-        );
     }
 
     private static float finiteOr(float value, float fallback) {

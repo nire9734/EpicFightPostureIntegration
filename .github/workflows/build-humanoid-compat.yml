@@ -8,6 +8,7 @@ on:
       - dev/vanilla-humanoid-ef-special-render
       - dev/spider-generalized-compat
       - dev/humanoid-retargeting
+      - dev/posture-balance-parry-focus
   pull_request:
   workflow_dispatch:
 
@@ -38,7 +39,7 @@ jobs:
       - name: Upload JAR
         uses: actions/upload-artifact@v6
         with:
-          name: epicfight-posture-integration
+          name: epicfight-posture-integration-parry-focus
           path: build/libs/*.jar
           if-no-files-found: error
 
