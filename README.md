@@ -21,11 +21,11 @@ A tested combination uses Forge 47.4.10, Epic Fight 20.14.17, Combat Evolution 2
 - Automatic compatibility for supported vanilla `HumanoidModel`, extended humanoid ModelPart/GeckoLib/Lionfish layouts, and vanilla-style `SpiderModel` entities.
 - Target-proportioned humanoid retargeting for posture/execution states while preserving normal mob behavior.
 - Health + Posture HUD.
-- EHP-based maximum posture, HP-loss-normalized finisher pressure, innate-EHP parries, Impact-weighted direct attacks, and configurable regeneration.
+- EHP-based maximum posture, linear observed-HP-loss attacks, level-stable innate-EHP parries, Impact-weighted direct attacks, and configurable regeneration.
 - Per-entity maximum-posture overrides, entity blacklist, and mod-level automatic-compatibility allow/deny filtering.
 - Dedicated-server renderer discovery with generated cache and multiplayer policy synchronization.
 
-## Posture calculations (3.0.1)
+## Posture calculations (3.0.1 parry-focus experimental branch)
 
 Posture is a separate, server-authoritative resource. Normal attacks and successful parries lower it; reaching zero attempts Epic Fight's `NEUTRALIZE` guard-break animation, which Combat Evolution can use for executions. Damage, posture regeneration and execution damage are separate systems.
 
@@ -47,80 +47,57 @@ P_max = clamp(max(1.0, P_base * M_max), 0.1, 1,000,000)
 
 For example, a 20-HP target with zero armor has `EHP = 20` and `P_max = 3.2` at default settings; a 40-HP target with zero armor has about `5.20` maximum posture. Increased armor/toughness raises EHP and therefore posture. Maximum posture uses **current total attributes**, including applicable attribute modifiers, and is refreshed as they change. Changes preserve the remaining posture percentage outside locked guard-break/execution states.
 
-### 2. Direct attacks: actual HP loss, Impact and finisher pressure
+### 2. Direct attacks: actual HP loss, with no HP finisher
 
-Starting in 3.0.1, attack pressure is based on the **HP actually removed**, not the damage advertised when an event begins. EFPI captures eligible direct player hits at Forge's `LOWEST` event priority and observes HP after the event (on the next damage event or entity tick). If the hit is cancelled or fully absorbed so that HP does not fall, the attack deals zero posture damage.
-
-Define `H_max` as the target's maximum HP, `H_before` as HP before the hit and `L` as observed positive HP loss. Let `u_before` and `u_after` be the fractions of maximum HP already depleted before and after the hit:
+Direct hits retain the existing `LOWEST` damage-event observation: posture damage uses the **real HP reduction** after damage processing, not the early event amount. Canceled/capped hits that do not reduce HP deal no attack posture damage. Let `H_max` be maximum HP, `H_before` be HP before the hit, `L` be observed positive HP loss, and `R` the repeat-break resistance:
 
 ```text
-u_before = clamp(1 - H_before / H_max, 0, 1)
-u_after  = clamp(1 - (H_before - L) / H_max, 0, 1)
-
-F(u) = 0.25*u + 0.25*u^3
+HP_loss_fraction = clamp(H_before / H_max, 0, 1)
+                   - clamp((H_before - L) / H_max, 0, 1)
 Impact_scale = clamp(0.7 + 0.3*sqrt(Impact / 3), 0.7, 1.5)
-
-raw_attack_posture = 2.1 * P_base * Impact_scale
-                     * [F(u_after) - F(u_before)]
-                     * posture_damage_multiplier
+raw_attack_posture = P_base * 0.30 * Impact_scale
+                     * HP_loss_fraction * posture_damage_multiplier
 attack_posture_damage = raw_attack_posture / R
 ```
 
-Here `R` is the repeat-break resistance multiplier defined below, and `posture.posture_damage_multiplier` defaults to `1.0`. The coefficient `2.1` is internal, not an additional config key. For Impact `<= 0` or invalid Impact, attack posture damage is **zero** (the `Impact_scale` formula only applies to positive Impact).
+Nonpositive or invalid Impact generates zero direct-hit posture. Epic Fight attacks retain their actual Impact; other eligible direct player hits retain the existing bounded Impact estimate. Indirect/environmental hits remain excluded. The existing `posture.posture_damage_multiplier` setting still defaults to `1.0`, but now scales an internal **0.30** coefficient instead of 2.1.
 
-Epic Fight attacks use their actual Impact. For other eligible direct player damage, EFPI estimates Impact as `clamp(event_damage / 4, 0.5, 5.0)`; indirect/environmental and explicitly excluded damage sources do not contribute. The estimated Impact comes from the event's damage amount, while the HP loss is measured afterward.
+At Impact 3, maximum-posture multiplier 1.0 and zero regeneration, reducing an entire HP bar generates only **about 30% maximum posture**, before resistance. Equal fractions of HP loss always yield equal posture pressure regardless of remaining HP. For example, with `P_base = P_max = 3.2`, an Impact-3 hit removing 10 of 20 HP generates `0.48` posture; a second equal hit generates another `0.48`, with no late-HP finisher bonus. Increasing maximum posture by a global/per-entity multiplier still lowers attacks' relative effectiveness.
 
-The integrated function `F` comes from the HP-dependent multiplier `0.25 + 0.75*u^2`: pressure increases as a target loses health, regardless of its EHP. Integrating across the **whole HP interval** makes a large hit comparable to multiple smaller hits that remove the same total fraction of HP, if Impact and other conditions are unchanged. It also prevents an isolated high-damage hit from being valued solely at the start of its HP interval.
+Unrelated healing between the event and observed HP change can still influence attribution, as in 3.0.1.
 
-**Example:** With `H_max=20`, `P_base=3.2`, Impact `3`, default settings and `R=1`, a hit taking HP from 20 to 10 has `u_before=0`, `u_after=0.5`, `F(0.5)=0.15625`, so it removes **1.05 posture** (`2.1 * 3.2 * 0.15625`). A maximum-posture multiplier does not increase `P_base` in this attack formula; raising maximum posture therefore makes attacks require proportionally more effort.
+### 3. Parry: registered EntityType baseline EHP
 
-Because actual HP loss is observed after the event, unusual healing or unrelated HP changes between the observation points may affect damage attribution.
-
-### 3. Successful parries: innate EHP and base-health-dependent scaling
-
-Parry pressure uses the target's **innate EHP**, calculated from the **base values** of maximum HP, armor and toughness (excluding ordinary attribute modifiers from levels/affixes). Thus, temporary or level-driven HP increases do not automatically make a fundamentally weak enemy behave like a high-EHP boss for parry scaling. Mods that replace the base attribute values themselves can still affect this classification.
+Parry uses **the EntityType's registered default maximum-health, armor and armor-toughness values** for innate EHP. This avoids level modifiers **and** per-instance `setBaseValue()` changes. If the registered supplier or individual attribute is unavailable, EFPI falls back to `AttributeInstance.getBaseValue()`, then a safe fallback. If another mod alters the **registered defaults**, that modified registered baseline will still be treated as innate: EFPI cannot recover pre-registration values.
 
 ```text
-E_innate = EHP calculated using base attribute values
+E_innate = EHP(EntityType default max health, armor, toughness)
 parry_fraction = [p_min + (p_max - p_min)
                   * (20 / max(20, E_innate))^0.7] / 100
 
 p_max = parry_base_max_percent  (default 18)
 p_min = parry_base_min_percent  (default 6)
-```
 
-The base fraction is **18%** for innate EHP of 20 or less, approaching **6%** as innate EHP becomes very large. These are **pre-finisher** values, not guaranteed final percentages.
-
-Parries additionally use an EHP-dependent version of the health-finisher modifier:
-
-```text
-u = clamp(1 - current_health / maximum_health, 0, 1)
-G(u) = 0.25 + 0.75*u^2
-
-t = clamp((E_innate - 40) / (200 - 40), 0, 1)
-s = t^2 * (3 - 2*t)       # smoothstep strength
-parry_finisher = 1 + s * [G(u) - 1]
-
-raw_parry_posture = P_max * parry_fraction * parry_finisher
+raw_parry_posture = P_max * parry_fraction
 parry_posture_damage = raw_parry_posture / R
 ```
 
-At innate EHP `<= 40`, `s=0` and the finisher modifier is `1` regardless of HP. Between EHP 40 and 200 it transitions smoothly; at EHP `>= 200`, the full finisher curve applies, ranging from `0.25` at full HP to `1.0` near zero HP. In contrast, **attacks always use the integrated finisher curve**, regardless of EHP.
+The parry percentage is **independent of current HP**. It starts at 18% for innate EHP 20 or below and approaches 6% for very large innate EHP; the 3.0.1 EHP curve and exponent are unchanged. Unlike direct attacks, parries use actual `P_max`, which continues to scale with live HP/armor and maximum-posture multipliers.
 
-**Example:** A 20-HP unarmored target has `P_max=3.2` and `E_innate=20`. A parry removes `3.2 * 0.18 = 0.576` posture before repeat-break resistance. With no regeneration or other pressure, six such parries deplete its posture.
+Cataclysm's standard Maledictus default attributes (420 HP, 10 armor, 0 toughness) give innate EHP about **552.63** and parry damage about **7.18%** maximum posture. Provided those EntityType defaults remain the same, a Soulrend Lv.250 Maledictus uses that same percentage. A mod-supplied different EntityType baseline must be validated in game.
 
-Parry damage uses **actual maximum posture** `P_max`; changing `maximum_posture_multiplier` scales both its maximum and its parry damage proportionally. By design, that multiplier changes the relative difficulty of **attacks**, but not **parries**.
+### 4. Repeat-break resistance
 
-### 4. Resistance to repeated guard breaks
-
-A successful guard break increases a counter for that specific mob. Both attack and parry posture damage are divided by:
+Each successfully applied guard break increments a counter. Both attacks and parries divide their posture damage by:
 
 ```text
 R = min(1 + completed_breaks * posture_break_resistance_step,
         posture_break_resistance_max)
 ```
 
-The default step is `1.0` and the cap is `3.0`: the first break uses `R=1`, the second `R=2`, and the third and later `R=3`. Only successfully applied guard-break animations increment the counter. An interrupted or failed attempt does not permanently exclude the mob. The counter is held in memory and resets on entity unload; it is not persisted to NBT.
+New defaults: `step=0.5`, `max=2.0`. The first break uses 1x resistance, second 1.5x, third and later 2x; further breaks are possible, not prohibited. Failed or interrupted guard-break animations do not increment the counter. It resets on entity unload and is not persisted to NBT.
+
+With **no regeneration or attack contribution**, the above baseline Maledictus needs approximately **14 parries for the first break**, **21 more for the second**, and **28 more for the third**. These are theoretical counts, not expected actual fight counts: normal attacks assist, while recovery can erase posture pressure if successful parries are spaced too far apart. EFPI does not change CE execution damage.
 
 ### 5. Recovery and regeneration
 
@@ -197,7 +174,7 @@ Server policy is stored at:
 config/epicfight_posture_integration/server.toml
 ```
 
-3.0.1 defaults:
+Parry-focus branch defaults (for newly generated configurations):
 
 ```toml
 [posture]
@@ -207,7 +184,7 @@ config/epicfight_posture_integration/server.toml
 maximum_posture_multiplier = 1.0
 
 # Multiplier for attack Posture damage from final HP lost.
-# Impact gives a bounded bonus; 1.0 uses the internal 2.1 attack coefficient.
+# Impact gives a bounded bonus; 1.0 uses the internal 0.30 attack coefficient.
 # Default: 1.0 | Range: 0.0-100.0
 posture_damage_multiplier = 1.0
 
@@ -217,19 +194,19 @@ posture_damage_multiplier = 1.0
 parry_base_max_percent = 18.0
 
 # Minimum base parry Posture damage (%) as innate EHP approaches infinity.
-# This is the asymptote for very high innate EHP, before the finisher modifier.
+# The high-EHP asymptote; independent of current HP.
 # Default: 6.0 | Range: 0.0-100.0
 parry_base_min_percent = 6.0
 
 # Extra required posture-damage multiplier per successful break.
-# 1.0 = first break 1x, second 2x, third and later 3x.
-# Default: 1.0 | Range: 0.0-100.0
-posture_break_resistance_step = 1.0
+# 0.5 = first break 1x, second 1.5x, third and later 2x.
+# Default: 0.5 | Range: 0.0-100.0
+posture_break_resistance_step = 0.5
 
 # Maximum required posture-damage multiplier.
 # Affects both normal attacks and parries.
-# Default: 3.0 | Range: 1.0-100.0
-posture_break_resistance_max = 3.0
+# Default: 2.0 | Range: 1.0-100.0
+posture_break_resistance_max = 2.0
 
 
 [regeneration]
@@ -301,6 +278,14 @@ config/epicfight_posture_integration/cache/renderer-discovery.json
 ```
 
 The cache uses schema version `2`. It is generated state, not a user configuration file. A trusted operator client reports renderer compatibility; when pending discovery data changes, restart the server to promote it to active data.
+
+## Testing the parry-focus branch against 3.0.1
+
+This experimental branch produces `epicfight-posture-integration-3.0.1-parry-focus-SNAPSHOT.jar`; do not install it alongside the 3.0.1 release JAR. Install exactly one EFPI JAR on client and server. The multiplayer protocol, renderer-discovery cache schema, death-safe animation guards and execution integration remain unchanged.
+
+**Previously saved configuration values are retained.** Existing `server.toml` files may still explicitly contain `posture_break_resistance_step = 1.0` and `posture_break_resistance_max = 3.0` despite the new defaults. To test the new balance, edit them manually to `0.5` and `2.0` or regenerate that configuration after backing it up. The `posture_damage_multiplier` key is still supported, but customized values may need retuning because the internal coefficient changed to 0.30.
+
+For the provided Soulrend Lv.250 live stats (HP 38152.8007, armor 37.3899, toughness 0), the **live EHP** is about 190,764, giving `P_max ~= 1953.33` with the default 1.0 maximum-posture multiplier. This **does not determine innate parry EHP**. If the Mob uses the standard Maledictus EntityType defaults, parry damage remains about 7.18% irrespective of the level; inspect the modpack's actual registered EntityType defaults to verify. Real break frequency depends on fight duration, successful parries, normal-attack damage and 10-second-delayed regeneration.
 
 ## Upgrading from 3.0.0
 
