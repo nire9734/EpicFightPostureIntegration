@@ -25,7 +25,7 @@ A tested combination uses Forge 47.4.10, Epic Fight 20.14.17, Combat Evolution 2
 - Per-entity maximum-posture overrides, entity blacklist, and mod-level automatic-compatibility allow/deny filtering.
 - Dedicated-server renderer discovery with generated cache and multiplayer policy synchronization.
 
-## Posture calculations (3.0.1 parry-focus experimental branch)
+## Posture calculations (3.0.1)
 
 Posture is a separate, server-authoritative resource. Normal attacks and successful parries lower it; reaching zero attempts Epic Fight's `NEUTRALIZE` guard-break animation, which Combat Evolution can use for executions. Damage, posture regeneration and execution damage are separate systems.
 
@@ -49,7 +49,7 @@ For example, a 20-HP target with zero armor has `EHP = 20` and `P_max = 3.2` at 
 
 ### 2. Direct attacks: actual HP loss, with no HP finisher
 
-Direct hits retain the existing `LOWEST` damage-event observation: posture damage uses the **real HP reduction** after damage processing, not the early event amount. Canceled/capped hits that do not reduce HP deal no attack posture damage. Let `H_max` be maximum HP, `H_before` be HP before the hit, `L` be observed positive HP loss, and `R` the repeat-break resistance:
+Direct hits use a `LOWEST` damage-event observation: posture damage uses the **real HP reduction** after damage processing, not the early event amount. Canceled/capped hits that do not reduce HP deal no attack posture damage. Let `H_max` be maximum HP, `H_before` be HP before the hit, `L` be observed positive HP loss, and `R` the repeat-break resistance:
 
 ```text
 HP_loss_fraction = clamp(H_before / H_max, 0, 1)
@@ -60,11 +60,11 @@ raw_attack_posture = P_base * 0.54 * Impact_scale
 attack_posture_damage = raw_attack_posture / R
 ```
 
-Nonpositive or invalid Impact generates zero direct-hit posture. Epic Fight attacks retain their actual Impact; other eligible direct player hits retain the existing bounded Impact estimate. Indirect/environmental hits remain excluded. The existing `posture.posture_damage_multiplier` setting still defaults to `1.0`, but now scales an internal **0.54** coefficient instead of 2.1.
+Nonpositive or invalid Impact generates zero direct-hit posture. Epic Fight attacks retain their actual Impact; other eligible direct player hits retain the existing bounded Impact estimate. Indirect/environmental hits remain excluded. `posture.posture_damage_multiplier` defaults to `1.0` and scales the internal **0.54** attack coefficient.
 
 At Impact 3, maximum-posture multiplier 1.0 and zero regeneration, reducing an entire HP bar generates only **about 54% maximum posture**, before resistance. Equal fractions of HP loss always yield equal posture pressure regardless of remaining HP. For example, with `P_base = P_max = 3.2`, an Impact-3 hit removing 10 of 20 HP generates `0.864` posture; a second equal hit generates another `0.864`, with no late-HP finisher bonus. Increasing maximum posture by a global/per-entity multiplier still lowers attacks' relative effectiveness.
 
-Unrelated healing between the event and observed HP change can still influence attribution, as in 3.0.1.
+Unrelated healing between the event and the observed HP change can influence damage attribution.
 
 ### 3. Parry: registered EntityType baseline EHP
 
@@ -82,7 +82,7 @@ raw_parry_posture = P_max * parry_fraction
 parry_posture_damage = raw_parry_posture / R
 ```
 
-The parry percentage is **independent of current HP**. It starts at 22% for innate EHP 20 or below and approaches 8% for very large innate EHP; the 3.0.1 EHP curve and exponent are unchanged. Unlike direct attacks, parries use actual `P_max`, which continues to scale with live HP/armor and maximum-posture multipliers.
+The parry percentage is **independent of current HP**. It starts at 22% for innate EHP 20 or below and approaches 8% for very large innate EHP; the EHP curve uses an exponent of `0.7`. Unlike direct attacks, parries use actual `P_max`, which continues to scale with live HP/armor and maximum-posture multipliers.
 
 Cataclysm's standard Maledictus default attributes (420 HP, 10 armor, 0 toughness) give innate EHP about **552.63** and parry damage about **9.37%** maximum posture. Provided those EntityType defaults remain the same, a Soulrend Lv.250 Maledictus uses that same percentage. A mod-supplied different EntityType baseline must be validated in game.
 
@@ -95,7 +95,7 @@ R = min(1 + completed_breaks * posture_break_resistance_step,
         posture_break_resistance_max)
 ```
 
-New defaults: `step=0.5`, `max=2.0`. The first break uses 1x resistance, second 1.5x, third and later 2x; further breaks are possible, not prohibited. Failed or interrupted guard-break animations do not increment the counter. It resets on entity unload and is not persisted to NBT.
+Defaults: `step=0.5`, `max=2.0`. The first break uses 1x resistance, second 1.5x, third and later 2x; further breaks are possible, not prohibited. Failed or interrupted guard-break animations do not increment the counter. It resets on entity unload and is not persisted to NBT.
 
 With **no regeneration or attack contribution**, the above baseline Maledictus needs approximately **11 parries for the first break**, **17 more for the second**, and **22 more for the third**. These are theoretical counts, not expected actual fight counts: normal attacks assist, while recovery can erase posture pressure if successful parries are spaced too far apart. EFPI does not change CE execution damage.
 
@@ -174,7 +174,7 @@ Server policy is stored at:
 config/epicfight_posture_integration/server.toml
 ```
 
-Parry-focus branch defaults (for newly generated configurations):
+3.0.1 defaults (for newly generated configurations):
 
 ```toml
 [posture]
@@ -279,26 +279,17 @@ config/epicfight_posture_integration/cache/renderer-discovery.json
 
 The cache uses schema version `2`. It is generated state, not a user configuration file. A trusted operator client reports renderer compatibility; when pending discovery data changes, restart the server to promote it to active data.
 
-## Testing the parry-focus branch against 3.0.1
-
-This experimental branch produces `epicfight-posture-integration-3.0.1-parry-focus-SNAPSHOT.jar`; do not install it alongside the 3.0.1 release JAR. Install exactly one EFPI JAR on client and server. The multiplayer protocol, renderer-discovery cache schema, death-safe animation guards and execution integration remain unchanged.
-
-**Previously saved configuration values are retained.** Existing `server.toml` files may still explicitly contain `posture_break_resistance_step = 1.0` and `posture_break_resistance_max = 3.0` despite the new defaults. To test the new balance, edit them manually to `0.5` and `2.0` or regenerate that configuration after backing it up. The `posture_damage_multiplier` key is still supported, but its new internal coefficient is 0.54: set a previously tested value of `1.8` back to `1.0` for equivalent direct-hit posture damage. To use all updated defaults with an existing file, also set parry percentages to `22.0`/`8.0`, regeneration delay to `15.0`, and repeat-break settings to `0.5`/`2.0`. Old explicitly saved values are not overwritten.
-
-For the provided Soulrend Lv.250 live stats (HP 38152.8007, armor 37.3899, toughness 0), the **live EHP** is about 190,764, giving `P_max ~= 1953.33` with the default 1.0 maximum-posture multiplier. This **does not determine innate parry EHP**. If the Mob uses the standard Maledictus EntityType defaults, parry damage remains about 9.37% irrespective of the level; inspect the modpack's actual registered EntityType defaults to verify. Real break frequency depends on fight duration, successful parries, normal-attack damage and 15-second-delayed regeneration.
-
 ## Upgrading from 3.0.0
 
-3.0.1 is an update to the **released 3.0.0**, not to an intermediate development build.
+3.0.1 updates the **3.0.0 release on `main`**. The release incorporates the posture balance, execution compatibility and rendering fixes described in the [changelog](CHANGELOG.md).
 
-- Replace the old EFPI JAR with `epicfight-posture-integration-3.0.1.jar` on both client and server; do not leave an additional diagnostic/development EFPI JAR installed.
-- **Keep** `config/epicfight_posture_integration/server.toml` and the renderer-discovery cache. Network protocol `3`, renderer-discovery cache schema `2`, and the configuration file paths are unchanged.
-- The 3.0.0 key `posture.parry_percent` has been replaced with **`posture.parry_base_max_percent`** (default `18.0`) and **`posture.parry_base_min_percent`** (default `6.0`). A customized 3.0.0 `parry_percent` value is **not automatically converted**; copy any intentional tuning into the new fields after reading the new formula.
-- Two new settings control successive guard breaks: `posture.posture_break_resistance_step=1.0` and `posture.posture_break_resistance_max=3.0`. Forge supplies missing keys with defaults when loading the existing config.
-- The attack posture formula changed substantially. `posture.posture_damage_multiplier=1.0` remains the default and is still the correct starting point, but customized 3.0.0 attack multipliers may need retuning rather than copying a numerical equivalence from the older formula.
-- Old, unrecognized keys may be removed when Forge corrects the config. Back up customized values before upgrading. Unrelated supported settings are retained.
-
-The full 3.0.0 release history remains in the [changelog](CHANGELOG.md).
+- Replace the 3.0.0 JAR with `epicfight-posture-integration-3.0.1.jar` on both client and server. Do not install two EFPI JARs simultaneously.
+- Retain `config/epicfight_posture_integration/server.toml` and the renderer-discovery cache. Multiplayer protocol `3`, cache schema `2`, configuration paths and supported dependency ranges are unchanged.
+- 3.0.0's `posture.parry_percent` (default `6.0`) is replaced by `posture.parry_base_max_percent=22.0` and `posture.parry_base_min_percent=8.0`. Custom old parry values are **not automatically migrated**.
+- Added repeated-break settings `posture.posture_break_resistance_step=0.5` and `posture.posture_break_resistance_max=2.0`. Existing configurations missing these keys receive the new defaults.
+- `posture.posture_damage_multiplier` remains `1.0` by default, but the attack damage formula has changed. Retune customized 3.0.0 attack multipliers rather than assuming the old and new numbers are equivalent.
+- The new regeneration delay default is **15 seconds**. Forge preserves an existing explicit `regeneration.delay_seconds=10.0` from 3.0.0, so set it to `15.0` manually (or regenerate the configuration after backing it up) to adopt the new default.
+- Existing explicitly saved configuration values are not overwritten merely because defaults change. Back up any customized settings before updating; Forge may remove obsolete unrecognized keys when correcting the file.
 
 ## Client configuration
 
