@@ -17,6 +17,13 @@ java {
     toolchain.languageVersion = JavaLanguageVersion.of(17)
 }
 
+// Compile one physical copy of the portable logic in both loader builds.
+// The NeoForge project has its own Gradle wrapper/toolchain but uses this tree.
+sourceSets {
+    main.java.srcDir('common/src/main/java')
+    test.java.srcDir('common/src/test/java')
+}
+
 minecraft {
     mappings channel: 'official', version: minecraft_version
     copyIdeResources = true
@@ -110,9 +117,9 @@ tasks.register('checkHumanoidCoreDependencies') {
 
     doLast {
         def coreDirectories = [
-            file('src/main/java/dev/nire9734/epicfightposture/compat/humanoid/rig'),
-            file('src/main/java/dev/nire9734/epicfightposture/compat/humanoid/retarget'),
-            file('src/main/java/dev/nire9734/epicfightposture/compat/humanoid/skeleton')
+            file('common/src/main/java/dev/nire9734/epicfightposture/compat/humanoid/rig'),
+            file('common/src/main/java/dev/nire9734/epicfightposture/compat/humanoid/retarget'),
+            file('common/src/main/java/dev/nire9734/epicfightposture/compat/humanoid/skeleton')
         ]
         def forbiddenPrefixes = [
             'net.minecraft',

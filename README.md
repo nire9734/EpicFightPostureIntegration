@@ -1,5 +1,11 @@
 # Epic Fight Posture Integration
 
+This README describes the Forge 1.20.1 edition. The unreleased NeoForge 1.21.1
+port is built from the same development tree; see
+[NeoForge port notes](neoforge-1.21.1/README.md) and
+[development/branch policy](DEVELOPMENT.md). The released `main` branch remains
+at 3.0.1; 3.0.2 and NeoForge are still under development.
+
 Epic Fight Posture Integration (EFPI) adds a server-authoritative posture system to compatible Epic Fight mobs and connects posture breaks to Combat Evolution executions.
 
 EFPI preserves the source mob's normal AI and ordinary rendering. Automatic compatibility uses lightweight Epic Fight patches only when needed for posture-break and execution-related states, and existing Epic Fight/third-party patches take priority.

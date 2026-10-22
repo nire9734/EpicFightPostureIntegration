@@ -1,0 +1,26 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "dev.nire9734.epicfightposture.neoforge.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "ParryDetectionMixin",
+    "NeoForgeSpiderExecutionMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "client": [
+    "NeoForgeHealthBarMixin",
+    "NeoForgeEntityRenderDispatcherAccessor",
+    "NeoForgeLivingRendererScaleInvoker",
+    "NeoForgeGeoArmorRendererInvoker",
+    "NeoForgeGeckoItemArmorLayerContextMixin",
+    "NeoForgeIronsHumanoidRendererCapeMixin",
+    "NeoForgeLivingEntityRendererLayersAccessor",
+    "NeoForgeLayerRenderTypeCaptureMixin",
+    "NeoForgeModelPartLayerPoseMixin",
+    "NeoForgeLionfishAdvancedModelBoxLayerPoseMixin",
+    "NeoForgeLionfishBasicEntityModelLayerMeshMixin"
+  ]
+}

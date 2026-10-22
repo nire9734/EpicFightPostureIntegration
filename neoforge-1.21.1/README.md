@@ -1,0 +1,381 @@
+# NeoForge 1.21.1 port (development only)
+
+This is the unfinished NeoForge 1.21.1 port of Epic Fight Posture Integration.
+It is **not** a replacement for the complete Forge 1.20.1 release.
+
+On the `dev/multiloader` integration branch, this project builds alongside
+Forge 1.20.1 and compiles shared code directly from `../common/src/main/java`.
+See [the development and branch policy](../DEVELOPMENT.md). The independent
+`port/1.21.1-neoforge` branch is retained as the original migration history.
+Neither NeoForge nor Forge 3.0.2 has been released; `main` remains Forge 3.0.1.
+
+The original milestone summary below describes the initial server adapter.
+Later changes added automatic compatibility and special render backends for
+GeckoLib, Lionfish and ModelPart; these still require per-Mob in-game parity
+checks against Forge before a release.
+
+## Target versions
+
+- Minecraft 1.21.1, Java 21 and NeoForge 21.1.264
+- Epic Fight 21.17.3.1 (CurseForge 8175609)
+- Combat Evolution 2.3.2 (CurseForge 9171333)
+
+## Initial server adapter (historical milestone)
+
+- Compiles the shared `PostureBalance`, `PostureDeathSafety`, rig/skeleton
+  logic and corresponding JUnit tests from a single physical source tree.
+  NeoForge also uses the shared `PostureRuntimeState` class; Forge still has
+  its own internal state representation pending a separate migration.
+- Reads live Minecraft 1.21.1 mob attributes and registers a NeoForge
+  COMMON config with Forge 3.0.2's 13 key names/defaults/ranges.
+- Uses `LivingDamageEvent.Post` for actual HP lost from direct player attacks,
+  then applies the shared bounded-Impact posture damage math.
+- Uses `EntityTickEvent.Post` for regen delay, 2%-per-second recovery,
+  maximum-posture refresh and guard-break animation polling.
+- Ordinary regeneration waits `regeneration.delay_seconds` (15 seconds by
+  default) after the **last actual Posture loss** from a direct attack or parry.
+  A later Posture-reducing parry restarts the delay even without HP damage;
+  HP damage with no Posture loss does not restart it. Guard-break recovery is separate.
+- Only supports already Epic Fight-patched mobs with a distinct NEUTRALIZE
+  animation. A failed stun does **not** increment repeated-break resistance.
+- Hooks `TakeDamageEvent.Income.setParried(true)` to the shared parry scaling
+  using mob-type default attributes rather than level-scaled instance stats.
+- Hooks Combat Evolution execution-start events, preserves active executions,
+  and enters posture recovery after execution ends.
+- Excludes Combat Evolution-owned CEHumanoidPatch entities and configured
+  entity blacklists from this first adapter.
+
+**These integration paths compile against the target mod JARs but have not
+been verified in a live client or dedicated server.**
+
+## Initial milestone gaps (historical; several now implemented)
+
+- Renderer-specific parity and advanced HUD polish
+- Automatic compatibility registration for unsupported vanilla/modded mobs
+- GeckoLib, Lionfish, humanoid retargeting and secondary model rendering
+- Generic fallback for missing NEUTRALIZE animations
+- In-game validation of parry, execution events and model interactions
+- Full parity testing against the Forge 1.20.1 release
+
+## Development build
+
+This is an independent ModDevGradle 2.0.148 build within the multiloader
+development tree; the repository root builds Forge 1.20.1 with Gradle 8.8.
+
+```sh
+cd neoforge-1.21.1
+gradle clean build
+```
+
+Use Java 21 and Gradle 9.2.1. The CI workflow runs the same build and
+shared JUnit tests. During local development, `localRuntime` provides
+the required Epic Fight and Combat Evolution JARs to NeoForge run tasks
+without bundling them inside EFPI's artifact.
+
+NeoForge's default config path is
+`config/epicfight_posture_integration-common.toml`, unlike the
+Forge 1.20.1 `config/epicfight_posture_integration/server.toml`.
+
+**Do not publish this incomplete port JAR.**
+
+
+## First client synchronization and overhead HUD
+
+The server now uses a versioned NeoForge `CustomPacketPayload` for
+entity-ID + UUID posture snapshots (current/max/broken/present).
+Clients receive immediate attack/parry/guard-break/execution state changes,
+periodic changes (at most once per four ticks), initial tracking snapshots,
+and removal messages. IDs are checked alongside UUIDs to prevent stale
+entity IDs displaying another mob's posture.
+
+The client HUD Mixin leaves Epic Fight's existing overhead health bar and
+status effects intact and adds a small posture strip below it. Combat Evolution
+owned mob HUDs are excluded, and its target-support contract is checked
+before drawing. Experimental: dedicated-server startup, actual HUD placement,
+parry detection and Combat Evolution interactions still need in-game tests.
+
+Client-side posture cache is cleared when the player disconnects or switches worlds.
+
+## Automatic compatibility: conservative initial implementation
+
+NeoForge uses Epic Fight 21.17's `EpicFightEventHooks.Registry.ENTITY_PATCH`
+registry, **not** a NeoForge mod-bus `EntityPatchRegistryEvent`.
+EFPI registers last (priority -10000) and skips mob types with a registered
+Epic Fight provider or a datapack override. If the provider-map ownership
+check is unavailable, EFPI fails closed and registers nothing.
+
+For this development milestone the automatic biped candidate set is
+**Minecraft Bogged** and **Giant**, both absent from Epic Fight 21.17's
+built-in provider list. General discovery for modded renderers and model
+retargeting is still pending. The lightweight provider does not replace AI,
+normal hit reactions or the original renderer. Automatic compatibility can
+be disabled with `compatibility.automatic_compatibility=false`, and is also
+subject to EFPI's entity blacklist. Vanilla targets intentionally bypass the
+mod allow/deny lists, just as in the Forge implementation.
+
+**Caution:** this is compile-tested scaffolding. Animation rendering for
+these mobs and operation on a real NeoForge dedicated server still need
+validation. The current debug JAR remains INCOMPLETE.
+
+## Missing NEUTRALIZE fallback for existing datapack humanoids
+
+The 1.21.1 server adapter can now add Epic Fight's canonical biped guard-break
+animation to an **existing** `CustomHumanoidMobPatch` when its datapack
+provider lacks `StunType.NEUTRALIZE`. It preserves a provided NEUTRALIZE,
+requires an actual humanoid armature plus an existing SHORT or LONG reaction,
+and ignores explicitly blacklisted mobs. Unlike inserting a new entity patch,
+this changes only the missing animation entry in the current authoritative
+provider map. Reflection and table mutations fail closed with a warning.
+
+The animation must still be accepted by Epic Fight's animator at runtime;
+a rejection triggers recovery rather than a counted break.
+
+
+## Experimental special-state rendering for Bogged
+
+The first renderer-backed lightweight compatibility target is
+`minecraft:bogged`. On the client, Epic Fight's
+`ADD_PATCHED_ENTITY` hook checks the current source renderer is a
+`HumanoidModel`, then asks Epic Fight's own vanilla transformer to produce
+a runtime skinned mesh. Only successful model preparation enables the EFPI
+renderer. It draws only while the server reports guard break/execution.
+Ordinary rendering stays owned by the original game renderer.
+
+The Giant's renderer has custom scale and is **not** replaced at this stage.
+Likewise, modded humanoid/GeckoLib/Lionfish renderers are not yet registered.
+Unknown or failed model preparations fail closed to normal rendering.
+The initial Bogged renderer does not yet mirror armor/third-party layers
+during special states, so its visual parity must be tested before release.
+
+
+## Bogged assassination special-render fix
+
+Combat Evolution can start assassination from behind **before any attack or
+posture damage**. Earlier builds only entered EXECUTING if a posture state
+already existed. As a result, a never-hit Bogged never sent the client its
+execution snapshot, and the special renderer stayed inactive.
+
+The server now creates a posture state upon an accepted execution-start event
+for eligible mobs, marks it EXECUTING and immediately synchronizes it. A
+short five-tick activation grace prevents the tick listener from prematurely
+reverting to normal rendering before Combat Evolution's queued ExecutionTask
+starts. Once execution ends, the usual 60-tick recovery applies.
+
+The target should now animate during *assassination from behind*, as well as
+during guard-break executions. Whether the player starts the assassination at
+all remains controlled by Combat Evolution's weapon, skill, distance, angle
+and entity eligibility checks. Validate both animations in-game.
+
+
+## Giant special-animation rendering (experimental)
+
+Giant now uses EFPI's guard-break/assassination skinned animation renderer
+when its source renderer is the vanilla `GiantMobRenderer` and mesh baking
+succeeds. The original renderer's `scale` method is invoked again after
+Epic Fight's armature transform, so the Giant's built-in size should be
+preserved with no guessed or fixed scale values. If renderer ownership or
+model verification fails, EFPI keeps the source rendering. Bogged retains
+its existing behavior. This needs in-game size/position and animation tests.
+
+
+## Stage 9 — trusted dedicated-server renderer discovery
+
+On a **dedicated NeoForge server**, EFPI now asks a level-2 operator client
+for the most recent verified vanilla HumanoidModel renderer scan. Each
+request carries a one-time nonce; only the operator's matching answer is
+accepted. The report includes a SHA-256 client mod-set fingerprint, bounded
+entity ID lists, inspected models and successfully prepared humanoid meshes.
+
+The conflict-aware server store is derived from Forge 3.0.2's implementation.
+It stores the report under
+`config/epicfight_posture_integration/cache/neoforge-renderer-discovery.json`
+and reconciles multiple environments: if one client sees a renderer as
+unsupported while another claims it is humanoid, the target is excluded.
+Reports from other clients never directly modify Epic Fight patches.
+
+**Restart the dedicated server** after an accepted report to promote pending
+vanilla HumanoidModel targets. EFPI then registers only the approved types
+during the normal Epic Fight patch registry event, after checking existing
+owners, user config and datapack patches. A mod-set fingerprint change clears
+stale approvals. This first handshake does not permit spider/Gecko/Lionfish
+models and does not make general clients authoritative.
+
+## Experimental optional renderer backends
+
+This branch now contains preliminary GeckoLib 4.9.3 and Lionfish API 3.1
+model adapters, and a full SpiderModel special-state rendering path.
+Dependencies are **compile-only** and are not required unless a mob that
+uses the corresponding library is installed. The main registrar loads the
+optional backends only when the matching mod is present.
+
+- GeckoLib: static baked `GeoEntityRenderer` bind model -> shared semantic
+  humanoid rig -> skin weights -> Epic Fight runtime skinned mesh.
+- Lionfish: `AdvancedEntityModel` capture -> the same portable rig analyzer
+  and weighted mesh baking.
+- SpiderModel: existing Epic Fight SPIDER mesh/armature and
+  `SPIDER_NEUTRALIZED` animation; no registered Epic Fight mob is overwritten.
+
+For Gecko/Lionfish the model must pass conservative skeleton quality checks,
+and the source mod's normal renderer is preserved outside break/execution
+states. Extra armor, per-bone attachments, third-party layers and complete
+spider execution-type replacement are **not yet implemented**.
+
+Dedicated servers can receive three disjoint renderer classes through the
+operator handshake (payload protocol 2), not just vanilla HumanoidModel.
+A successful scan is only *pending* until the server restarts, and conflicts
+between reports fail closed. Existing patched Mob types always take priority.
+
+**CI verifies compilation and pure unit tests, not in-game GeckoLib,
+Lionfish or SpiderModel animations. Do not publish this JAR as a release.**
+
+
+## Lionfish parity follow-up (NeoForge 1.21.1)
+
+Forge 3.0.2 trusts the shared Lionfish skeleton resolver and skin mesh
+baker. The NeoForge port had incorrectly added a second
+`overallConfidence >= 0.75` admission gate, which excluded valid
+low-confidence meshes that the Forge version supported. The extra gate
+is removed while the existing semantic/mesh validation remains mandatory.
+
+The renderer scanner also no longer excludes all `MobCategory.MISC` types
+before model inspection: some modded Mob implementations can use that
+category. The runtime provider still creates a patch only for actual
+`Mob` instances and respects existing patch ownership.
+
+Optional backend invocation failures caused by a specific model no longer
+disable the entire backend. Per-entity rejections and confidence are
+available at DEBUG log level to identify any remaining incompatibilities.
+GeckoLib's working mesh acceptance rule remains unchanged.
+
+
+## Forge 3.0.2 automatic compatibility parity — stage 1
+
+- GeckoLib's NeoForge-only `confidence >= 0.75` filter has been removed.
+  As in Forge 3.0.2, `analyseAndBake()` must report a supported
+  skeleton and a nonnull mesh; no second backend-specific cutoff applies.
+- The shared GeckoLib and Lionfish semantic rig/mesh implementations remain
+  intact. No known-working animations, scale logic or model conversion were changed.
+- If both optional backends prepare the same entity, the entity is rejected
+  rather than choosing the first one. This matches Forge
+  `HumanoidBackendRegistry.scan` and avoids nondeterministic ownership.
+- Added pure unit tests for zero/one/two backend candidates.
+
+
+## Forge ↔ NeoForge per-entity compatibility comparison
+
+The NeoForge client writes an ID-sorted diagnostic inventory after its
+Epic Fight renderer registration scan:
+
+`config/epicfight_posture_integration/cache/neoforge-renderer-coverage.tsv`
+
+Each row is `entity_id<TAB>result`, e.g. `verified:geckolib`,
+`verified:lionfish`, `excluded:existing_patch`, or
+`rejected:backend_or_registration`. This file **never grants server-side
+compatibility** and contains no account or player identifiers.
+
+Enable DEBUG logging for EFPI on Forge 3.0.2, launch the same modded content
+as closely as the two different Minecraft versions permit, then run:
+
+```shell
+python tools/compare_compatibility_reports.py --forge-log forge-debug.log \
+  --neoforge-tsv neoforge-renderer-coverage.tsv --output missing-candidates.tsv
+```
+
+This comparison lists **candidates to investigate**, not a verified
+Mob-support percentage: Forge's `accepted` line records a successful
+model bake, not necessarily a renderer/patch registration, and different
+mod versions can register different entity IDs.
+
+Stage-1 parity also removes the GeckoLib-only 0.75 quality cutoff and
+rejects ambiguous multiple-backend candidates, as Forge 3.0.2 does.
+
+
+## Stage 12 — HierarchicalModel / ModelPart admission parity
+
+Forge 3.0.2 also supports non-`HumanoidModel` modded mobs whose source
+renderers expose `HierarchicalModel` and `ModelPart` body geometry.
+The NeoForge scanner now includes the actual Forge
+`ModelPartHumanoidMeshAdapter`, `ModelPartSourceRigAdapter`, and the
+related semantic geometry selection/attachment-plan classes.
+
+A model must still pass the shared Forge-style humanoid skeleton resolver
+and skin-mesh bake. It is evaluated alongside GeckoLib/Lionfish candidates;
+exactly one backend must succeed. Successful ModelPart entries are marked
+`verified:modelpart` in the renderer coverage report. Existing Epic Fight
+patches continue to take priority.
+
+**Current limitation:** the static body is animated through the shared
+rigged renderer. Forge's dynamic ModelPart attachments, held-item pose
+corrections, and third-party render-layer replay remain to be ported.
+Inspect ModelPart Mob scale, positioning and attachments before release.
+
+
+## Stage 13 — rendered attachment/layer parity (development)
+
+This stage ports *live rendering*, not only automatic model admission:
+
+- **ModelPart / HierarchicalModel:** Forge's per-part attachment mesh
+  renderer is now called after the retargeted body pass. Each special-state
+  frame temporarily updates the original source model to read current
+  attachment visibility, then restores the original ModelPart poses, scaling,
+  draw flags and entity-model fields in a scoped `finally`. This is
+  intended to preserve weapon/equipment switches on bosses.
+- **GeckoLib 4.9.x:** the Forge bone layer bridge is adapted to
+  Minecraft 1.21.1 and invoked reflectively after the base skinned mesh
+  only for confirmed Gecko humanoids. It replays the renderer's
+  per-bone `GeoRenderLayer` callbacks using the Epic Fight skin matrices,
+  and synchronizes source bone anchors. The optional library is never
+  class-loaded on installations without GeckoLib; individual layer
+  failures are logged instead of disabling normal rendering.
+- **Lionfish:** Forge's primary and secondary weighted layer mesh
+  replacement utilities, source-model state snapshots, LRU variant cache
+  and render-target capture are now compiled and covered by unit tests.
+  The corresponding Lionfish model/render-target hooks are **not active
+  yet**: 1.21.1 layer argument/RenderType contracts must be verified
+  before intercepting and replacing a real source draw.
+
+**In-game tests required:** Gecko per-bone held items/armor, ModelPart
+dynamic weapon visibility, alternate geometry, correct alpha/texture,
+the source renderer's next normal frame, and dedicated-server behavior.
+Do not treat a successful CI as proof of runtime animation parity.
+
+## Stage 14 — Lionfish layer replay (experimental)
+
+Lionfish `LivingEntityRenderer` extra layers now run in verified special
+states. Compatible parent redraws use the primary skinned mesh, deformable
+secondary models use a cached weighted mesh, and supported remaining layer
+geometry follows per-part Epic Fight poses. The hook converts 1.21.1's ARGB
+color, captures source RenderType and restores the source model after replay.
+Renderer reloads invalidate the layer caches; classes stay optional.
+
+**Live Lionfish/Cataclysm validation is required.** Successful compilation
+alone does not confirm translucent effects, equipment or held-item alignment.
+
+## Stage 15 — Spider/ModelPart parity follow-up
+
+The original Forge procedural SPIDER victim clip is now compiled directly
+into the NeoForge build and registered through the NeoForge animation event.
+Combat Evolution's target-specific execution contract is attached both to
+Epic Fight-owned spider patches and EFPI's lightweight spider patch, without
+replacing normal rendering or enabling spider assassination.
+
+ModelPart-backed custom humanoids now replay the source renderer's extra
+RenderLayers in the skinned special state, using EF pose transforms for
+supported source parts. Dynamic accessories and extra layers share a single
+temporary preparation/restoration of the original model.
+
+Both paths still require a real 1.21.1 test world; GeckoLib skinned armor,
+addon-specific cape callbacks and cross-mod layer behavior remain unfinished.
+
+## Stage 16 — GeckoLib skinned armor (experimental)
+
+GeckoLib 4.9.3's ItemArmorGeoLayer now has a scoped, optional skinned-armor
+replacement during EFPI special-state rendering. It uses Gecko's real
+bone/model-part fit result and GeoArmorRenderer visibility hooks to bake
+supported armor pieces onto the Epic Fight skeleton, with guarded fallbacks to
+normal Gecko rendering when any step is unsupported. Armor cache entries are
+bounded and cleared on renderer reload. The source Forge cache-key identity,
+visibility and transform invariants are also covered by NeoForge unit tests.
+
+This implementation is not yet validated in-game; mod-specific post-render
+cape hooks and custom GeoArmorRenderer layers still need compatibility work.

@@ -1,0 +1,126 @@
+plugins {
+    id 'java-library'
+    id 'net.neoforged.moddev' version '2.0.148'
+}
+
+group = project.mod_group_id
+version = project.mod_version
+
+base {
+    archivesName = 'epicfight-posture-integration-neoforge-1.21.1'
+}
+
+java.toolchain.languageVersion = JavaLanguageVersion.of(21)
+
+neoForge {
+    version = project.neo_version
+
+    runs {
+        client {
+            client()
+        }
+        server {
+            server()
+            programArgument '--nogui'
+        }
+    }
+
+    mods {
+        "${project.mod_id}" {
+            sourceSet(sourceSets.main)
+        }
+    }
+}
+
+// Both loaders compile the same physical portable sources from ../common.
+// Include filters prevent loading the Forge-specific or NeoForge adapter code.
+sourceSets {
+    main {
+        java {
+            srcDir('../common/src/main/java')
+            include 'dev/nire9734/epicfightposture/PostureBalance.java'
+            include 'dev/nire9734/epicfightposture/PostureDeathSafety.java'
+            include 'dev/nire9734/epicfightposture/PostureRuntimeState.java'
+            include 'dev/nire9734/epicfightposture/NeoForgeEntityAttributeAdapter.java'
+            include 'dev/nire9734/epicfightposture/NeoForgePostureServerEvents.java'
+            include 'dev/nire9734/epicfightposture/NeoForgeMissingHumanoidNeutralize.java'
+            include 'dev/nire9734/epicfightposture/client/ClientPostureStore.java'
+            include 'dev/nire9734/epicfightposture/neoforge/**'
+            include 'dev/nire9734/epicfightposture/compat/humanoid/rig/**'
+            include 'dev/nire9734/epicfightposture/compat/humanoid/retarget/**'
+            include 'dev/nire9734/epicfightposture/compat/humanoid/skeleton/**'
+            include 'dev/nire9734/epicfightposture/compat/humanoid/runtime/epicfight/HumanoidArmatureFactory.java'
+            // Procedural spider victim clip is loader-neutral and shared with Forge.
+            include 'dev/nire9734/epicfightposture/animation/ProceduralSpiderExecutionAnimation.java'
+        }
+    }
+    test {
+        java {
+            srcDir('../common/src/test/java')
+            srcDir('src/test/java')
+            include 'dev/nire9734/epicfightposture/PostureBalanceTest.java'
+            include 'dev/nire9734/epicfightposture/PostureDeathSafetyTest.java'
+            include 'dev/nire9734/epicfightposture/PostureRuntimeStateTest.java'
+            include 'dev/nire9734/epicfightposture/compat/humanoid/rig/**'
+            include 'dev/nire9734/epicfightposture/compat/humanoid/retarget/**'
+            include 'dev/nire9734/epicfightposture/compat/humanoid/skeleton/**'
+            include 'dev/nire9734/epicfightposture/NeoForgeAssassinationStateTest.java'
+            include 'dev/nire9734/epicfightposture/neoforge/compat/AutoCompatibilityRulesTest.java'
+            include 'dev/nire9734/epicfightposture/neoforge/compat/NeoForgeSpecialRenderPolicyTest.java'
+            include 'dev/nire9734/epicfightposture/neoforge/discovery/NeoForgeRendererReportRulesTest.java'
+            include 'dev/nire9734/epicfightposture/neoforge/compat/models/NeoForgeLionfishAdmissionTest.java'
+            include 'dev/nire9734/epicfightposture/neoforge/client/NeoForgeBackendSelectionTest.java'
+            include 'dev/nire9734/epicfightposture/neoforge/compat/models/NeoForgeLayerUtilityTest.java'
+            include 'dev/nire9734/epicfightposture/neoforge/compat/models/NeoForgeGeckoArmorCacheKeyTest.java'
+        }
+    }
+}
+
+repositories {
+    maven { url = 'https://www.cursemaven.com' }
+}
+
+// Match the official 1.21.1 ModDevGradle MDK: load required mod JARs in
+// development runs without bundling them into EFPI's distribution.
+configurations {
+    runtimeClasspath.extendsFrom localRuntime
+}
+
+dependencies {
+    compileOnly "curse.maven:epic-fight-mod-${epic_fight_project}:${epic_fight_file}"
+    compileOnly "curse.maven:combat-evolution-${combat_evolution_project}:${combat_evolution_file}"
+    compileOnly "curse.maven:geckolib-${geckolib_project}:${geckolib_file}"
+    compileOnly "curse.maven:lionfish-api-${lionfish_project}:${lionfish_file}"
+    localRuntime "curse.maven:epic-fight-mod-${epic_fight_project}:${epic_fight_file}"
+    localRuntime "curse.maven:combat-evolution-${combat_evolution_project}:${combat_evolution_file}"
+
+    testImplementation platform('org.junit:junit-bom:5.10.3')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    // Gradle 9 no longer supplies the JUnit Platform launcher implicitly.
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+
+    // Integration dependencies (planned; not enabled until the adapter exists):
+    // compileOnly "curse.maven:epic-fight-mod-${epic_fight_project}:${epic_fight_file}"
+    // compileOnly "curse.maven:combat-evolution-${combat_evolution_project}:${combat_evolution_file}"
+}
+
+tasks.named('test', Test).configure {
+    useJUnitPlatform()
+}
+
+tasks.named('processResources', ProcessResources).configure {
+    def replacements = [
+        mod_id: mod_id,
+        mod_name: mod_name,
+        mod_version: mod_version,
+        mod_license: mod_license
+    ]
+    inputs.properties(replacements)
+    filesMatching('META-INF/neoforge.mods.toml') {
+        expand(replacements)
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
