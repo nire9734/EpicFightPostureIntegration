@@ -178,11 +178,17 @@ public final class NeoForgeAutoCompatibility {
         RUNTIME_REJECTED.addAll(OWNED);
     }
 
-    /** Unlike isEnabled, this allows retrying previously rejected models. */
+    /**
+     * Renderer discovery runs during initial resource loading, before a server
+     * can send its policy. Prepare a client-side superset at that point; the
+     * actual patch and rendering gates still use the authoritative policy in
+     * {@link #isEnabled(EntityType)}. This also avoids requiring a resource
+     * reload and a second world join to discover modded renderers.
+     */
     public static synchronized boolean mayPrepareRenderer(EntityType<?> type) {
         if (type == null || type == EntityType.PLAYER) return false;
         ResourceLocation id = BuiltInRegistries.ENTITY_TYPE.getKey(type);
-        return NeoForgeServerSettings.allows(id);
+        return NeoForgeServerSettings.canRegister(id);
     }
 
     /** Only called on client after verifying renderer ownership and skin mesh. */
