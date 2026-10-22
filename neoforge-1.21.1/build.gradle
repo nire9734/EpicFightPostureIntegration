@@ -39,6 +39,7 @@ sourceSets {
         java {
             srcDir('../common/src/main/java')
             include 'dev/nire9734/epicfightposture/PostureBalance.java'
+            include 'dev/nire9734/epicfightposture/PostureConfigEntries.java'
             include 'dev/nire9734/epicfightposture/PostureDeathSafety.java'
             include 'dev/nire9734/epicfightposture/PostureRuntimeState.java'
             include 'dev/nire9734/epicfightposture/NeoForgeEntityAttributeAdapter.java'
@@ -60,6 +61,7 @@ sourceSets {
             srcDir('../common/src/test/java')
             srcDir('src/test/java')
             include 'dev/nire9734/epicfightposture/PostureBalanceTest.java'
+            include 'dev/nire9734/epicfightposture/PostureConfigEntriesTest.java'
             include 'dev/nire9734/epicfightposture/PostureDeathSafetyTest.java'
             include 'dev/nire9734/epicfightposture/PostureRuntimeStateTest.java'
             include 'dev/nire9734/epicfightposture/compat/humanoid/rig/**'
@@ -68,6 +70,7 @@ sourceSets {
             include 'dev/nire9734/epicfightposture/NeoForgeAssassinationStateTest.java'
             include 'dev/nire9734/epicfightposture/NeoForgeCompatibilityDamageTest.java'
             include 'dev/nire9734/epicfightposture/neoforge/compat/AutoCompatibilityRulesTest.java'
+            include 'dev/nire9734/epicfightposture/neoforge/NeoForgeServerSettingsTest.java'
             include 'dev/nire9734/epicfightposture/neoforge/compat/NeoForgeSpecialRenderPolicyTest.java'
             include 'dev/nire9734/epicfightposture/neoforge/discovery/NeoForgeRendererReportRulesTest.java'
             include 'dev/nire9734/epicfightposture/neoforge/compat/models/NeoForgeLionfishAdmissionTest.java'
