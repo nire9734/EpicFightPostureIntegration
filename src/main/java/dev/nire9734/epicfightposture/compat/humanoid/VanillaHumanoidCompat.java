@@ -308,6 +308,36 @@ public final class VanillaHumanoidCompat {
     }
 
     /**
+     * Called before Epic Fight constructs an entity's capability. Its provider
+     * captures the patch at construction time; restoring the registry only on
+     * player login is too late for mobs loaded from a saved world.
+     *
+     * <p>Keep the expensive armature/registry work on the exceptional missing-
+     * provider path. Newly spawned mobs with an intact provider are untouched.</p>
+     */
+    public static synchronized void recoverClientProviderBeforeEntityAttachment(EntityType<?> entityType) {
+        if (FMLEnvironment.dist != Dist.CLIENT || entityType == null) {
+            return;
+        }
+        ResourceLocation id = EntityType.getKey(entityType);
+        CompatibilityKind kind = registeredByEfpi.get(id);
+        if (kind == null || runtimeRejected.contains(id)) {
+            return;
+        }
+        EpicFightPatchOwnership.State state = EpicFightPatchOwnership.state(entityType);
+        if (state == EpicFightPatchOwnership.State.MISSING) {
+            if (registerDiscoveredAtRuntime(entityType, kind, runtimeArmatures.get(id))) {
+                LOGGER.info("EFPI recovered provider before attaching Epic Fight patch to {}", id);
+            } else {
+                runtimeRejected.add(id);
+            }
+        } else if (state == EpicFightPatchOwnership.State.FOREIGN
+                || state == EpicFightPatchOwnership.State.UNKNOWN) {
+            runtimeRejected.add(id);
+        }
+    }
+
+    /**
      * Leaves an already-installed EFPI patch physically registered but inert.
      * This is used when a later renderer scan cannot safely rebuild the matching
      * runtime armature. Retaining ownership lets a subsequent scan retry cleanly.
