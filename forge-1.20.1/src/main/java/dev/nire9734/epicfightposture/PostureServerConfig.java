@@ -283,19 +283,10 @@ public final class PostureServerConfig {
         if (entityId == null || !automaticCompatibilityEnabled()) {
             return false;
         }
-        if ("minecraft".equals(entityId.getNamespace())) {
-            return true;
-        }
-
         Snapshot snapshot = effectiveClientSnapshot();
         Set<String> allow = snapshot != null ? snapshot.modAllowlist() : modAllowlist;
         Set<String> deny = snapshot != null ? snapshot.modDenylist() : modDenylist;
-        String namespace = entityId.getNamespace();
-
-        if (deny.contains(namespace)) {
-            return false;
-        }
-        return allow.isEmpty() || allow.contains(namespace);
+        return PostureConfigPolicy.allowsAutomatic(true, entityId.getNamespace(), allow, deny);
     }
 
     public static boolean isExplicitlyBlacklisted(ResourceLocation entityId) {
@@ -374,12 +365,12 @@ public final class PostureServerConfig {
     }
 
     private static Set<ResourceLocation> parseEntityBlacklist() {
-        return PostureConfigEntries.entityBlacklist(ENTITY_BLACKLIST.get(),
+        return PostureConfigEntries.entityBlacklist(ENTITY_BLACKLIST.get(), ResourceLocation::tryParse,
                 raw -> LOGGER.warn("Ignoring invalid entity ID '{}' in entities.entity_blacklist", raw));
     }
 
     private static Map<ResourceLocation, Float> parseEntityMultipliers() {
-        return PostureConfigEntries.entityMultipliers(POSTURE_MULTIPLIERS.get(),
+        return PostureConfigEntries.entityMultipliers(POSTURE_MULTIPLIERS.get(), ResourceLocation::tryParse,
                 raw -> LOGGER.warn("Ignoring invalid entity multiplier '{}' in entities.posture_multipliers", raw));
     }
 
