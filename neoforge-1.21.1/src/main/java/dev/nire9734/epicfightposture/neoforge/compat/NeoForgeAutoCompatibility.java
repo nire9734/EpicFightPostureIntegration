@@ -29,9 +29,8 @@ import dev.nire9734.epicfightposture.neoforge.discovery.NeoForgeRendererDiscover
 /**
  * Low-priority ownership-aware Epic Fight 21.17 registry extension.
  *
- * The Forge 1.20.1 auto-discovery uses verified client renderers or trusted
- * server reports. Until that scanning protocol is ported, register ONLY the
- * two known vanilla biped candidates; never guess a modded entity's renderer.
+ * Verified client renderers and trusted operator reports expand this registry
+ * without taking ownership of existing Epic Fight or datapack providers.
  */
 public final class NeoForgeAutoCompatibility {
     private static final Logger LOGGER = LogUtils.getLogger();
@@ -166,6 +165,11 @@ public final class NeoForgeAutoCompatibility {
         ResourceLocation id = type == null ? null : BuiltInRegistries.ENTITY_TYPE.getKey(type);
         return type != null && OWNED.contains(type) && !RUNTIME_REJECTED.contains(type)
                 && NeoForgeServerSettings.allows(id);
+    }
+
+    /** Only EFPI-owned registrations are subject to the automatic-policy gate. */
+    public static synchronized boolean isOwnedByEfpi(EntityType<?> type) {
+        return type != null && OWNED.contains(type) && !EXTERNALLY_PATCHED.contains(type);
     }
 
     /** Snapshot from the registry event before EFPI added any patches. */
