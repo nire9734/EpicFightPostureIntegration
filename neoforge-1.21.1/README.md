@@ -380,3 +380,24 @@ visibility and transform invariants are also covered by NeoForge unit tests.
 
 This implementation is not yet validated in-game; mod-specific post-render
 cape hooks and custom GeoArmorRenderer layers still need compatibility work.
+
+## Stage 17 — Forge 3.0.2 combat and coverage parity
+
+- The NeoForge damage listener now uses Epic Fight's offender resolution and
+  reads Impact from the **actual Epic Fight damage source**, matching Forge
+  3.0.2 instead of using the player's current main-hand Impact. Explicit
+  zero-Impact EF attacks do not reduce Posture. Eligible ordinary player hits
+  retain Forge's bounded damage-derived Impact fallback and excluded damage IDs.
+- Eligibility now requires either a real humanoid armature or an explicit
+  Combat Evolution `CustomExecuteEntity` implementation, in addition to a
+  distinct NEUTRALIZE animation. A patched non-humanoid with an unrelated
+  stun clip is no longer accidentally admitted by NeoForge alone.
+- Dead entities have their posture state removed unless Combat Evolution is
+  actively executing them, matching Forge's death-safety rules.
+- `neoforge-renderer-coverage.tsv` now records the *actual* backend selected
+  by the successful registration, not an inference from the model superclass.
+  This makes per-Mob Forge/NeoForge comparison more reliable.
+
+These changes affect NeoForge only. Forge 3.0.2 remains the reference
+implementation. Both target versions still require separate in-game combat
+and GeckoLib/Lionfish/ModelPart rendering tests.

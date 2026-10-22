@@ -15,7 +15,6 @@ import dev.nire9734.epicfightposture.neoforge.compat.NeoForgeAutoCompatibility;
 import dev.nire9734.epicfightposture.neoforge.compat.NeoForgeHumanoidRenderGate;
 import dev.nire9734.epicfightposture.neoforge.client.NeoForgeRendererDiscoveryClient;
 import net.minecraft.client.model.HumanoidModel;
-import net.minecraft.client.model.HierarchicalModel;
 import net.minecraft.client.model.SpiderModel;
 import net.minecraft.client.renderer.entity.LivingEntityRenderer;
 import net.minecraft.client.renderer.entity.GiantMobRenderer;
@@ -93,25 +92,15 @@ public final class NeoForgeHumanoidRendererRegistration {
                 continue;
             }
             inspected.add(id);
-            if (registerHumanoid(event, type)) {
-                if (source instanceof LivingEntityRenderer<?, ?> living) {
-                    if (living.getModel() instanceof SpiderModel<?>) {
-                        spiderIds.add(id);
-                        coverage.put(id, "verified:spider");
-                    } else if (living.getModel() instanceof HumanoidModel<?>) {
-                        vanillaIds.add(id);
-                        coverage.put(id, "verified:vanilla");
-                    } else if (living.getModel() instanceof HierarchicalModel<?>) {
-                        extendedIds.add(id);
-                        coverage.put(id, "verified:modelpart");
-                    } else {
-                        extendedIds.add(id);
-                        coverage.put(id, "verified:lionfish");
-                    }
-                } else {
-                    extendedIds.add(id);
-                    coverage.put(id, "verified:geckolib");
-                }
+            String backend = registerHumanoid(event, type);
+            if (backend != null) {
+                // The actual validated backend is authoritative. Inferring it
+                // from the renderer's model superclass can mislabel a Mob and
+                // conceal Forge/NeoForge coverage differences.
+                coverage.put(id, "verified:" + backend);
+                if ("spider".equals(backend)) spiderIds.add(id);
+                else if ("vanilla".equals(backend)) vanillaIds.add(id);
+                else extendedIds.add(id);
             } else {
                 coverage.put(id, "rejected:backend_or_registration");
             }
@@ -129,31 +118,32 @@ public final class NeoForgeHumanoidRendererRegistration {
                 verifiedByBackend, inspected.size());
     }
 
-    private static boolean registerHumanoid(RegisterPatchedRenderersEvent.AddEntity event,
+    /** Returns the verified renderer backend, or null if registration failed. */
+    private static String registerHumanoid(RegisterPatchedRenderersEvent.AddEntity event,
                                             EntityType<?> type) {
         if (!NeoForgeAutoCompatibility.mayPrepareRenderer(type)
-                || !rendererSlotIsFree(event, type)) return false;
+                || !rendererSlotIsFree(event, type)) return null;
         ResourceLocation id = net.minecraft.core.registries.BuiltInRegistries.ENTITY_TYPE.getKey(type);
-        if (id == null) return false;
+        if (id == null) return null;
         try {
             EntityRenderer<?> sourceRenderer =
                     ((NeoForgeEntityRenderDispatcherAccessor) (Object)
                             event.getContext().getEntityRenderDispatcher()).efpi$getRenderers().get(type);
-            if (sourceRenderer == null) return false;
+            if (sourceRenderer == null) return null;
             if (type == EntityType.GIANT && !(sourceRenderer instanceof GiantMobRenderer)) {
                 LOGGER.warn("EFPI NeoForge Giant renderer changed; retaining original");
-                return false;
+                return null;
             }
 
             if (sourceRenderer instanceof LivingEntityRenderer<?, ?> livingRenderer) {
                 if (livingRenderer.getModel() instanceof SpiderModel<?>) {
-                    if (!NeoForgeAutoCompatibility.registerVerifiedRuntimeSpider(type)) return false;
+                    if (!NeoForgeAutoCompatibility.registerVerifiedRuntimeSpider(type)) return null;
                     try {
                         event.addPatchedEntityRenderer(type,
                                 unused -> new NeoForgeSpecialSpiderRenderer(event.getContext(), type));
                         NeoForgeHumanoidRenderGate.verified(type);
                         LOGGER.info("EFPI NeoForge verified SpiderModel renderer for {}", id);
-                        return true;
+                        return "spider";
                     } catch (RuntimeException exception) {
                         NeoForgeAutoCompatibility.rejectRuntimeCompatibility(type);
                         throw exception;
@@ -162,17 +152,17 @@ public final class NeoForgeHumanoidRendererRegistration {
 
                 if (livingRenderer.getModel() instanceof HumanoidModel<?> model) {
                     SkinnedMesh mesh = HumanoidModelBaker.VANILLA_TRANSFORMER.transformArmorModel(model);
-                    if (mesh == null) return false;
+                    if (mesh == null) return null;
                     AssetAccessor<SkinnedMesh> asset = SelfAccessor.create(
                             ResourceLocation.fromNamespaceAndPath("epicfight_posture_integration",
                                     "runtime_biped/" + id.getNamespace() + "/" + id.getPath()), mesh);
-                    if (!NeoForgeAutoCompatibility.registerVerifiedRuntimeHumanoid(type)) return false;
+                    if (!NeoForgeAutoCompatibility.registerVerifiedRuntimeHumanoid(type)) return null;
                     try {
                         event.addPatchedEntityRenderer(type,
                                 unused -> new NeoForgeSpecialHumanoidRenderer(event.getContext(), type, asset));
                         NeoForgeHumanoidRenderGate.verified(type);
                         LOGGER.info("EFPI NeoForge verified HumanoidModel renderer for {}", id);
-                        return true;
+                        return "vanilla";
                     } catch (RuntimeException exception) {
                         NeoForgeAutoCompatibility.rejectRuntimeCompatibility(type);
                         throw exception;
@@ -185,7 +175,7 @@ public final class NeoForgeHumanoidRendererRegistration {
             // Optional backend classes are loaded only when the dependency
             // exists. Unrecognized rigs retain their original rendering.
             NeoForgePreparedRig prepared = NeoForgeOptionalBackendBridge.inspect(type, sourceRenderer);
-            if (prepared == null) return false;
+            if (prepared == null) return null;
             var skeleton = prepared.skeleton();
             var armature = HumanoidArmatureFactory.accessor(
                     ResourceLocation.fromNamespaceAndPath("epicfight_posture_integration",
@@ -193,13 +183,13 @@ public final class NeoForgeHumanoidRendererRegistration {
                     HumanoidArmatureFactory.create(
                             "efpi_runtime_" + id.getNamespace() + "_" + id.getPath(),
                             skeleton, Armatures.BIPED.get()));
-            if (!NeoForgeAutoCompatibility.registerVerifiedRuntimeHumanoid(type, armature)) return false;
+            if (!NeoForgeAutoCompatibility.registerVerifiedRuntimeHumanoid(type, armature)) return null;
             try {
                 event.addPatchedEntityRenderer(type,
                         unused -> new NeoForgeRiggedSpecialRenderer(prepared));
                 NeoForgeHumanoidRenderGate.verified(type);
                 LOGGER.info("EFPI NeoForge verified {} rigged renderer for {}", prepared.backend(), id);
-                return true;
+                return prepared.backend();
             } catch (RuntimeException exception) {
                 NeoForgeAutoCompatibility.rejectRuntimeCompatibility(type);
                 throw exception;
@@ -207,7 +197,7 @@ public final class NeoForgeHumanoidRendererRegistration {
         } catch (RuntimeException exception) {
             NeoForgeAutoCompatibility.rejectRuntimeCompatibility(type);
             LOGGER.warn("EFPI NeoForge rejected renderer registration for {}", id, exception);
-            return false;
+            return null;
         }
     }
 

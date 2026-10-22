@@ -6,7 +6,6 @@ import dev.nire9734.epicfightposture.neoforge.NeoForgePostureConfig;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
@@ -26,13 +25,13 @@ import yesman.epicfight.world.capabilities.EpicFightCapabilities;
 import yesman.epicfight.world.capabilities.entitypatch.LivingEntityPatch;
 import yesman.epicfight.world.damagesource.StunType;
 import net.shelmarow.combat_evolution.ai.CEHumanoidPatch;
+import net.shelmarow.combat_evolution.ai.iml.CustomExecuteEntity;
 import net.shelmarow.combat_evolution.api.event.OnExecutionStartEvent;
 import net.shelmarow.combat_evolution.execution.ExecutionHandler;
+import yesman.epicfight.model.armature.HumanoidArmature;
+import yesman.epicfight.skill.guard.GuardSkill;
 
-/**
- * Stage 2 NeoForge server adapter. No HUD, networking, parry or Combat
- * Evolution execution listeners; not safe for release.
- */
+/** NeoForge server adapter for the shared posture balance and runtime state. */
 public final class NeoForgePostureServerEvents {
     private static final int RECOVERY_TICKS = 60;
     // Combat Evolution schedules its ExecutionTask after OnExecutionStartEvent.
@@ -55,20 +54,19 @@ public final class NeoForgePostureServerEvents {
     private static void onDamage(LivingDamageEvent.Post event) {
         if (!(event.getEntity() instanceof Mob mob) || !(mob.level() instanceof ServerLevel)
                 || !canReceive(mob) || isBlacklisted(mob)) return;
-        Entity source = event.getSource().getEntity();
-        if (!(source instanceof Player player) || event.getSource().getDirectEntity() != player) return;
+        Entity offender = GuardSkill.getOffender(event.getSource());
+        if (!(offender instanceof Player) || offender == mob) return;
         float loss = event.getNewDamage();
         if (!Float.isFinite(loss) || loss <= 0.0F) return;
 
         LivingEntityPatch<?> patch = EpicFightCapabilities.getEntityPatch(mob, LivingEntityPatch.class);
-        if (patch instanceof CEHumanoidPatch || !hasDistinctNeutralize(patch)) return;
+        if (!isEligiblePostureEntity(mob, patch)) return;
+        float impact = NeoForgeCompatibilityDamage.calculateBaseImpact(event.getSource(), loss);
+        if (!Float.isFinite(impact) || impact <= 0.0F) return;
         PostureRuntimeState state = STATES.computeIfAbsent(mob,
                 target -> new PostureRuntimeState(maximumPosture(target)));
         if (!state.acceptsPostureDamage()) return;
 
-        float impact = 3.0F;
-        LivingEntityPatch<?> playerPatch = EpicFightCapabilities.getEntityPatch(player, LivingEntityPatch.class);
-        if (playerPatch != null) impact = playerPatch.getImpact(InteractionHand.MAIN_HAND);
         float maxHealth = mob.getMaxHealth();
         float before = Math.min(maxHealth, mob.getHealth() + loss);
         float pressure = PostureBalance.attackPostureDamage(
@@ -93,20 +91,33 @@ public final class NeoForgePostureServerEvents {
 
     private static void onTick(EntityTickEvent.Post event) {
         if (!(event.getEntity() instanceof Mob mob) || !(mob.level() instanceof ServerLevel)) return;
+        if (!canReceive(mob)) {
+            // As in Forge 3.0.2, retain an active CE execution during death,
+            // but do not keep an orphaned posture HUD state after ordinary death.
+            if (PostureDeathSafety.shouldForgetDeadState(
+                    mob.isAlive(), mob.getHealth(), isExecuting(mob))) {
+                if (STATES.remove(mob) != null) {
+                    dev.nire9734.epicfightposture.neoforge.network.NeoForgePostureSync.removeNow(mob);
+                }
+                PENDING_EXECUTION_START.remove(mob);
+            }
+            return;
+        }
         PostureRuntimeState state = STATES.get(mob);
         if (state == null) return;
-        if (!canReceive(mob) || isBlacklisted(mob)) {
+        if (isBlacklisted(mob)) {
             STATES.remove(mob);
             PENDING_EXECUTION_START.remove(mob);
             dev.nire9734.epicfightposture.neoforge.network.NeoForgePostureSync.removeNow(mob);
             return;
         }
-        if (mob.tickCount % 10 == 0) {
+        // Distribute the ten-tick refresh across entity IDs, as in Forge.
+        if (Math.floorMod(mob.tickCount + mob.getId(), 10) == 0) {
             float max = maximumPosture(mob);
             if (Math.abs(max - state.max) >= .01F) state.updateMaximum(max);
         }
         if (state.postureState == PostureState.BROKEN || state.postureState == PostureState.EXECUTING) {
-            if (ExecutionHandler.isExecutingTarget(mob, mob)) {
+            if (isExecuting(mob)) {
                 PENDING_EXECUTION_START.remove(mob);
                 if (state.postureState != PostureState.EXECUTING) state.enterExecution();
                 state.current = 0.0F;
@@ -142,7 +153,7 @@ public final class NeoForgePostureServerEvents {
         if (!(attacker instanceof Mob mob) || !(mob.level() instanceof ServerLevel)
                 || !canReceive(mob) || isBlacklisted(mob)) return;
         LivingEntityPatch<?> patch = EpicFightCapabilities.getEntityPatch(mob, LivingEntityPatch.class);
-        if (patch instanceof CEHumanoidPatch || !hasDistinctNeutralize(patch)) return;
+        if (!isEligiblePostureEntity(mob, patch)) return;
 
         PostureRuntimeState state = STATES.computeIfAbsent(mob,
                 target -> new PostureRuntimeState(maximumPosture(target)));
@@ -173,7 +184,7 @@ public final class NeoForgePostureServerEvents {
                 || event.isCanceled() || !canReceive(mob) || isBlacklisted(mob)) return;
 
         LivingEntityPatch<?> patch = event.getTarget();
-        if (patch instanceof CEHumanoidPatch || !hasDistinctNeutralize(patch)) return;
+        if (!isEligiblePostureEntity(mob, patch)) return;
 
         // Assassinations start on a healthy, never-hit mob. The old get() gate
         // skipped those targets entirely, so no EXECUTING snapshot reached
@@ -222,6 +233,26 @@ public final class NeoForgePostureServerEvents {
 
     private static boolean canReceive(LivingEntity target) {
         return PostureDeathSafety.canReceivePosture(target.isAlive(), target.getHealth());
+    }
+
+    /** Forge 3.0.2 allows humanoid armatures, plus explicit CE execution targets. */
+    private static boolean isEligiblePostureEntity(Mob mob, LivingEntityPatch<?> patch) {
+        if (!canReceive(mob) || isBlacklisted(mob) || patch == null
+                || patch instanceof CEHumanoidPatch || !hasDistinctNeutralize(patch)) return false;
+        if (patch instanceof CustomExecuteEntity) return true;
+        try {
+            return patch.getArmature() instanceof HumanoidArmature;
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    private static boolean isExecuting(Mob mob) {
+        try {
+            return ExecutionHandler.isExecutingTarget(mob, mob);
+        } catch (Throwable ignored) {
+            return false;
+        }
     }
 
     private static boolean isBlacklisted(Mob mob) {
