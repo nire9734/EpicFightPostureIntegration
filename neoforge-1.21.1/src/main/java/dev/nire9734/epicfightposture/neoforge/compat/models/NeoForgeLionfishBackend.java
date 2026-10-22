@@ -46,8 +46,9 @@ public final class NeoForgeLionfishBackend {
         ResourceLocation id = BuiltInRegistries.ENTITY_TYPE.getKey(type);
         if (id == null) return null;
         try {
-            LionfishHumanoidMeshAdapter.Result result = LionfishHumanoidMeshAdapter.analyseAndBake(
-                    model, new SkeletonKey(id.toString(), model.getClass().getName()));
+            LionfishHumanoidMeshAdapter.Result result = RuntimeMeshOwnership.callOwned(() ->
+                    LionfishHumanoidMeshAdapter.analyseAndBake(
+                            model, new SkeletonKey(id.toString(), model.getClass().getName())));
             if (!result.supported() || result.descriptor() == null || result.mesh() == null) {
                 LOGGER.debug("EFPI NeoForge Lionfish rejected {} by shared model analysis: {}",
                         id, result.reason());

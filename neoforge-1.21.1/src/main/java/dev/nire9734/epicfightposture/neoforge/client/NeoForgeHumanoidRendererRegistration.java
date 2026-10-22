@@ -13,6 +13,7 @@ import dev.nire9734.epicfightposture.client.ClientPostureStore;
 import dev.nire9734.epicfightposture.neoforge.mixin.NeoForgeEntityRenderDispatcherAccessor;
 import dev.nire9734.epicfightposture.neoforge.compat.NeoForgeAutoCompatibility;
 import dev.nire9734.epicfightposture.neoforge.compat.NeoForgeHumanoidRenderGate;
+import dev.nire9734.epicfightposture.neoforge.compat.models.RuntimeMeshOwnership;
 import dev.nire9734.epicfightposture.neoforge.client.NeoForgeRendererDiscoveryClient;
 import net.minecraft.client.model.HumanoidModel;
 import net.minecraft.client.model.SpiderModel;
@@ -151,7 +152,8 @@ public final class NeoForgeHumanoidRendererRegistration {
                 }
 
                 if (livingRenderer.getModel() instanceof HumanoidModel<?> model) {
-                    SkinnedMesh mesh = HumanoidModelBaker.VANILLA_TRANSFORMER.transformArmorModel(model);
+                    SkinnedMesh mesh = RuntimeMeshOwnership.callOwned(() ->
+                            HumanoidModelBaker.VANILLA_TRANSFORMER.transformArmorModel(model));
                     if (mesh == null) return null;
                     AssetAccessor<SkinnedMesh> asset = SelfAccessor.create(
                             ResourceLocation.fromNamespaceAndPath("epicfight_posture_integration",

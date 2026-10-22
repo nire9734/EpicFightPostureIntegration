@@ -28,7 +28,7 @@ public final class LionfishLayerRenderTargetCapture {
         return new Scope(previous, true);
     }
 
-    /** Called from the vanilla BufferSource mixin after getBuffer(RenderType). */
+    /** Called from BufferSource and OutlineBufferSource after getBuffer(RenderType). */
     public static void record(
             MultiBufferSource bufferSource,
             RenderType renderType,

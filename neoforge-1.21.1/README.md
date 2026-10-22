@@ -401,3 +401,21 @@ cape hooks and custom GeoArmorRenderer layers still need compatibility work.
 These changes affect NeoForge only. Forge 3.0.2 remains the reference
 implementation. Both target versions still require separate in-game combat
 and GeckoLib/Lionfish/ModelPart rendering tests.
+
+## Stage 18 — runtime mesh ownership and outline-layer parity
+
+- Runtime meshes created by the vanilla HumanoidModel, ModelPart, GeckoLib,
+  and Lionfish adapters now use the same explicit construction-ownership scope
+  as Forge 3.0.2. A narrowly scoped Epic Fight mixin disables compute-shader
+  initialization only for EFPI-owned meshes; native Epic Fight and third-party
+  meshes retain their normal GPU path. Secondary Lionfish models and Gecko
+  armor were already wrapped by this ownership scope.
+- Additional Lionfish/ModelPart layer replay also captures
+  `OutlineBufferSource.getBuffer` (not just ordinary `BufferSource`), matching
+  Forge's handling of glowing/outline passes.
+- Source model preparation now follows Forge's mounted-mob body/head yaw
+  adjustment before replaying attachments and render layers.
+
+The changes are compile-level parity work, **not** a claim of tested 1.21.1
+rendering. Validate a glowing Cataclysm mob, equipped GeckoLib humanoid,
+mounted ModelPart mob, and world re-entry before release.

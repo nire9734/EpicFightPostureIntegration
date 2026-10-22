@@ -34,8 +34,9 @@ public final class NeoForgeGeckoBackend {
             if (location == null) return null;
             BakedGeoModel baked = model.getBakedModel(location);
             if (baked == null || baked.topLevelBones() == null || baked.topLevelBones().isEmpty()) return null;
-            GeckoHumanoidMeshAdapter.Result result = GeckoHumanoidMeshAdapter.analyseAndBake(
-                    baked, new SkeletonKey(id.toString(), model.getClass().getName() + "|" + location));
+            GeckoHumanoidMeshAdapter.Result result = RuntimeMeshOwnership.callOwned(() ->
+                    GeckoHumanoidMeshAdapter.analyseAndBake(
+                            baked, new SkeletonKey(id.toString(), model.getClass().getName() + "|" + location)));
             // Forge 3.0.2 delegates acceptance to the semantic resolver and
             // mesh baker. Do not add a NeoForge-only confidence threshold.
             if (!result.supported() || result.descriptor() == null || result.mesh() == null) {

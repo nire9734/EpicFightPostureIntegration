@@ -12,6 +12,7 @@
   },
   "client": [
     "NeoForgeHealthBarMixin",
+    "NeoForgeComputeShaderProviderRuntimeMeshMixin",
     "NeoForgeEntityRenderDispatcherAccessor",
     "NeoForgeLivingRendererScaleInvoker",
     "NeoForgeGeoArmorRendererInvoker",
@@ -19,6 +20,7 @@
     "NeoForgeIronsHumanoidRendererCapeMixin",
     "NeoForgeLivingEntityRendererLayersAccessor",
     "NeoForgeLayerRenderTypeCaptureMixin",
+    "NeoForgeOutlineBufferSourceMixin",
     "NeoForgeModelPartLayerPoseMixin",
     "NeoForgeLionfishAdvancedModelBoxLayerPoseMixin",
     "NeoForgeLionfishBasicEntityModelLayerMeshMixin"

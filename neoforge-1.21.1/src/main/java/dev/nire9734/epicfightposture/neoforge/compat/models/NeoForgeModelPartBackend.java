@@ -22,8 +22,9 @@ public final class NeoForgeModelPartBackend {
         ResourceLocation id = BuiltInRegistries.ENTITY_TYPE.getKey(type);
         if (id == null) return null;
         try {
-            var result = ModelPartHumanoidMeshAdapter.analyseAndBake(
-                    model, new SkeletonKey(id.toString(), model.getClass().getName()));
+            var result = RuntimeMeshOwnership.callOwned(() ->
+                    ModelPartHumanoidMeshAdapter.analyseAndBake(
+                            model, new SkeletonKey(id.toString(), model.getClass().getName())));
             if (!result.supported() || result.descriptor() == null || result.mesh() == null) {
                 LOGGER.debug("EFPI NeoForge ModelPart rejected {}: {}", id, result.reason());
                 return null;

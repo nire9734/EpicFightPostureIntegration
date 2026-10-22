@@ -44,7 +44,20 @@ public final class NeoForgeSourceModelPreparation {
 
             float bodyYaw = Mth.rotLerp(partialTicks, entity.yBodyRotO, entity.yBodyRot);
             float headYaw = Mth.rotLerp(partialTicks, entity.yHeadRotO, entity.yHeadRot);
-            float netHeadYaw = Mth.wrapDegrees(headYaw - bodyYaw);
+            float netHeadYaw = headYaw - bodyYaw;
+            // Match Forge's LivingEntityRenderer pose preparation when the
+            // source mob is riding another living entity: its body faces the
+            // mount and its head turn is clamped around that new body yaw.
+            if (riding && entity.getVehicle() instanceof LivingEntity vehicle) {
+                bodyYaw = Mth.rotLerp(partialTicks, vehicle.yBodyRotO, vehicle.yBodyRot);
+                netHeadYaw = headYaw - bodyYaw;
+                float wrapped = Mth.clamp(Mth.wrapDegrees(netHeadYaw), -85.0F, 85.0F);
+                bodyYaw = headYaw - wrapped;
+                if (wrapped * wrapped > 2500.0F) {
+                    bodyYaw += wrapped * 0.2F;
+                }
+                netHeadYaw = headYaw - bodyYaw;
+            }
             float headPitch = Mth.lerp(partialTicks, entity.xRotO, entity.getXRot());
             if (LivingEntityRenderer.isEntityUpsideDown(entity)) {
                 headPitch *= -1.0F;
