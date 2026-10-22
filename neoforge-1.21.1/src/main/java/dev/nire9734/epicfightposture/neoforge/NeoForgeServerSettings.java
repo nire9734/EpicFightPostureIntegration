@@ -2,6 +2,7 @@ package dev.nire9734.epicfightposture.neoforge;
 
 import com.mojang.logging.LogUtils;
 import dev.nire9734.epicfightposture.PostureConfigEntries;
+import dev.nire9734.epicfightposture.PostureConfigPolicy;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -39,16 +40,15 @@ public final class NeoForgeServerSettings {
         }
 
         public boolean allows(ResourceLocation id) {
-            if (id == null || entityBlacklist.contains(id)
-                    || !(vanillaHumanoid && extendedHumanoid && vanillaSpider)) return false;
-            if ("minecraft".equals(id.getNamespace())) return true;
-            if (modDenylist.contains(id.getNamespace())) return false;
-            return modAllowlist.isEmpty() || modAllowlist.contains(id.getNamespace());
+            return id != null && !entityBlacklist.contains(id)
+                    && PostureConfigPolicy.allowsAutomatic(
+                            vanillaHumanoid && extendedHumanoid && vanillaSpider,
+                            id.getNamespace(), modAllowlist, modDenylist);
         }
 
         /** Forge only suppresses an existing patch when EFPI itself owns it. */
         public boolean blocksPosture(ResourceLocation id, boolean efpiOwned) {
-            return id != null && (entityBlacklist.contains(id) || (efpiOwned && !allows(id)));
+            return PostureConfigPolicy.blocksPosture(id, entityBlacklist, efpiOwned, allows(id));
         }
     }
 
@@ -85,11 +85,12 @@ public final class NeoForgeServerSettings {
                             NeoForgePostureConfig.MAXIMUM_POSTURE_MULTIPLIER.get(),
                             1.0D, true, automatic, automatic, automatic,
                             PostureConfigEntries.entityBlacklist(NeoForgePostureConfig.ENTITY_BLACKLIST.get(),
+                                    ResourceLocation::tryParse,
                                     raw -> LOGGER.warn("Ignoring invalid entity ID '{}' in entities.entity_blacklist", raw)),
                             parseNamespaces(NeoForgePostureConfig.MOD_ALLOWLIST.get(), "compatibility.mod_allowlist"),
                             parseNamespaces(NeoForgePostureConfig.MOD_DENYLIST.get(), "compatibility.mod_denylist"));
                     Map<ResourceLocation, Float> overrides = PostureConfigEntries.entityMultipliers(
-                            NeoForgePostureConfig.POSTURE_MULTIPLIERS.get(),
+                            NeoForgePostureConfig.POSTURE_MULTIPLIERS.get(), ResourceLocation::tryParse,
                             raw -> LOGGER.warn("Ignoring invalid entity multiplier '{}' in entities.posture_multipliers", raw));
                     result = new LocalSettings(snapshot, overrides);
                     local = result;
