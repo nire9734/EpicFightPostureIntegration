@@ -135,7 +135,11 @@ public final class PostureManager {
                 (float) EHP_EXPONENT
         );
         float resistance = breakResistanceMultiplier(state);
-        state.current = Math.max(0.0F, state.current - postureDamage / resistance);
+        float reduced = PostureBalance.reducedPosture(state.current, postureDamage, resistance);
+        if (!(reduced < state.current)) {
+            return;
+        }
+        state.current = reduced;
         state.regenDelay = regenDelayTicks();
 
         if (state.current <= 0.0F) {
@@ -304,7 +308,12 @@ public final class PostureManager {
             return;
         }
 
-        state.current = Math.max(0.0F, state.current - damage / breakResistanceMultiplier(state));
+        float reduced = PostureBalance.reducedPosture(
+                state.current, damage, breakResistanceMultiplier(state));
+        if (!(reduced < state.current)) {
+            return;
+        }
+        state.current = reduced;
         state.regenDelay = regenDelayTicks();
         if (state.current <= 0.0F) {
             breakPosture(entity, patch, state);

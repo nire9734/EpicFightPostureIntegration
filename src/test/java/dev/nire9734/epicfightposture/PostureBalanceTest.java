@@ -134,6 +134,20 @@ class PostureBalanceTest {
         assertEquals(0, PostureBalance.regenDelayTicks(0.0F));
     }
 
+    @Test
+    void onlyActualPostureReductionsCanRestartRegeneration() {
+        assertEquals(75.0F, PostureBalance.reducedPosture(100, 50, 2), EPS);
+        assertEquals(0.0F, PostureBalance.reducedPosture(10, 50, 2), EPS);
+        assertEquals(75.0F, PostureBalance.reducedPosture(75, 0, 1), EPS);
+        assertEquals(75.0F, PostureBalance.reducedPosture(75, -10, 1), EPS);
+        assertEquals(75.0F, PostureBalance.reducedPosture(75, Float.NaN, 1), EPS);
+        assertEquals(75.0F, PostureBalance.reducedPosture(75, 10, 0), EPS);
+        assertEquals(75.0F, PostureBalance.reducedPosture(75, 10, Float.NaN), EPS);
+        assertEquals(0.0F, PostureBalance.reducedPosture(0, 10, 1), EPS);
+        assertEquals(1_000_000.0F,
+                PostureBalance.reducedPosture(1_000_000.0F, Float.MIN_VALUE, 1), EPS);
+    }
+
     private static float parryFraction(float ehp) {
         return PostureBalance.parryPostureFraction(.22F, .08F, ehp, 20, .7F);
     }

@@ -101,7 +101,7 @@ With **no regeneration or attack contribution**, the above baseline Maledictus n
 
 ### 5. Recovery and regeneration
 
-- **Ordinary regeneration:** after `regeneration.delay_seconds` without posture damage (default `15` seconds), regain `regeneration.percent_per_second` of `P_max` per second (default `2%`); implemented as a fixed amount per server tick.
+- **Ordinary regeneration:** wait `regeneration.delay_seconds` (default `15` seconds) **since the last actual reduction in Posture**, whether from a direct attack or a successful parry. Every subsequent Posture-reducing hit or parry restarts this timer, even if it deals no HP damage. HP damage that does not reduce Posture, or a zero-Posture-damage event, does not restart it. Afterwards, regain `regeneration.percent_per_second` of `P_max` per second (default `2%`), as a fixed amount per server tick.
 - **After a guard break or execution:** use a distinct **60-tick (3-second) recovery** that fills posture from zero to maximum. No new posture break can occur during the guard-break, execution or recovery states.
 - Execution damage and execution animation selection remain Combat Evolution's responsibility.
 
@@ -211,7 +211,8 @@ posture_break_resistance_max = 2.0
 
 [regeneration]
 
-# Seconds before Posture regeneration starts.
+# Seconds since the last actual Posture reduction (attack or parry) before regeneration.
+# HP damage without Posture loss does not reset this delay.
 # Default: 15.0 | Range: 0.0-60.0
 delay_seconds = 15.0
 

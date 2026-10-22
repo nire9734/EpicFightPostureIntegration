@@ -136,6 +136,16 @@ final class PostureBalance {
         return (float) Math.min((double) safeMaximum, increased);
     }
 
+    /** Return the actual remaining posture; invalid or ineffective hits cannot restart regeneration. */
+    static float reducedPosture(float current, float damage, float resistance) {
+        if (!Float.isFinite(current) || current <= 0.0F
+                || !Float.isFinite(damage) || damage <= 0.0F
+                || !Float.isFinite(resistance) || resistance <= 0.0F) {
+            return current;
+        }
+        return Math.max(0.0F, current - damage / resistance);
+    }
+
     static int regenDelayTicks(float delaySeconds) {
         if (!Float.isFinite(delaySeconds) || delaySeconds <= 0.0F) {
             return 0;

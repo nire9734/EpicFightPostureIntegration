@@ -134,7 +134,9 @@ public final class PostureServerConfig {
         BUILDER.push("regeneration");
         REGEN_DELAY_SECONDS = BUILDER
                 .comment(
-                        "Seconds a mob must go without taking Posture damage before regeneration starts.",
+                        "Seconds since the last actual Posture reduction before ordinary regeneration starts.",
+                        "Both direct attacks and parries restart this timer when they reduce Posture.",
+                        "Health damage alone (without Posture loss) does not restart it.",
                         "Does not affect the separate 3-second recovery after a guard break.",
                         "Default: 15.0 | Range: 0.0-60.0"
                 )
