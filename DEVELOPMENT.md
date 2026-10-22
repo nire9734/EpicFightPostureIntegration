@@ -31,11 +31,11 @@ unfinished NeoForge adapter or overwrite the 3.0.1 release branch.
 Both builds import `common/src/main/java` directly. Class packages remain
 unchanged, so the compiled mod IDs and external interfaces are unaffected.
 
-This first consolidation moves portable logic and keeps the existing Forge
-`PostureManager` and NeoForge event listener implementations as separate
-adapters. In particular, Forge's embedded posture-state implementation has
-not yet been replaced with `PostureRuntimeState`; that should be a separately
-tested behavior-preserving refactor.
+Both loaders now use `PostureRuntimeState` for posture-loss timing, break
+state, execution state, and recovery. Forge's `PostureManager` and NeoForge's
+event listeners remain loader-specific adapters. A change to the shared
+state machine or posture math therefore requires one common implementation
+change, followed by builds and tests for **both** loaders.
 
 ## Build and test
 

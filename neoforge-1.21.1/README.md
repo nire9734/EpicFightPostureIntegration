@@ -24,8 +24,8 @@ checks against Forge before a release.
 
 - Compiles the shared `PostureBalance`, `PostureDeathSafety`, rig/skeleton
   logic and corresponding JUnit tests from a single physical source tree.
-  NeoForge also uses the shared `PostureRuntimeState` class; Forge still has
-  its own internal state representation pending a separate migration.
+  Both loaders now use the shared `PostureRuntimeState` class for damage,
+  regeneration, breaks, execution state and recovery.
 - Reads live Minecraft 1.21.1 mob attributes and registers a NeoForge
   COMMON config with Forge 3.0.2's 13 key names/defaults/ranges.
 - Uses `LivingDamageEvent.Post` for actual HP lost from direct player attacks,

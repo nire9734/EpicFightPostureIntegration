@@ -40,7 +40,7 @@ public final class PostureManager {
     private static final double EHP_EXPONENT = 0.7D;
     private static final float MAX_SAFE_POSTURE = 1_000_000.0F;
 
-    private static final Map<LivingEntity, State> STATES = new WeakHashMap<>();
+    private static final Map<LivingEntity, PostureRuntimeState> STATES = new WeakHashMap<>();
     /** One in-flight LivingDamageEvent per target, resolved after vanilla actually changes HP. */
     private static final Map<LivingEntity, PendingAttack> PENDING_ATTACKS = new WeakHashMap<>();
 
@@ -118,7 +118,7 @@ public final class PostureManager {
             return;
         }
 
-        State state = state(target);
+        PostureRuntimeState state = state(target);
         if (!state.acceptsPostureDamage()) {
             return;
         }
@@ -135,14 +135,12 @@ public final class PostureManager {
                 (float) EHP_EXPONENT
         );
         float resistance = breakResistanceMultiplier(state);
-        float reduced = PostureBalance.reducedPosture(state.current, postureDamage, resistance);
-        if (!(reduced < state.current)) {
+        float previousPosture = state.current;
+        boolean broken = state.applyDamage(postureDamage, resistance, regenDelayTicks());
+        if (!(state.current < previousPosture)) {
             return;
         }
-        state.current = reduced;
-        state.regenDelay = regenDelayTicks();
-
-        if (state.current <= 0.0F) {
+        if (broken) {
             breakPosture(target, patch, state);
         }
         PostureSyncEvents.syncNow(target);
@@ -167,7 +165,7 @@ public final class PostureManager {
         // Damage listeners execute before vanilla subtracts HP. Flush at the
         // next entity tick, after all later listeners and HP changes have run.
         flushPendingDamage(entity);
-        State state = STATES.get(entity);
+        PostureRuntimeState state = STATES.get(entity);
         if (state == null) {
             return false;
         }
@@ -186,8 +184,7 @@ public final class PostureManager {
             boolean executing = isExecuting(entity);
             if (executing) {
                 if (state.postureState != PostureState.EXECUTING) {
-                    state.postureState = PostureState.EXECUTING;
-                    state.current = 0.0F;
+                    state.enterExecution();
                     PostureSyncEvents.syncNow(entity);
                 } else {
                     state.current = 0.0F;
@@ -213,31 +210,12 @@ public final class PostureManager {
         }
 
         if (state.postureState == PostureState.RECOVERING) {
-            state.recoveryTicksRemaining--;
-            if (state.recoveryTicksRemaining <= 0) {
-                state.recoveryTicksRemaining = 0;
-                state.current = state.max;
-                state.postureState = PostureState.NORMAL;
+            if (state.advanceRecovery(BREAK_RECOVERY_TICKS)) {
                 PostureSyncEvents.syncNow(entity);
-            } else {
-                state.current = state.max
-                        * (BREAK_RECOVERY_TICKS - state.recoveryTicksRemaining)
-                        / BREAK_RECOVERY_TICKS;
             }
             return true;
         }
-
-        if (state.current >= state.max) {
-            return true;
-        }
-
-        if (state.regenDelay > 0) {
-            state.regenDelay--;
-            return true;
-        }
-
-        float regenPerTick = state.max * PostureServerConfig.postureRegenFractionPerSecond() / 20.0F;
-        state.current = Math.min(state.max, state.current + regenPerTick);
+        state.advanceRegeneration(PostureServerConfig.postureRegenFractionPerSecond());
         return true;
     }
 
@@ -246,15 +224,12 @@ public final class PostureManager {
         if (target == null || !RuntimeAccess.isServerEntity(target)) {
             return;
         }
-        State state = STATES.get(target);
+        PostureRuntimeState state = STATES.get(target);
         if (state == null) {
             return;
         }
         stopUsingItem(target);
-        state.postureState = PostureState.EXECUTING;
-        state.current = 0.0F;
-        state.regenDelay = 0;
-        state.recoveryTicksRemaining = 0;
+        state.startExecution();
         PostureSyncEvents.syncNow(target);
     }
 
@@ -267,7 +242,7 @@ public final class PostureManager {
             return null;
         }
 
-        State state = STATES.get(entity);
+        PostureRuntimeState state = STATES.get(entity);
         if (state == null && forceCreate) {
             LivingEntityPatch<?> patch = getPatch(entity);
             if (!isEligiblePostureEntity(entity, patch)) {
@@ -283,14 +258,14 @@ public final class PostureManager {
             return;
         }
         PENDING_ATTACKS.remove(entity);
-        State removed = STATES.remove(entity);
+        PostureRuntimeState removed = STATES.remove(entity);
         if (removed != null && notifyClients && RuntimeAccess.isServerEntity(entity)) {
             PostureSyncEvents.removeNow(entity);
         }
     }
 
     /** Final posture damage from direct hits. Successive breaks reduce the applied damage. */
-    private static float breakResistanceMultiplier(State state) {
+    private static float breakResistanceMultiplier(PostureRuntimeState state) {
         return PostureBalance.breakResistanceMultiplier(
                 state.completedBreaks,
                 PostureServerConfig.postureBreakResistanceStep(),
@@ -303,31 +278,28 @@ public final class PostureManager {
             return;
         }
 
-        State state = state(entity);
+        PostureRuntimeState state = state(entity);
         if (!state.acceptsPostureDamage()) {
             return;
         }
 
-        float reduced = PostureBalance.reducedPosture(
-                state.current, damage, breakResistanceMultiplier(state));
-        if (!(reduced < state.current)) {
+        float previousPosture = state.current;
+        boolean broken = state.applyDamage(damage, breakResistanceMultiplier(state), regenDelayTicks());
+        if (!(state.current < previousPosture)) {
             return;
         }
-        state.current = reduced;
-        state.regenDelay = regenDelayTicks();
-        if (state.current <= 0.0F) {
+        if (broken) {
             breakPosture(entity, patch, state);
         }
         PostureSyncEvents.syncNow(entity);
     }
 
-    private static void breakPosture(LivingEntity entity, LivingEntityPatch<?> patch, State state) {
+    private static void breakPosture(LivingEntity entity, LivingEntityPatch<?> patch, PostureRuntimeState state) {
         if (!canReceivePosture(entity) || !state.acceptsPostureDamage()) {
             return;
         }
 
-        state.current = 0.0F;
-        state.regenDelay = regenDelayTicks();
+        state.prepareBreak(regenDelayTicks());
         stopUsingItem(entity);
 
         boolean applied = false;
@@ -344,11 +316,7 @@ public final class PostureManager {
 
         if (active) {
             // CE checks the *NEUTRALIZE* animation identity, not arbitrary LONG stuns.
-            if (state.completedBreaks < Integer.MAX_VALUE) {
-                state.completedBreaks++;
-            }
-            state.brokenTicks = 0;
-            state.postureState = PostureState.BROKEN;
+            state.confirmBreak();
         } else {
             // A transiently rejected stun does not justify removing posture tracking.
             LOGGER.debug("EFPI neutralize unavailable for {} (applied={}, patch={})",
@@ -441,18 +409,18 @@ public final class PostureManager {
         }
     }
 
-    private static State state(LivingEntity entity) {
-        State existing = STATES.get(entity);
+    private static PostureRuntimeState state(LivingEntity entity) {
+        PostureRuntimeState existing = STATES.get(entity);
         if (existing != null) {
             return existing;
         }
-        State created = new State(calculateMaxPosture(entity));
+        PostureRuntimeState created = new PostureRuntimeState(calculateMaxPosture(entity));
         captureInputs(entity, created);
         STATES.put(entity, created);
         return created;
     }
 
-    private static void refreshMaxPosture(LivingEntity entity, State state) {
+    private static void refreshMaxPosture(LivingEntity entity, PostureRuntimeState state) {
         float maxHealth = finiteOr(entity.getMaxHealth(), EHP_REFERENCE_HEALTH);
         boolean useArmor = PostureServerConfig.useArmorScaling();
         float armor = useArmor ? finiteOr((float) entity.getAttributeValue(Attributes.ARMOR), 0.0F) : 0.0F;
@@ -479,14 +447,10 @@ public final class PostureManager {
             return;
         }
 
-        float ratio = state.max > 0.0F ? clamp(state.current / state.max, 0.0F, 1.0F) : 1.0F;
-        state.max = newMax;
-        if (!state.isLocked()) {
-            state.current = newMax * ratio;
-        }
+        state.updateMaximum(newMax);
     }
 
-    private static void captureInputs(LivingEntity entity, State state) {
+    private static void captureInputs(LivingEntity entity, PostureRuntimeState state) {
         boolean useArmor = PostureServerConfig.useArmorScaling();
         float maxHealth = finiteOr(entity.getMaxHealth(), EHP_REFERENCE_HEALTH);
         float armor = useArmor ? finiteOr((float) entity.getAttributeValue(Attributes.ARMOR), 0.0F) : 0.0F;
@@ -509,7 +473,7 @@ public final class PostureManager {
             float multiplier,
             float minimum,
             boolean useArmor,
-            State state) {
+            PostureRuntimeState state) {
         state.lastMaxHealth = maxHealth;
         state.lastArmor = armor;
         state.lastToughness = toughness;
@@ -519,11 +483,8 @@ public final class PostureManager {
         state.inputsInitialized = true;
     }
 
-    private static void startRecovering(State state) {
-        state.postureState = PostureState.RECOVERING;
-        state.current = 0.0F;
-        state.recoveryTicksRemaining = BREAK_RECOVERY_TICKS;
-        state.regenDelay = 0;
+    private static void startRecovering(PostureRuntimeState state) {
+        state.beginRecovery(BREAK_RECOVERY_TICKS);
     }
 
     public static void stopUsingItem(LivingEntity entity) {
@@ -673,49 +634,6 @@ public final class PostureManager {
     }
 
     private record PendingAttack(float healthBefore, float maxHealth, float impact) {
-    }
-
-    private static final class State {
-        float max;
-        float current;
-        int brokenTicks;
-        int regenDelay;
-        int recoveryTicksRemaining;
-        int completedBreaks;
-        PostureState postureState = PostureState.NORMAL;
-
-        boolean inputsInitialized;
-        float lastMaxHealth;
-        float lastArmor;
-        float lastToughness;
-        float lastMultiplier;
-        float lastMinimum;
-        boolean lastUseArmorScaling;
-
-        State(float max) {
-            this.max = max;
-            this.current = max;
-        }
-
-        boolean isLocked() {
-            return postureState == PostureState.BROKEN || postureState == PostureState.EXECUTING;
-        }
-
-        /** Recovery must finish before another break can be triggered. */
-        boolean acceptsPostureDamage() {
-            return postureState == PostureState.NORMAL;
-        }
-
-        boolean isBrokenForHud() {
-            return isLocked();
-        }
-    }
-
-    private enum PostureState {
-        NORMAL,
-        BROKEN,
-        EXECUTING,
-        RECOVERING
     }
 
     public record SyncState(float current, float max, boolean broken) {

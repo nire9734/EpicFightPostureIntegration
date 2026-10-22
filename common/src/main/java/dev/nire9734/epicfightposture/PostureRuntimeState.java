@@ -1,8 +1,8 @@
 package dev.nire9734.epicfightposture;
 
 /**
- * Platform-free mutable posture state; Minecraft and mod-loader dependencies
- * remain in PostureManager. Eligible for reuse by the NeoForge adapter.
+ * Platform-free mutable posture state shared by Forge's PostureManager and the
+ * NeoForge server events adapter. Loader-specific entity access stays outside.
  */
 final class PostureRuntimeState {
     float max;
