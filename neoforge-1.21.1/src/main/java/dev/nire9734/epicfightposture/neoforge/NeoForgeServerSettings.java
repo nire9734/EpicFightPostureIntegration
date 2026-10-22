@@ -1,13 +1,18 @@
 package dev.nire9734.epicfightposture.neoforge;
 
+import com.mojang.logging.LogUtils;
+import dev.nire9734.epicfightposture.PostureConfigEntries;
+import dev.nire9734.epicfightposture.PostureConfigPolicy;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import net.minecraft.resources.ResourceLocation;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.fml.LogicalSide;
 import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.fml.util.thread.EffectiveSide;
+import org.slf4j.Logger;
 
 /**
  * Authoritative server settings used by client-side automatic renderer patches.
@@ -15,6 +20,7 @@ import net.neoforged.fml.util.thread.EffectiveSide;
  * server (including integrated servers) always uses its own config.
  */
 public final class NeoForgeServerSettings {
+    private static final Logger LOGGER = LogUtils.getLogger();
     public record Snapshot(
             double globalMultiplier,
             double minimumPosture,
@@ -34,37 +40,62 @@ public final class NeoForgeServerSettings {
         }
 
         public boolean allows(ResourceLocation id) {
-            if (id == null || entityBlacklist.contains(id)
-                    || !(vanillaHumanoid && extendedHumanoid && vanillaSpider)) return false;
-            if ("minecraft".equals(id.getNamespace())) return true;
-            if (modDenylist.contains(id.getNamespace())) return false;
-            return modAllowlist.isEmpty() || modAllowlist.contains(id.getNamespace());
+            return id != null && !entityBlacklist.contains(id)
+                    && PostureConfigPolicy.allowsAutomatic(
+                            vanillaHumanoid && extendedHumanoid && vanillaSpider,
+                            id.getNamespace(), modAllowlist, modDenylist);
+        }
+
+        /** Forge only suppresses an existing patch when EFPI itself owns it. */
+        public boolean blocksPosture(ResourceLocation id, boolean efpiOwned) {
+            return PostureConfigPolicy.blocksPosture(id, entityBlacklist, efpiOwned, allows(id));
         }
     }
 
+    private record LocalSettings(Snapshot snapshot, Map<ResourceLocation, Float> entityMultipliers) {}
+
     private static final Snapshot CLIENT_FAIL_CLOSED = new Snapshot(
             1.0D, 1.0D, true, false, false, false, Set.of(), Set.of(), Set.of());
-    private static volatile Snapshot local;
+    private static volatile LocalSettings local;
     private static volatile Snapshot remote;
 
-    public static void invalidateLocal() {
+    public static synchronized void invalidateLocal() {
         local = null;
     }
 
     public static Snapshot localSnapshot() {
-        Snapshot result = local;
+        return localSettings().snapshot();
+    }
+
+    /** Server-only override; an entity's configured value replaces the global one. */
+    public static float maximumPostureMultiplier(ResourceLocation id) {
+        LocalSettings settings = localSettings();
+        Float override = id == null ? null : settings.entityMultipliers().get(id);
+        return override != null ? override : (float) settings.snapshot().globalMultiplier();
+    }
+
+    private static LocalSettings localSettings() {
+        LocalSettings result = local;
         if (result == null) {
-            result = new Snapshot(
-                    NeoForgePostureConfig.MAXIMUM_POSTURE_MULTIPLIER.get(),
-                    1.0D,
-                    true,
-                    NeoForgePostureConfig.AUTOMATIC_COMPATIBILITY.get(),
-                    NeoForgePostureConfig.AUTOMATIC_COMPATIBILITY.get(),
-                    NeoForgePostureConfig.AUTOMATIC_COMPATIBILITY.get(),
-                    parseEntities(NeoForgePostureConfig.ENTITY_BLACKLIST.get()),
-                    parseNamespaces(NeoForgePostureConfig.MOD_ALLOWLIST.get()),
-                    parseNamespaces(NeoForgePostureConfig.MOD_DENYLIST.get()));
-            local = result;
+            synchronized (NeoForgeServerSettings.class) {
+                result = local;
+                if (result == null) {
+                    boolean automatic = NeoForgePostureConfig.AUTOMATIC_COMPATIBILITY.get();
+                    Snapshot snapshot = new Snapshot(
+                            NeoForgePostureConfig.MAXIMUM_POSTURE_MULTIPLIER.get(),
+                            1.0D, true, automatic, automatic, automatic,
+                            PostureConfigEntries.entityBlacklist(NeoForgePostureConfig.ENTITY_BLACKLIST.get(),
+                                    ResourceLocation::tryParse,
+                                    raw -> LOGGER.warn("Ignoring invalid entity ID '{}' in entities.entity_blacklist", raw)),
+                            parseNamespaces(NeoForgePostureConfig.MOD_ALLOWLIST.get(), "compatibility.mod_allowlist"),
+                            parseNamespaces(NeoForgePostureConfig.MOD_DENYLIST.get(), "compatibility.mod_denylist"));
+                    Map<ResourceLocation, Float> overrides = PostureConfigEntries.entityMultipliers(
+                            NeoForgePostureConfig.POSTURE_MULTIPLIERS.get(), ResourceLocation::tryParse,
+                            raw -> LOGGER.warn("Ignoring invalid entity multiplier '{}' in entities.posture_multipliers", raw));
+                    result = new LocalSettings(snapshot, overrides);
+                    local = result;
+                }
+            }
         }
         return result;
     }
@@ -98,22 +129,17 @@ public final class NeoForgeServerSettings {
         if (FMLEnvironment.dist == Dist.CLIENT) remote = null;
     }
 
-    private static Set<ResourceLocation> parseEntities(List<? extends String> entries) {
-        Set<ResourceLocation> parsed = new HashSet<>();
-        for (String entry : entries) {
-            ResourceLocation id = ResourceLocation.tryParse(entry == null ? "" : entry.trim());
-            if (id != null) parsed.add(id);
-        }
-        return Set.copyOf(parsed);
-    }
-
-    private static Set<String> parseNamespaces(List<? extends String> entries) {
+    private static Set<String> parseNamespaces(List<? extends String> entries, String configPath) {
         Set<String> parsed = new HashSet<>();
         for (String entry : entries) {
             String id = entry == null ? "" : entry.trim();
-            if (id.isEmpty() || id.length() > 128) continue;
             ResourceLocation check = ResourceLocation.tryParse(id + ":efpi_probe");
-            if (check != null && check.getNamespace().equals(id)) parsed.add(id);
+            if (id.isEmpty() || id.length() > 128 || check == null || !check.getNamespace().equals(id)
+                    || !"efpi_probe".equals(check.getPath())) {
+                LOGGER.warn("Ignoring invalid mod ID '{}' in {}", entry, configPath);
+                continue;
+            }
+            parsed.add(id);
         }
         return Set.copyOf(parsed);
     }

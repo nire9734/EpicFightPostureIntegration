@@ -45,7 +45,7 @@ Forge retains ForgeGradle/Gradle 8.8 and **Java 17**:
 
 ```sh
 cd forge-1.20.1
-./gradlew clean build
+gradle clean build
 ```
 
 NeoForge retains ModDevGradle/Gradle 9.2.1 and **Java 21**:
@@ -55,8 +55,9 @@ cd neoforge-1.21.1
 gradle clean build
 ```
 
-Use the appropriate Gradle installation for each command. The GitHub Actions
-workflows build both independently on `dev/multiloader`. Neither the
+Use the appropriate Gradle installation for each command. The multiloader
+GitHub Actions workflow builds both independently on `dev/multiloader` (Java
+17/Gradle 8.8 for Forge and Java 21/Gradle 9.2.1 for NeoForge). Neither the
 `common/` tree nor the tests are packaged as a separate runtime mod; common
 production classes are included in each platform's own JAR, while test
 classes are excluded from the production artifact.

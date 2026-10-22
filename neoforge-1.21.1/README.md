@@ -1,7 +1,9 @@
-# NeoForge 1.21.1 port (development only)
+# NeoForge 1.21.1 port — pre-release validation
 
-This is the unfinished NeoForge 1.21.1 port of Epic Fight Posture Integration.
-It is **not** a replacement for the complete Forge 1.20.1 release.
+This is the unreleased NeoForge 1.21.1 edition of Epic Fight Posture
+Integration. Its intended feature baseline is the **unreleased Forge 1.20.1
+3.0.2**, not the public Forge 3.0.1 release. The code-parity pass is complete;
+**build checks and in-game release validation must pass before publishing**.
 
 On the `dev/multiloader` integration branch, this project builds alongside
 Forge 1.20.1 and compiles shared code directly from `../common/src/main/java`.
@@ -9,10 +11,32 @@ See [the development and branch policy](../DEVELOPMENT.md). The independent
 `port/1.21.1-neoforge` branch is retained as the original migration history.
 Neither NeoForge nor Forge 3.0.2 has been released; `main` remains Forge 3.0.1.
 
-The original milestone summary below describes the initial server adapter.
-Later changes added automatic compatibility and special render backends for
-GeckoLib, Lionfish and ModelPart; these still require per-Mob in-game parity
-checks against Forge before a release.
+The stages below are a chronological development log. Statements such as
+"not yet implemented" or "do not publish" in *earlier stage descriptions*
+describe those old builds, **not the current implementation**. See the final
+release checklist for the remaining work.
+
+## Current implementation and release gate
+
+- Combat calculations, posture regeneration, repeated-break resistance, item
+  interruption, assassination/execution transitions, state sync, sound volume,
+  client settings screen and server-policy synchronization have corresponding
+  Forge 3.0.2 behavior.
+- The Forge and NeoForge builds share the same posture math, runtime state,
+  and entity-blacklist/per-entity-multiplier parsing. NeoForge also caches
+  parsed overrides on config load/reload, including whitespace and validation
+  rules, and excludes EFPI-owned mobs when automatic compatibility is disabled
+  without suppressing third-party Epic Fight patches.
+- Vanilla, ModelPart, GeckoLib, Lionfish, and SpiderModel automatic compatibility
+  use verified model preparation and fail-closed ownership checks. This is a
+  **code implementation claim, not proof that every third-party Mob renders
+  correctly**.
+- Minecraft/loader-specific damage event timing remains different: NeoForge
+  uses completed damage events; Forge observes final HP loss after the event.
+  Both use actual committed HP reduction as the pressure input.
+
+Before release: **both CI build/test jobs must pass**, followed by the
+in-game checklist at the bottom of this document on the exact release mod set.
 
 ## Target versions
 
@@ -87,7 +111,8 @@ even before the first server policy arrives. Runtime usage remains gated by
 the authoritative server policy; first singleplayer world entry must not
 require F3+T or a second world entry to activate supported mobs.
 
-**Do not publish this incomplete port JAR.**
+**Historical note:** the original incomplete-port warning applied to this
+earlier milestone. The current release gate is the checklist below.
 
 
 ## First client synchronization and overhead HUD
@@ -474,3 +499,65 @@ mounted ModelPart mob, and world re-entry before release.
 These changes have CI compilation and shared unit-test coverage only;
 multiplayer joining, live config reload, dedicated-server startup, and
 specific execution/guard-break animations still need in-game checks.
+
+## Final code-parity pass — settings, eligibility, and state synchronization
+
+- A single source-shared entity-config parser now handles entity blacklist IDs
+  and per-entity maximum-posture multipliers on **both** loaders. Entries
+  tolerate surrounding whitespace; invalid IDs, NaN/infinite and out-of-range
+  multipliers are warned about and ignored. Valid later duplicate overrides
+  replace earlier ones. NeoForge caches parsed settings and refreshes them on
+  config load/reload, matching Forge's behavior and avoiding per-Mob string
+  parsing during combat.
+- The server no longer leaves a stale posture HUD entry for an EFPI-owned Mob
+  after the operator disables automatic compatibility, blacklists that Mob,
+  or excludes its mod with the allow/deny lists. Existing Epic Fight/addon
+  patches remain eligible unless explicitly blacklisted.
+- No-op hits/parries that do not actually reduce the float-valued posture
+  resource skip immediate change packets, matching Forge's state machine.
+  Maximum-posture EHP and missing registered-attribute fallbacks are aligned.
+- The workflow tests Forge and NeoForge independently, including shared
+  parser/state tests and NeoForge policy tests; the workflow result must be
+  reviewed before this build is considered release-ready.
+
+## Release checklist (requires actual game clients)
+
+Use matching Epic Fight / Combat Evolution versions for each Minecraft loader.
+Do not put the Forge and NeoForge JARs in the same game instance. Start with
+clean configs, keep any previous test world backed up, and repeat the same
+cases against Forge 3.0.2 for behavior comparison.
+
+1. **Startup + login:** singleplayer first entry, world exit/re-entry,
+   resource reload, and a dedicated NeoForge server with a normal client.
+   Supported mobs must work on the first entry; no crash or excessive normal
+   log spam. Confirm server policy arrives on join.
+2. **Combat:** player attacks and parries decrease posture based on actual
+   HP/posture reductions, normal regeneration restarts only after posture
+   loss, item use stops on guard break, resistance increases across repeated
+   successful breaks, and both guard-break executions and rear assassinations
+   animate correctly. Repeat on a high-HP/high-armor Mob.
+3. **State sync:** verify HUD for a newly spawned and a previously saved Mob,
+   with two clients tracking the same Mob, plus chunk unload/reload, death,
+   execution ending, disconnect, and rejoin. No stale, swapped, or stuck HUDs.
+4. **Configuration:** test `entities.posture_multipliers` with whitespace and
+   duplicate entries, `entities.entity_blacklist`, automatic compatibility
+   on/off and mod allow/deny lists. Reload the server config while connected:
+   changes should apply without requiring client resource reload. Existing
+   third-party Epic Fight patches must not be disabled by the automatic filter.
+5. **Client features:** confirm the Mods settings screen, execution sound
+   volume at 0%, 70% and 100%, and server-side setting precedence in
+   multiplayer.
+6. **Renderer backends:** Bogged/Giant; vanilla spider; GeckoLib humanoid with
+   custom armor and cape; Cataclysm/Lionfish Mob with extra parts and outline;
+   extended ModelPart Mob with a complex RenderLayer. Compare alignment,
+   scale, held equipment, attachments, glowing passes, and the return to the
+   original renderer when combat animation ends.
+7. **Dedicated-server discovery:** with the supported mod set, verify trusted
+   operator renderer reporting, approval cache creation, restart promotion,
+   and conflict fail-closed behavior. Compare the per-backend renderer coverage
+   TSVs with `tools/compare_compatibility_reports.py`.
+
+Publish only after both build jobs pass and every applicable live test has an
+observed result. Document any third-party Mob deliberately skipped because
+its model cannot be transformed safely; skipped unsupported renderers should
+continue using their normal renderer without breaking the game.

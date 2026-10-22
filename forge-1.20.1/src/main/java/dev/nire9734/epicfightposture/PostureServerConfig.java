@@ -18,7 +18,6 @@ import net.minecraftforge.fml.util.thread.EffectiveSide;
 import net.minecraftforge.server.ServerLifecycleHooks;
 import org.slf4j.Logger;
 
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -284,19 +283,10 @@ public final class PostureServerConfig {
         if (entityId == null || !automaticCompatibilityEnabled()) {
             return false;
         }
-        if ("minecraft".equals(entityId.getNamespace())) {
-            return true;
-        }
-
         Snapshot snapshot = effectiveClientSnapshot();
         Set<String> allow = snapshot != null ? snapshot.modAllowlist() : modAllowlist;
         Set<String> deny = snapshot != null ? snapshot.modDenylist() : modDenylist;
-        String namespace = entityId.getNamespace();
-
-        if (deny.contains(namespace)) {
-            return false;
-        }
-        return allow.isEmpty() || allow.contains(namespace);
+        return PostureConfigPolicy.allowsAutomatic(true, entityId.getNamespace(), allow, deny);
     }
 
     public static boolean isExplicitlyBlacklisted(ResourceLocation entityId) {
@@ -375,42 +365,13 @@ public final class PostureServerConfig {
     }
 
     private static Set<ResourceLocation> parseEntityBlacklist() {
-        Set<ResourceLocation> parsed = new HashSet<>();
-        for (String rawId : ENTITY_BLACKLIST.get()) {
-            ResourceLocation entityId = ResourceLocation.tryParse(rawId == null ? "" : rawId.trim());
-            if (entityId == null) {
-                LOGGER.warn("Ignoring invalid entity ID '{}' in entities.entity_blacklist", rawId);
-                continue;
-            }
-            parsed.add(entityId);
-        }
-        return Set.copyOf(parsed);
+        return PostureConfigEntries.entityBlacklist(ENTITY_BLACKLIST.get(), ResourceLocation::tryParse,
+                raw -> LOGGER.warn("Ignoring invalid entity ID '{}' in entities.entity_blacklist", raw));
     }
 
     private static Map<ResourceLocation, Float> parseEntityMultipliers() {
-        Map<ResourceLocation, Float> parsed = new HashMap<>();
-        for (String rawEntry : POSTURE_MULTIPLIERS.get()) {
-            String entry = rawEntry == null ? "" : rawEntry.trim();
-            int separator = entry.lastIndexOf('=');
-            if (separator <= 0 || separator == entry.length() - 1) {
-                LOGGER.warn("Ignoring invalid entity multiplier '{}' in entities.posture_multipliers", rawEntry);
-                continue;
-            }
-
-            ResourceLocation entityId = ResourceLocation.tryParse(entry.substring(0, separator).trim());
-            float multiplier;
-            try {
-                multiplier = Float.parseFloat(entry.substring(separator + 1).trim());
-            } catch (NumberFormatException exception) {
-                multiplier = Float.NaN;
-            }
-            if (entityId == null || !Float.isFinite(multiplier) || multiplier < 0.01F || multiplier > 100.0F) {
-                LOGGER.warn("Ignoring invalid entity multiplier '{}' in entities.posture_multipliers", rawEntry);
-                continue;
-            }
-            parsed.put(entityId, multiplier);
-        }
-        return Map.copyOf(parsed);
+        return PostureConfigEntries.entityMultipliers(POSTURE_MULTIPLIERS.get(), ResourceLocation::tryParse,
+                raw -> LOGGER.warn("Ignoring invalid entity multiplier '{}' in entities.posture_multipliers", raw));
     }
 
     private static Set<String> parseModIds(List<? extends String> rawIds, String configPath) {
