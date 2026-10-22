@@ -24,6 +24,7 @@ import yesman.epicfight.api.client.model.transformer.HumanoidModelBaker;
 import yesman.epicfight.world.capabilities.provider.EntityPatchProvider;
 
 import java.util.HashSet;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
@@ -97,6 +98,33 @@ public final class VanillaHumanoidClientCompat {
                 verifiedPreparedHumanoids,
                 verifiedSpider
         ));
+
+        // Keep the per-Mob comparison data out of latest.log. This diagnostic
+        // file is rebuilt on each renderer reload and has no gameplay effect.
+        Map<ResourceLocation, String> coverage = new HashMap<>();
+        for (EntityType<?> type : event.getContext().getEntityRenderDispatcher().renderers.keySet()) {
+            if (type == EntityType.PLAYER) continue;
+            ResourceLocation id = EntityType.getKey(type);
+            if (id == null) continue;
+            if (VanillaHumanoidCompat.isExternallyPatched(id)
+                    || (alreadyPatched.contains(type)
+                    && !VanillaHumanoidCompat.isRegisteredByEfpi(id))) {
+                coverage.put(id, "excluded:existing_patch");
+            } else {
+                coverage.put(id, scan.inspected().contains(id)
+                        ? "rejected:backend_or_registration" : "rejected:renderer_type");
+            }
+        }
+        for (ResourceLocation id : verifiedVanillaIds) coverage.put(id, "verified:vanilla");
+        for (ResourceLocation id : verifiedSpiderIds) coverage.put(id, "verified:spider");
+        for (EntityType<?> type : verifiedPreparedHumanoids) {
+            ResourceLocation id = EntityType.getKey(type);
+            PreparedHumanoidModel prepared = HumanoidBackendRegistry.prepared(type);
+            if (id != null && prepared != null) {
+                coverage.put(id, "verified:" + prepared.backendId());
+            }
+        }
+        ForgeRendererCoverage.write(coverage);
 
         LinkedHashMap<String, Integer> summary = new LinkedHashMap<>();
         if (!verifiedVanilla.isEmpty()) {

@@ -318,3 +318,22 @@ On affected Epic Fight compute-shader + AMD OpenGL configurations, Minecraft can
 Iron's Spells 'n Spellbooks and L_Ender's Cataclysm are tested compatibility targets for supported humanoid mobs. This does not imply universal support for every entity, renderer, armor implementation, custom layer, or framework-specific render path.
 
 Automatic compatibility is deliberately fail-closed: unsupported, ambiguous, conflicting, or unsafe layouts are skipped rather than guessed.
+
+### Per-Mob renderer diagnostics (3.0.2)
+
+The Forge client writes a renderer-coverage report after each completed renderer
+registration scan (including resource reloads):
+
+```text
+config/epicfight_posture_integration/cache/forge-renderer-coverage.tsv
+```
+
+The tab-separated file lists entity IDs and outcomes such as
+`verified:geckolib`, `verified:lionfish`, `verified:modelpart`,
+`verified:vanilla`, `verified:spider`, `excluded:existing_patch`, and
+`rejected:backend_or_registration`. It includes a generation timestamp.
+Detailed entity records stay in this file; `latest.log` retains its concise
+aggregate compatibility message. It is a diagnostic record, **not** proof that
+armor, attachments, guard breaks or execution animations are correct in-game.
+The report has no effect on gameplay, patch ownership or dedicated-server
+discovery; it can safely be shared for comparing Forge and NeoForge coverage.
