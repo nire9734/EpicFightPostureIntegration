@@ -288,9 +288,12 @@ public final class VanillaHumanoidCompat {
                 continue;
             }
             EpicFightPatchOwnership.State state = EpicFightPatchOwnership.state(type);
-            if (state == EpicFightPatchOwnership.State.MISSING) {
+            if (state == EpicFightPatchOwnership.State.MISSING
+                    || state == EpicFightPatchOwnership.State.OWNED) {
                 if (registerDiscoveredAtRuntime(type, entry.getValue(), runtimeArmatures.get(id))) {
-                    recovered++;
+                    if (state == EpicFightPatchOwnership.State.MISSING) {
+                        recovered++;
+                    }
                 } else {
                     runtimeRejected.add(id);
                 }
