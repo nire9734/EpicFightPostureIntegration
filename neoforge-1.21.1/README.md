@@ -124,11 +124,13 @@ periodic changes (at most once per four ticks), initial tracking snapshots,
 and removal messages. IDs are checked alongside UUIDs to prevent stale
 entity IDs displaying another mob's posture.
 
-The client HUD Mixin leaves Epic Fight's existing overhead health bar and
-status effects intact and adds a small posture strip below it. Combat Evolution
-owned mob HUDs are excluded, and its target-support contract is checked
-before drawing. Experimental: dedicated-server startup, actual HUD placement,
-parry detection and Combat Evolution interactions still need in-game tests.
+The client HUD Mixin uses Combat Evolution's health-bar texture for EFPI
+posture targets, matching the Forge edition's health/posture layout. CE-owned
+mob HUDs remain rendered by CE itself. For all mobs, including supported
+bosses, overhead bars appear only when HP/posture/CE stamina is damaged or a hit was
+recently received; targeting or status effects alone do not reveal the bars.
+Epic Fight's `NONE` visibility setting remains authoritative. Bosses only
+opt into the HUD if CE or EFPI can safely render their bar.
 
 Client-side posture cache is cleared when the player disconnects or switches worlds.
 

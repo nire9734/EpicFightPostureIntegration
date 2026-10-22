@@ -2,6 +2,7 @@ package dev.nire9734.epicfightposture.mixin.client;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import dev.nire9734.epicfightposture.client.ClientPostureStore;
+import dev.nire9734.epicfightposture.client.PostureHudPolicy;
 import dev.nire9734.epicfightposture.sync.RuntimeAccess;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.Minecraft;
@@ -12,6 +13,7 @@ import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraftforge.registries.ForgeRegistries;
+import net.minecraftforge.common.Tags;
 import org.joml.Matrix4f;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
@@ -26,10 +28,14 @@ import yesman.epicfight.client.world.capabilites.entitypatch.player.LocalPlayerP
 import yesman.epicfight.world.capabilities.entitypatch.LivingEntityPatch;
 import yesman.epicfight.world.effect.VisibleMobEffect;
 import net.shelmarow.combat_evolution.ai.CEHumanoidPatch;
+import net.shelmarow.combat_evolution.ai.StaminaStatus;
+import net.shelmarow.combat_evolution.ai.util.CEPatchUtils;
 import net.shelmarow.combat_evolution.execution.ExecutionHandler;
 
 import java.util.Collection;
+import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.List;
 import java.util.UUID;
 
 @Mixin(value = HealthBar.class, remap = false, priority = 900)
@@ -38,24 +44,35 @@ public abstract class BridgeHealthBarMixin extends EntityUI {
     private static final ResourceLocation EFPB$HEALTH_BAR =
             new ResourceLocation("combat_evolution", "textures/gui/bossbar/ce_health_bar.png");
 
-    /**
-     * Epic Fight's normal predicate hides an unhurt entity with no effects.
-     * Let posture damage opt in only after preserving every early safety gate
-     * from HealthBar.shouldDraw() in Epic Fight 20.14.17.
-     */
+    /** Use Epic Fight's HUD and visibility setting, but make mob visibility
+     * damage-driven instead of effect- or target-driven (including CE bosses). */
     @Inject(method = "shouldDraw", at = @At("RETURN"), cancellable = true)
-    private void efpi$showWhenPostureDamaged(
+    private void efpi$showOnlyAfterMobIsHurt(
             LivingEntity entity,
             LivingEntityPatch<?> entityPatch,
             LocalPlayerPatch playerPatch,
             float partialTicks,
             CallbackInfoReturnable<Boolean> cir
     ) {
-        if (cir.getReturnValueZ() || !efpi$hasDamagedPosture(entity)
-                || !efpi$canRenderPosture(entityPatch, playerPatch)) {
+        // Player HUDs retain Epic Fight's selected behavior; this policy is
+        // specifically for mobs, including CE-managed and boss-tagged mobs.
+        if (entity instanceof Player) {
             return;
         }
 
+        ClientPostureStore.Entry posture = ClientPostureStore.get(entity.getId(), entity.getUUID());
+        boolean postureDamaged = posture != null && (posture.current < posture.max || posture.broken);
+        boolean ceStaminaDamaged = entityPatch instanceof CEHumanoidPatch<?> cePatch
+                && efpi$hasDamagedCeStamina(cePatch);
+        if (!PostureHudPolicy.hasCombatDamage(entity.getHealth(), entity.getMaxHealth(),
+                entity.hurtTime, postureDamaged || ceStaminaDamaged)) {
+            // Epic Fight's TARGET/TARGET_AND_HURT and effect rules may display
+            // an untouched mob. Never reveal either HUD before an actual hit.
+            cir.setReturnValue(false);
+            return;
+        }
+
+        if (cir.getReturnValueZ()) return;
         if (ClientConfig.healthBarVisibility == ClientConfig.HealthBarVisibility.NONE
                 || entity.isRemoved()) {
             return;
@@ -80,8 +97,18 @@ public abstract class BridgeHealthBarMixin extends EntityUI {
             }
         }
 
-        // TARGET and TARGET_AND_HURT are presentation modes, not safety gates.
-        // Posture damage is an additional valid reason to render the HUD.
+        if (entityPatch instanceof CEHumanoidPatch<?> cePatch) {
+            if (!cePatch.shouldDisplayHealthBar()) return;
+        } else if (entity.getType().is(Tags.EntityTypes.BOSSES)
+                && (posture == null || !efpi$canRenderPosture(entityPatch, playerPatch))) {
+            // Epic Fight doesn't create its own health tracker for bosses.
+            // Only CE's drawing hook or EFPI's custom drawing is safe here.
+            return;
+        }
+
+        // The native HURT condition is reused whenever it already passed.
+        // The fallback covers posture-only damage, TARGET-mode non-targets,
+        // and supported bosses that Epic Fight excludes by default.
         cir.setReturnValue(true);
     }
 
@@ -202,7 +229,15 @@ public abstract class BridgeHealthBarMixin extends EntityUI {
             Matrix4f matrix,
             MultiBufferSource buffer
     ) {
-        Collection<MobEffectInstance> effects = RuntimeAccess.activeEffects(entity);
+        Collection<MobEffectInstance> activeEffects = RuntimeAccess.activeEffects(entity);
+        List<MobEffectInstance> effects = new ArrayList<>();
+        for (MobEffectInstance instance : activeEffects) {
+            // Marker effects deliberately hide their icons; drawing them
+            // produces missing-texture squares on modded entities.
+            if (instance.showIcon()) {
+                effects.add(instance);
+            }
+        }
         if (effects.isEmpty() || entity == playerPatch.getOriginal()) {
             return;
         }
@@ -250,9 +285,17 @@ public abstract class BridgeHealthBarMixin extends EntityUI {
     }
 
     @Unique
-    private static boolean efpi$hasDamagedPosture(LivingEntity entity) {
-        ClientPostureStore.Entry posture = ClientPostureStore.get(entity.getId(), entity.getUUID());
-        return posture != null && (posture.current < posture.max || posture.broken);
+    private static boolean efpi$hasDamagedCeStamina(CEHumanoidPatch<?> patch) {
+        try {
+            StaminaStatus status = patch.getStaminaStatus();
+            if (status == StaminaStatus.BREAK || status == StaminaStatus.RECOVER) return true;
+            float percent = CEPatchUtils.getStaminaPercent(patch);
+            // CE initially syncs zero stamina. Don't treat that uninitialized
+            // value as combat damage until a break/recover status confirms it.
+            return status != StaminaStatus.EMPTY && percent > 0.0F && percent < 1.0F;
+        } catch (RuntimeException ignored) {
+            return false;
+        }
     }
 
     @Unique

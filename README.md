@@ -122,6 +122,13 @@ Combat Evolution `CustomExecuteEntity` contract). On the client, the HUD is
 shown only when Combat Evolution considers the target compatible with the
 local player's execution capability.
 
+For mobs, the overhead HP/posture HUD is damage-triggered: targeting and
+status effects alone do not reveal it. HP loss, EFPI posture loss, CE stamina
+loss, or a recent hit can reveal the bars. The HUD disappears again after
+full recovery; Epic Fight's `NONE` setting still disables it. Combat Evolution
+retains ownership of its mob HUD, while supported boss-tagged mobs use CE's
+renderer or EFPI's CE-styled renderer without the native boss health tracker.
+
 On reaching zero posture, EFPI accepts only an actually active
 `NEUTRALIZE` animation. It does not require a separate `isStunned()` flag
 to agree during animation transitions. EFPI no longer treats a `LONG`
