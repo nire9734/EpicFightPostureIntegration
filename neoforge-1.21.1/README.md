@@ -419,3 +419,18 @@ and GeckoLib/Lionfish/ModelPart rendering tests.
 The changes are compile-level parity work, **not** a claim of tested 1.21.1
 rendering. Validate a glowing Cataclysm mob, equipped GeckoLib humanoid,
 mounted ModelPart mob, and world re-entry before release.
+
+## Stage 19 — guard-break item cancellation and execution sound preference
+
+- Guard breaks from direct attacks and parries now share a transition that
+  releases a Mob's actively used item before applying Epic Fight NEUTRALIZE.
+  If Epic Fight rejects or throws while applying the stun, the Mob enters
+  recovery instead of remaining in a broken state. This follows Forge 3.0.2.
+- Combat Evolution execution sounds `skill.execution1` and `skill.execution2`
+  now obey a **client-only** volume multiplier, matching Forge's default of
+  70%. Change `sound.execution_sound_volume_multiplier` in the NeoForge
+  client config file (range 0.0–1.0); this does not change server sounds or
+  affect other sound effects.
+- Forge's in-game settings screen is not ported yet. Real-world testing of
+  interrupted item use, both execution sounds, and dedicated-server loading
+  is still required.

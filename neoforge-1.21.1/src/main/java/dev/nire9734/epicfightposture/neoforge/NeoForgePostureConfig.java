@@ -4,11 +4,9 @@ import java.util.List;
 import net.neoforged.neoforge.common.ModConfigSpec;
 
 /**
- * NeoForge 1.21.1 configuration schema for the planned server adapter.
- *
- * Mirrors the Forge 1.20.1 option names, defaults and limits. Game logic,
- * validation of entity/mod identifiers and multiplayer policy synchronization
- * are not ported yet. Do not treat this as an enabled gameplay system.
+ * NeoForge 1.21.1 server-side posture and compatibility settings.
+ * Game logic is active; renderer parity and multiplayer client-policy
+ * synchronization are still undergoing compatibility testing.
  */
 public final class NeoForgePostureConfig {
     static final ModConfigSpec SPEC;

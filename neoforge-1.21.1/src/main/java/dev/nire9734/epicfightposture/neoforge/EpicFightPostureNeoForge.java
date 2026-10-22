@@ -12,8 +12,8 @@ import dev.nire9734.epicfightposture.neoforge.compat.NeoForgeAutoCompatibility;
 import dev.nire9734.epicfightposture.neoforge.discovery.NeoForgeRendererDiscoveryServer;
 
 /**
- * NeoForge 1.21.1 incomplete port with server-side posture hooks.
- * Rendering, network synchronization and general compatibility are pending.
+ * NeoForge 1.21.1 development port. Runtime rendering and gameplay are
+ * implemented but cross-version, in-game compatibility is still under test.
  */
 @Mod(EpicFightPostureNeoForge.MODID)
 public final class EpicFightPostureNeoForge {
@@ -22,6 +22,7 @@ public final class EpicFightPostureNeoForge {
 
     public EpicFightPostureNeoForge(IEventBus modBus, ModContainer modContainer) {
         modContainer.registerConfig(ModConfig.Type.COMMON, NeoForgePostureConfig.SPEC);
+        modContainer.registerConfig(ModConfig.Type.CLIENT, NeoForgePostureClientConfig.SPEC);
         modBus.addListener(NeoForgePostureNetworking::registerPayloads);
         NeoForgeRendererDiscoveryServer.bootstrap();
         NeoForgeAutoCompatibility.register();
