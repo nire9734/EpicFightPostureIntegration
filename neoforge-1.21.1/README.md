@@ -73,9 +73,19 @@ shared JUnit tests. During local development, `localRuntime` provides
 the required Epic Fight and Combat Evolution JARs to NeoForge run tasks
 without bundling them inside EFPI's artifact.
 
-NeoForge's default config path is
-`config/epicfight_posture_integration-common.toml`, unlike the
-Forge 1.20.1 `config/epicfight_posture_integration/server.toml`.
+The NeoForge config paths now match Forge 1.20.1:
+
+- `config/epicfight_posture_integration/server.toml` (global common/server policy)
+- `config/epicfight_posture_integration/client.toml` (client sound volume)
+
+The previous NeoForge preview files (`epicfight_posture_integration-common.toml`
+and `epicfight_posture_integration-client.toml`) are not migrated because this
+port has not been released. The new locations are generated independently.
+
+Renderer discovery is now prepared during the initial client resource load,
+even before the first server policy arrives. Runtime usage remains gated by
+the authoritative server policy; first singleplayer world entry must not
+require F3+T or a second world entry to activate supported mobs.
 
 **Do not publish this incomplete port JAR.**
 
