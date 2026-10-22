@@ -5,6 +5,8 @@ import org.slf4j.Logger;
 import java.util.Map;
 import java.util.WeakHashMap;
 import dev.nire9734.epicfightposture.neoforge.NeoForgePostureConfig;
+import dev.nire9734.epicfightposture.neoforge.NeoForgeServerSettings;
+import dev.nire9734.epicfightposture.neoforge.compat.NeoForgeAutoCompatibility;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
@@ -83,9 +85,11 @@ public final class NeoForgePostureServerEvents {
                 NeoForgePostureConfig.POSTURE_BREAK_RESISTANCE_MAX.get().floatValue());
         int delay = PostureBalance.regenDelayTicks(
                 NeoForgePostureConfig.REGEN_DELAY_SECONDS.get().floatValue());
+        float previousPosture = state.current;
         if (state.applyDamage(pressure, resistance, delay)) {
             breakPosture(mob, patch, state, delay);
         }
+        if (!(state.current < previousPosture)) return;
         dev.nire9734.epicfightposture.neoforge.network.NeoForgePostureSync.syncNow(mob, stateForSync(mob));
     }
 
@@ -180,9 +184,11 @@ public final class NeoForgePostureServerEvents {
                 NeoForgePostureConfig.POSTURE_BREAK_RESISTANCE_MAX.get().floatValue());
         int delay = PostureBalance.regenDelayTicks(
                 NeoForgePostureConfig.REGEN_DELAY_SECONDS.get().floatValue());
+        float previousPosture = state.current;
         if (state.applyDamage(damage, resistance, delay)) {
             breakPosture(mob, patch, state, delay);
         }
+        if (!(state.current < previousPosture)) return;
         dev.nire9734.epicfightposture.neoforge.network.NeoForgePostureSync.syncNow(mob, stateForSync(mob));
     }
 
@@ -234,10 +240,14 @@ public final class NeoForgePostureServerEvents {
 
     @SuppressWarnings("unchecked")
     private static float innateEhp(Mob mob) {
-        EntityType<? extends LivingEntity> type = (EntityType<? extends LivingEntity>) mob.getType();
-        AttributeSupplier defaults = DefaultAttributes.hasSupplier(type)
-                ? DefaultAttributes.getSupplier(type) : null;
-        float hp = baseline(mob, defaults, Attributes.MAX_HEALTH, 20.0F);
+        AttributeSupplier defaults = null;
+        try {
+            EntityType<? extends LivingEntity> type = (EntityType<? extends LivingEntity>) mob.getType();
+            if (DefaultAttributes.hasSupplier(type)) defaults = DefaultAttributes.getSupplier(type);
+        } catch (RuntimeException ignored) {
+            // Some modded entity registrations have no usable default attributes.
+        }
+        float hp = baseline(mob, defaults, Attributes.MAX_HEALTH, mob.getMaxHealth());
         float armor = baseline(mob, defaults, Attributes.ARMOR, 0.0F);
         float toughness = baseline(mob, defaults, Attributes.ARMOR_TOUGHNESS, 0.0F);
         return PostureBalance.effectiveHealth(hp > 0.0F ? hp : 20.0F, armor, toughness, 8.0F);
@@ -256,6 +266,7 @@ public final class NeoForgePostureServerEvents {
     public record SyncState(float current, float max, boolean broken) {}
 
     public static SyncState stateForSync(Mob mob) {
+        if (isBlacklisted(mob)) return null;
         PostureRuntimeState state = STATES.get(mob);
         return state == null ? null : new SyncState(state.current, state.max, state.isBrokenForHud());
     }
@@ -292,7 +303,8 @@ public final class NeoForgePostureServerEvents {
 
     private static boolean isBlacklisted(Mob mob) {
         ResourceLocation id = BuiltInRegistries.ENTITY_TYPE.getKey(mob.getType());
-        return id != null && NeoForgePostureConfig.ENTITY_BLACKLIST.get().contains(id.toString());
+        return NeoForgeServerSettings.localSnapshot().blocksPosture(
+                id, NeoForgeAutoCompatibility.isOwnedByEfpi(mob.getType()));
     }
 
     private static float basePosture(Mob mob) {
@@ -303,20 +315,8 @@ public final class NeoForgePostureServerEvents {
     }
 
     private static float maximumPosture(Mob mob) {
-        float multiplier = NeoForgePostureConfig.MAXIMUM_POSTURE_MULTIPLIER.get().floatValue();
         ResourceLocation id = BuiltInRegistries.ENTITY_TYPE.getKey(mob.getType());
-        if (id != null) {
-            String prefix = id.toString() + "=";
-            for (String entry : NeoForgePostureConfig.POSTURE_MULTIPLIERS.get()) {
-                if (!entry.startsWith(prefix)) continue;
-                try {
-                    float value = Float.parseFloat(entry.substring(prefix.length()));
-                    if (Float.isFinite(value) && value >= .01F && value <= 100.0F) multiplier = value;
-                } catch (NumberFormatException ignored) {
-                    // Invalid overrides are ignored.
-                }
-            }
-        }
+        float multiplier = NeoForgeServerSettings.maximumPostureMultiplier(id);
         return Math.max(1.0F, Math.min(1_000_000.0F, basePosture(mob) * multiplier));
     }
 
@@ -328,7 +328,7 @@ public final class NeoForgePostureServerEvents {
             return neutral != null && !neutral.isEmpty()
                     && !sameAnimation(neutral, patch.getHitAnimation(StunType.SHORT))
                     && !sameAnimation(neutral, patch.getHitAnimation(StunType.LONG));
-        } catch (RuntimeException exception) {
+        } catch (Throwable exception) {
             return false;
         }
     }
@@ -338,7 +338,7 @@ public final class NeoForgePostureServerEvents {
         try {
             var current = patch.getAnimator().getPlayerFor(null);
             return current != null && current.getRealAnimation() == patch.getHitAnimation(StunType.NEUTRALIZE);
-        } catch (RuntimeException exception) {
+        } catch (Throwable exception) {
             return false;
         }
     }
@@ -346,8 +346,12 @@ public final class NeoForgePostureServerEvents {
     private static boolean sameAnimation(AssetAccessor<?> first, AssetAccessor<?> second) {
         if (first == second) return true;
         if (first == null || second == null) return false;
-        ResourceLocation a = first.registryName(), b = second.registryName();
-        return a != null && a.equals(b);
+        try {
+            ResourceLocation a = first.registryName(), b = second.registryName();
+            return a != null && a.equals(b);
+        } catch (Throwable ignored) {
+            return false;
+        }
     }
 
     private NeoForgePostureServerEvents() {}
