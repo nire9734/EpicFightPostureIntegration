@@ -1,5 +1,7 @@
 package dev.nire9734.epicfightposture;
 
+import com.mojang.logging.LogUtils;
+import org.slf4j.Logger;
 import java.util.Map;
 import java.util.WeakHashMap;
 import dev.nire9734.epicfightposture.neoforge.NeoForgePostureConfig;
@@ -33,6 +35,7 @@ import yesman.epicfight.skill.guard.GuardSkill;
 
 /** NeoForge server adapter for the shared posture balance and runtime state. */
 public final class NeoForgePostureServerEvents {
+    private static final Logger LOGGER = LogUtils.getLogger();
     private static final int RECOVERY_TICKS = 60;
     // Combat Evolution schedules its ExecutionTask after OnExecutionStartEvent.
     // Allow the task to become active before deciding an assassination ended.
@@ -81,10 +84,7 @@ public final class NeoForgePostureServerEvents {
         int delay = PostureBalance.regenDelayTicks(
                 NeoForgePostureConfig.REGEN_DELAY_SECONDS.get().floatValue());
         if (state.applyDamage(pressure, resistance, delay)) {
-            state.prepareBreak(delay);
-            boolean applied = patch.applyStun(StunType.NEUTRALIZE, 0.0F);
-            if (applied && isActiveNeutralize(patch)) state.confirmBreak();
-            else state.beginRecovery(RECOVERY_TICKS);
+            breakPosture(mob, patch, state, delay);
         }
         dev.nire9734.epicfightposture.neoforge.network.NeoForgePostureSync.syncNow(mob, stateForSync(mob));
     }
@@ -170,12 +170,36 @@ public final class NeoForgePostureServerEvents {
         int delay = PostureBalance.regenDelayTicks(
                 NeoForgePostureConfig.REGEN_DELAY_SECONDS.get().floatValue());
         if (state.applyDamage(damage, resistance, delay)) {
-            state.prepareBreak(delay);
-            boolean applied = patch.applyStun(StunType.NEUTRALIZE, 0.0F);
-            if (applied && isActiveNeutralize(patch)) state.confirmBreak();
-            else state.beginRecovery(RECOVERY_TICKS);
+            breakPosture(mob, patch, state, delay);
         }
         dev.nire9734.epicfightposture.neoforge.network.NeoForgePostureSync.syncNow(mob, stateForSync(mob));
+    }
+
+    /**
+     * Keep the guard-break transition aligned with Forge 3.0.2.
+     * An interrupted attack must release its currently used item before EF's stun.
+     */
+    private static void breakPosture(Mob mob, LivingEntityPatch<?> patch,
+                                     PostureRuntimeState state, int regenDelayTicks) {
+        if (!canReceive(mob) || !state.acceptsPostureDamage()) return;
+
+        state.prepareBreak(regenDelayTicks);
+        if (mob.isUsingItem()) mob.stopUsingItem();
+
+        boolean active = false;
+        if (patch != null && hasDistinctNeutralize(patch)) {
+            try {
+                active = patch.applyStun(StunType.NEUTRALIZE, 0.0F)
+                        && isActiveNeutralize(patch);
+            } catch (Throwable failure) {
+                LOGGER.warn("EFPI neutralize threw for {} ({}) using patch {}",
+                        BuiltInRegistries.ENTITY_TYPE.getKey(mob.getType()),
+                        mob.getUUID(), patch.getClass().getName(), failure);
+            }
+        }
+
+        if (active) state.confirmBreak();
+        else state.beginRecovery(RECOVERY_TICKS);
     }
 
     private static void onExecutionStart(OnExecutionStartEvent event) {
