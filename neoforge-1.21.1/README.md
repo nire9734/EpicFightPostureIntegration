@@ -435,3 +435,32 @@ mounted ModelPart mob, and world re-entry before release.
   the same slider/reset/done controls and English/Japanese labels as Forge.
   Real-world testing of interrupted item use, both execution sounds,
   the settings screen, and dedicated-server loading is still required.
+
+
+## Stage 20 — server policy synchronization and combat transition parity
+
+- NeoForge computes attack-based posture pressure from
+  `LivingDamageEvent.Post#getNewDamage()`, the actual health removed by
+  the completed NeoForge damage sequence. Forge 1.20.1 observes the same
+  committed health delta on the following entity tick because its damage
+  callback runs before the final health mutation. The logical results match;
+  the exact event-to-packet latency differs by API version.
+- Item-use interruption on guard break, and immediate packet updates for
+  attack/parry, execution entry, guard-break recovery, and completion of the
+  60-tick recovery now follow Forge's transition semantics. Routine
+  regeneration continues to use a four-tick change-detection interval.
+- On multiplayer join, the server sends its current global posture
+  multiplier, internal minimum/armor-scaling flags, automatic renderer
+  compatibility switches, entity blacklist, and mod allow/deny lists.
+  It broadcasts revised values after reloading the common server config.
+  The logical client never substitutes its own common config for the
+  server's compatibility decisions, and clears the last server policy on
+  disconnect. Before receipt, compatibility defaults to disabled.
+- As with Forge, a client can register candidate renderer providers ahead
+  of the login packet, but runtime eligibility is checked against the
+  authoritative server policy. This also works with integrated servers:
+  the logical server continues to consult its local config.
+
+These changes have CI compilation and shared unit-test coverage only;
+multiplayer joining, live config reload, dedicated-server startup, and
+specific execution/guard-break animations still need in-game checks.

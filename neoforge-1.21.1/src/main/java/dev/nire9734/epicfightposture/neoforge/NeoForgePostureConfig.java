@@ -5,11 +5,11 @@ import net.neoforged.neoforge.common.ModConfigSpec;
 
 /**
  * NeoForge 1.21.1 server-side posture and compatibility settings.
- * Game logic is active; renderer parity and multiplayer client-policy
- * synchronization are still undergoing compatibility testing.
+ * Gameplay and multiplayer server-policy synchronization are implemented;
+ * cross-version renderer parity still requires live compatibility testing.
  */
 public final class NeoForgePostureConfig {
-    static final ModConfigSpec SPEC;
+    public static final ModConfigSpec SPEC;
 
     public static final ModConfigSpec.DoubleValue MAXIMUM_POSTURE_MULTIPLIER;
     public static final ModConfigSpec.DoubleValue POSTURE_DAMAGE_MULTIPLIER;
