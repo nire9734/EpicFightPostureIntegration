@@ -3,6 +3,7 @@ package dev.nire9734.epicfightposture.neoforge.mixin;
 import com.mojang.blaze3d.vertex.PoseStack;
 import dev.nire9734.epicfightposture.client.ClientPostureStore;
 import dev.nire9734.epicfightposture.client.PostureHudPolicy;
+import dev.nire9734.epicfightposture.neoforge.NeoForgePostureClientConfig;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -11,7 +12,6 @@ import net.minecraft.world.effect.MobEffect;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
-import net.neoforged.neoforge.common.Tags;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -21,12 +21,9 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import yesman.epicfight.client.gui.EntityUI;
 import yesman.epicfight.client.gui.HealthBar;
 import yesman.epicfight.client.world.capabilites.entitypatch.player.LocalPlayerPatch;
-import yesman.epicfight.config.ClientConfig;
 import yesman.epicfight.world.capabilities.entitypatch.LivingEntityPatch;
 import yesman.epicfight.world.effect.VisibleMobEffect;
 import net.shelmarow.combat_evolution.ai.CEHumanoidPatch;
-import net.shelmarow.combat_evolution.ai.StaminaStatus;
-import net.shelmarow.combat_evolution.ai.util.CEPatchUtils;
 import net.shelmarow.combat_evolution.execution.ExecutionHandler;
 
 import java.util.ArrayList;
@@ -44,43 +41,41 @@ public abstract class NeoForgeHealthBarMixin {
             "combat_evolution", "textures/gui/bossbar/ce_health_bar.png");
 
     @Inject(method = "shouldDraw", at = @At("RETURN"), cancellable = true)
-    private void efpi$showOnlyAfterMobIsHurt(LivingEntity entity, LivingEntityPatch<?> patch,
+    private void efpi$applyOwnHudVisibility(LivingEntity entity, LivingEntityPatch<?> patch,
                                          LocalPlayerPatch playerPatch, float partialTicks,
                                          CallbackInfoReturnable<Boolean> result) {
-        if (entity instanceof Player) return;
+        // CE-patched mobs always keep CE/Epic Fight's own visibility behavior.
+        if (entity instanceof Player || patch instanceof CEHumanoidPatch) return;
 
         ClientPostureStore.Entry state = ClientPostureStore.get(entity.getId(), entity.getUUID());
-        boolean postureDamaged = state != null && (state.current < state.max || state.broken);
-        boolean ceStaminaDamaged = patch instanceof CEHumanoidPatch<?> cePatch
-                && efpi$hasDamagedCeStamina(cePatch);
-        if (!PostureHudPolicy.hasCombatDamage(entity.getHealth(), entity.getMaxHealth(),
-                entity.hurtTime, postureDamaged || ceStaminaDamaged)) {
+        if (state == null || !efpi$eligible(patch, playerPatch)) return;
+
+        boolean postureDamaged = state.current < state.max || state.broken;
+        if (!PostureHudPolicy.shouldDisplay(NeoForgePostureClientConfig.mobHealthBarVisibility(),
+                entity.getHealth(), entity.getMaxHealth(), entity.hurtTime, postureDamaged)) {
             result.setReturnValue(false);
             return;
         }
 
-        if (result.getReturnValueZ()) return;
-        if (ClientConfig.healthBarVisibility == ClientConfig.HealthBarVisibility.NONE
-                || entity.isRemoved()) return;
-
-        Player player = playerPatch.getOriginal();
-        if (entity.isInvisibleTo(player) || entity == player.getVehicle()) return;
-        if (entity instanceof Player target && (target.isCreative() || target.isSpectator())) return;
-        if (entity == player && playerPatch.getMaxStunShield() <= 0.0F) return;
-        Minecraft minecraft = Minecraft.getInstance();
-        if (minecraft.getCameraEntity() == null
-                || entity.distanceToSqr(minecraft.getCameraEntity()) >= 400.0D) return;
-
-        if (patch instanceof CEHumanoidPatch<?> cePatch) {
-            if (!cePatch.shouldDisplayHealthBar()) return;
-        } else if (entity.getType().is(Tags.EntityTypes.BOSSES)
-                && (state == null || !efpi$eligible(patch, playerPatch))) {
-            // Native HealthBar.draw() needs a tracker absent on boss-tagged mobs.
+        if (entity.isRemoved() || playerPatch == null) {
+            result.setReturnValue(false);
             return;
         }
 
-        // Preserve the native HURT path when available, with a fallback for
-        // posture-only damage and bosses managed by CE or EFPI.
+        Player player = playerPatch.getOriginal();
+        if (entity.isInvisibleTo(player) || entity == player.getVehicle()) {
+            result.setReturnValue(false);
+            return;
+        }
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.getCameraEntity() == null
+                || entity.distanceToSqr(minecraft.getCameraEntity()) >= 400.0D) {
+            result.setReturnValue(false);
+            return;
+        }
+
+        // EFPI draws its own bar (also for bosses), independently of Epic
+        // Fight's HURT/TARGET/NONE options. All other entities use native EF.
         result.setReturnValue(true);
     }
 
@@ -199,19 +194,6 @@ public abstract class NeoForgeHealthBarMixin {
             float y = baseY - 0.3F * (i / 2);
             EntityUI.drawUIAsLevelModel(poseStack.last(), icon, buffers,
                     x, y, x + 0.3F, y + 0.3F, 0, 0, 256, 256, 256);
-        }
-    }
-
-    @Unique
-    private static boolean efpi$hasDamagedCeStamina(CEHumanoidPatch<?> patch) {
-        try {
-            StaminaStatus status = patch.getStaminaStatus();
-            if (status == StaminaStatus.BREAK || status == StaminaStatus.RECOVER) return true;
-            float percent = CEPatchUtils.getStaminaPercent(patch);
-            // CE may report zero before initial stamina synchronization.
-            return status != StaminaStatus.EMPTY && percent > 0.0F && percent < 1.0F;
-        } catch (RuntimeException ignored) {
-            return false;
         }
     }
 

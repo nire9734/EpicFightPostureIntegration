@@ -1,5 +1,6 @@
 package dev.nire9734.epicfightposture;
 
+import dev.nire9734.epicfightposture.client.PostureHudPolicy;
 import net.minecraftforge.common.ForgeConfigSpec;
 
 /** Client-only presentation settings. These values are never synchronized by the server. */
@@ -8,10 +9,18 @@ public final class PostureClientConfig {
 
     private static final ForgeConfigSpec.Builder BUILDER = new ForgeConfigSpec.Builder();
 
+    public static final ForgeConfigSpec.EnumValue<PostureHudPolicy.Visibility> MOB_HEALTH_BAR_VISIBILITY;
     public static final ForgeConfigSpec.DoubleValue EXECUTION_SOUND_VOLUME_MULTIPLIER;
     public static final ForgeConfigSpec SPEC;
 
     static {
+        BUILDER.push("hud");
+        MOB_HEALTH_BAR_VISIBILITY = BUILDER
+                .comment("Visibility of EFPI-owned overhead mob health/posture bars only.",
+                        "Combat Evolution-patched mobs and ordinary Epic Fight HUDs are unaffected.")
+                .defineEnum("mob_health_bar_visibility", PostureHudPolicy.Visibility.DAMAGED_ONLY);
+        BUILDER.pop();
+
         BUILDER.push("sound");
         EXECUTION_SOUND_VOLUME_MULTIPLIER = BUILDER
                 .comment(
@@ -36,12 +45,25 @@ public final class PostureClientConfig {
         }
     }
 
+    public static PostureHudPolicy.Visibility mobHealthBarVisibility() {
+        try {
+            return MOB_HEALTH_BAR_VISIBILITY.get();
+        } catch (IllegalStateException ignored) {
+            return PostureHudPolicy.Visibility.DAMAGED_ONLY;
+        }
+    }
+
+    public static void setMobHealthBarVisibility(PostureHudPolicy.Visibility visibility) {
+        MOB_HEALTH_BAR_VISIBILITY.set(visibility);
+    }
+
     public static void setExecutionSoundVolumeMultiplier(double value) {
         double clamped = Math.max(0.0D, Math.min(1.0D, value));
         EXECUTION_SOUND_VOLUME_MULTIPLIER.set(clamped);
     }
 
     public static void save() {
+        MOB_HEALTH_BAR_VISIBILITY.save();
         EXECUTION_SOUND_VOLUME_MULTIPLIER.save();
     }
 

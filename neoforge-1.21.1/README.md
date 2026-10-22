@@ -126,11 +126,14 @@ entity IDs displaying another mob's posture.
 
 The client HUD Mixin uses Combat Evolution's health-bar texture for EFPI
 posture targets, matching the Forge edition's health/posture layout. CE-owned
-mob HUDs remain rendered by CE itself. For all mobs, including supported
-bosses, overhead bars appear only when HP/posture/CE stamina is damaged or a hit was
-recently received; targeting or status effects alone do not reveal the bars.
-Epic Fight's `NONE` visibility setting remains authoritative. Bosses only
-opt into the HUD if CE or EFPI can safely render their bar.
+mob HUDs remain rendered by CE itself, without any EFPI visibility override.
+EFPI-owned overhead bars use the independent client preference
+`hud.mob_health_bar_visibility`: `ALWAYS`, `DAMAGED_ONLY` (default), or
+`HIDDEN`. In `DAMAGED_ONLY`, HP/posture loss or a recent hit reveals the bar;
+targeting or effects alone do not. Epic Fight's `NONE` setting applies to
+ordinary EF/CE bars but not EFPI-owned bars. Players, CE-patched mobs, and
+other mobs keep their native Epic Fight/CE behavior. Supported EFPI bosses
+can draw safely without Epic Fight's native boss health tracker.
 
 Client-side posture cache is cleared when the player disconnects or switches worlds.
 

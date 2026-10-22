@@ -122,12 +122,15 @@ Combat Evolution `CustomExecuteEntity` contract). On the client, the HUD is
 shown only when Combat Evolution considers the target compatible with the
 local player's execution capability.
 
-For mobs, the overhead HP/posture HUD is damage-triggered: targeting and
-status effects alone do not reveal it. HP loss, EFPI posture loss, CE stamina
-loss, or a recent hit can reveal the bars. The HUD disappears again after
-full recovery; Epic Fight's `NONE` setting still disables it. Combat Evolution
-retains ownership of its mob HUD, while supported boss-tagged mobs use CE's
-renderer or EFPI's CE-styled renderer without the native boss health tracker.
+For EFPI-owned mobs, the overhead HP/posture HUD uses an independent client
+visibility preference: `DAMAGED_ONLY` (default), `ALWAYS`, or `HIDDEN`.
+In `DAMAGED_ONLY`, HP loss, EFPI posture loss/guard break, or a recent hit
+reveals the bar; targeting or status effects alone do not. The bar disappears
+after full recovery. The Epic Fight `NONE` option does not control EFPI-owned
+bars. CE-patched mobs, players, and mobs not using EFPI's posture HUD keep
+their native Combat Evolution/Epic Fight visibility behavior. Supported
+boss-tagged mobs use CE's renderer or EFPI's CE-styled renderer without the
+native boss health tracker.
 
 On reaching zero posture, EFPI accepts only an actually active
 `NEUTRALIZE` animation. It does not require a separate `isStunned()` flag
@@ -321,7 +324,11 @@ Client settings are stored at:
 config/epicfight_posture_integration/client.toml
 ```
 
-They can also be changed from `Mods -> Epic Fight Posture Integration -> Config`. Execution Sound Volume is client-side only and defaults to 70%.
+They can also be changed from `Mods -> Epic Fight Posture Integration -> Config`.
+`hud.mob_health_bar_visibility` accepts `ALWAYS`, `DAMAGED_ONLY` (default), or
+`HIDDEN` for EFPI-owned overhead mob bars. It does not affect CE-patched mobs,
+players, or ordinary Epic Fight bars. `sound.execution_sound_volume_multiplier`
+is client-side only and defaults to 70%. Neither setting is synchronized by a server.
 
 ## Client rendering performance
 

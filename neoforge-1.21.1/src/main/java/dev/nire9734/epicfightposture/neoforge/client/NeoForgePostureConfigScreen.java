@@ -1,5 +1,6 @@
 package dev.nire9734.epicfightposture.neoforge.client;
 
+import dev.nire9734.epicfightposture.client.PostureHudPolicy;
 import dev.nire9734.epicfightposture.neoforge.NeoForgePostureClientConfig;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractSliderButton;
@@ -13,6 +14,7 @@ public final class NeoForgePostureConfigScreen extends Screen {
     private static final int CONTROL_WIDTH = 220;
 
     private final Screen parent;
+    private Button mobHudVisibilityButton;
     private ExecutionVolumeSlider executionVolumeSlider;
 
     public NeoForgePostureConfigScreen(Screen parent) {
@@ -23,7 +25,20 @@ public final class NeoForgePostureConfigScreen extends Screen {
     @Override
     protected void init() {
         int left = this.width / 2 - CONTROL_WIDTH / 2;
-        int sliderY = this.height / 2 - 18;
+        int hudY = this.height / 2 - 48;
+        int sliderY = this.height / 2 + 18;
+
+        this.mobHudVisibilityButton = this.addRenderableWidget(
+                Button.builder(hudVisibilityMessage(), button -> {
+                            PostureHudPolicy.Visibility[] values = PostureHudPolicy.Visibility.values();
+                            PostureHudPolicy.Visibility current = NeoForgePostureClientConfig.mobHealthBarVisibility();
+                            NeoForgePostureClientConfig.setMobHealthBarVisibility(
+                                    values[(current.ordinal() + 1) % values.length]);
+                            button.setMessage(hudVisibilityMessage());
+                        })
+                        .bounds(left, hudY, CONTROL_WIDTH, 20)
+                        .build()
+        );
 
         this.executionVolumeSlider = this.addRenderableWidget(
                 new ExecutionVolumeSlider(left, sliderY, CONTROL_WIDTH, 20,
@@ -32,8 +47,13 @@ public final class NeoForgePostureConfigScreen extends Screen {
         this.addRenderableWidget(
                 Button.builder(
                         Component.translatable("config.epicfight_posture_integration.reset"),
-                        button -> this.executionVolumeSlider.setMultiplier(
-                                NeoForgePostureClientConfig.DEFAULT_EXECUTION_SOUND_VOLUME_MULTIPLIER))
+                        button -> {
+                            this.executionVolumeSlider.setMultiplier(
+                                    NeoForgePostureClientConfig.DEFAULT_EXECUTION_SOUND_VOLUME_MULTIPLIER);
+                            NeoForgePostureClientConfig.setMobHealthBarVisibility(
+                                    PostureHudPolicy.Visibility.DAMAGED_ONLY);
+                            this.mobHudVisibilityButton.setMessage(hudVisibilityMessage());
+                        })
                         .bounds(left, sliderY + 30, 106, 20)
                         .build()
         );
@@ -50,8 +70,13 @@ public final class NeoForgePostureConfigScreen extends Screen {
         graphics.drawCenteredString(this.font, this.title, this.width / 2, 24, 0xFFFFFF);
         graphics.drawCenteredString(
                 this.font,
+                Component.translatable("config.epicfight_posture_integration.mob_health_bar_visibility.description"),
+                this.width / 2, this.height / 2 - 65, 0xA0A0A0
+        );
+        graphics.drawCenteredString(
+                this.font,
                 Component.translatable("config.epicfight_posture_integration.execution_sound_volume.description"),
-                this.width / 2, this.height / 2 - 44, 0xA0A0A0
+                this.width / 2, this.height / 2 + 1, 0xA0A0A0
         );
         super.render(graphics, mouseX, mouseY, partialTick);
     }
@@ -60,6 +85,15 @@ public final class NeoForgePostureConfigScreen extends Screen {
     public void onClose() {
         NeoForgePostureClientConfig.save();
         if (this.minecraft != null) this.minecraft.setScreen(this.parent);
+    }
+
+    private static Component hudVisibilityMessage() {
+        PostureHudPolicy.Visibility visibility = NeoForgePostureClientConfig.mobHealthBarVisibility();
+        return Component.translatable(
+                "config.epicfight_posture_integration.mob_health_bar_visibility",
+                Component.translatable("config.epicfight_posture_integration.mob_health_bar_visibility."
+                        + visibility.name().toLowerCase(java.util.Locale.ROOT))
+        );
     }
 
     private static final class ExecutionVolumeSlider extends AbstractSliderButton {

@@ -1,5 +1,10 @@
 {
   "config.epicfight_posture_integration.title": "Epic Fight Posture Integration",
+  "config.epicfight_posture_integration.mob_health_bar_visibility": "MobのHP・体幹HUD: %s",
+  "config.epicfight_posture_integration.mob_health_bar_visibility.description": "EFPI独自対応MobのHUD（CEパッチ対象は除外）",
+  "config.epicfight_posture_integration.mob_health_bar_visibility.always": "常に表示",
+  "config.epicfight_posture_integration.mob_health_bar_visibility.damaged_only": "ダメージ時のみ",
+  "config.epicfight_posture_integration.mob_health_bar_visibility.hidden": "非表示",
   "config.epicfight_posture_integration.execution_sound_volume": "処刑サウンド音量: %s%%",
   "config.epicfight_posture_integration.execution_sound_volume.description": "このクライアントでのみ Combat Evolution の処刑サウンド音量を調整します。",
   "config.epicfight_posture_integration.reset": "初期値に戻す"

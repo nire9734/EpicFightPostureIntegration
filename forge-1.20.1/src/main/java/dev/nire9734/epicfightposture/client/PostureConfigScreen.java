@@ -13,6 +13,7 @@ public final class PostureConfigScreen extends Screen {
     private static final int CONTROL_WIDTH = 220;
 
     private final Screen parent;
+    private Button mobHudVisibilityButton;
     private ExecutionVolumeSlider executionVolumeSlider;
 
     public PostureConfigScreen(Screen parent) {
@@ -23,7 +24,19 @@ public final class PostureConfigScreen extends Screen {
     @Override
     protected void init() {
         int left = this.width / 2 - CONTROL_WIDTH / 2;
-        int sliderY = this.height / 2 - 18;
+        int hudY = this.height / 2 - 48;
+        int sliderY = this.height / 2 + 18;
+
+        this.mobHudVisibilityButton = this.addRenderableWidget(
+                Button.builder(hudVisibilityMessage(), button -> {
+                            PostureHudPolicy.Visibility[] values = PostureHudPolicy.Visibility.values();
+                            PostureHudPolicy.Visibility current = PostureClientConfig.mobHealthBarVisibility();
+                            PostureClientConfig.setMobHealthBarVisibility(values[(current.ordinal() + 1) % values.length]);
+                            button.setMessage(hudVisibilityMessage());
+                        })
+                        .bounds(left, hudY, CONTROL_WIDTH, 20)
+                        .build()
+        );
 
         this.executionVolumeSlider = this.addRenderableWidget(
                 new ExecutionVolumeSlider(
@@ -38,9 +51,14 @@ public final class PostureConfigScreen extends Screen {
         this.addRenderableWidget(
                 Button.builder(
                                 Component.translatable("config.epicfight_posture_integration.reset"),
-                                button -> this.executionVolumeSlider.setMultiplier(
-                                        PostureClientConfig.DEFAULT_EXECUTION_SOUND_VOLUME_MULTIPLIER
-                                )
+                                button -> {
+                                    this.executionVolumeSlider.setMultiplier(
+                                            PostureClientConfig.DEFAULT_EXECUTION_SOUND_VOLUME_MULTIPLIER
+                                    );
+                                    PostureClientConfig.setMobHealthBarVisibility(
+                                            PostureHudPolicy.Visibility.DAMAGED_ONLY);
+                                    this.mobHudVisibilityButton.setMessage(hudVisibilityMessage());
+                                }
                         )
                         .bounds(left, sliderY + 30, 106, 20)
                         .build()
@@ -59,9 +77,16 @@ public final class PostureConfigScreen extends Screen {
         guiGraphics.drawCenteredString(this.font, this.title, this.width / 2, 24, 0xFFFFFF);
         guiGraphics.drawCenteredString(
                 this.font,
+                Component.translatable("config.epicfight_posture_integration.mob_health_bar_visibility.description"),
+                this.width / 2,
+                this.height / 2 - 65,
+                0xA0A0A0
+        );
+        guiGraphics.drawCenteredString(
+                this.font,
                 Component.translatable("config.epicfight_posture_integration.execution_sound_volume.description"),
                 this.width / 2,
-                this.height / 2 - 44,
+                this.height / 2 + 1,
                 0xA0A0A0
         );
         super.render(guiGraphics, mouseX, mouseY, partialTick);
@@ -73,6 +98,15 @@ public final class PostureConfigScreen extends Screen {
         if (this.minecraft != null) {
             this.minecraft.setScreen(this.parent);
         }
+    }
+
+    private static Component hudVisibilityMessage() {
+        PostureHudPolicy.Visibility visibility = PostureClientConfig.mobHealthBarVisibility();
+        return Component.translatable(
+                "config.epicfight_posture_integration.mob_health_bar_visibility",
+                Component.translatable("config.epicfight_posture_integration.mob_health_bar_visibility."
+                        + visibility.name().toLowerCase(java.util.Locale.ROOT))
+        );
     }
 
     private static final class ExecutionVolumeSlider extends AbstractSliderButton {
