@@ -6,18 +6,20 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
-import net.minecraft.resources.ResourceLocation;
+import java.util.function.Function;
 
 /**
  * Shared Forge/NeoForge parsing for entity-specific server configuration.
  * Invalid entries are reported during config loading, never during mob ticks.
  */
 public final class PostureConfigEntries {
-    public static Set<ResourceLocation> entityBlacklist(
-            List<? extends String> entries, Consumer<String> invalidEntry) {
-        Set<ResourceLocation> parsed = new HashSet<>();
+    public static <T> Set<T> entityBlacklist(
+            List<? extends String> entries, Function<String, T> idParser,
+            Consumer<String> invalidEntry) {
+        Set<T> parsed = new HashSet<>();
         for (String raw : entries) {
-            ResourceLocation id = ResourceLocation.tryParse(raw == null ? "" : raw.trim());
+            String normalized = raw == null ? "" : raw.trim();
+            T id = normalized.isEmpty() ? null : idParser.apply(normalized);
             if (id == null) {
                 invalidEntry.accept(raw);
             } else {
@@ -27,9 +29,10 @@ public final class PostureConfigEntries {
         return Set.copyOf(parsed);
     }
 
-    public static Map<ResourceLocation, Float> entityMultipliers(
-            List<? extends String> entries, Consumer<String> invalidEntry) {
-        Map<ResourceLocation, Float> parsed = new HashMap<>();
+    public static <T> Map<T, Float> entityMultipliers(
+            List<? extends String> entries, Function<String, T> idParser,
+            Consumer<String> invalidEntry) {
+        Map<T, Float> parsed = new HashMap<>();
         for (String raw : entries) {
             String entry = raw == null ? "" : raw.trim();
             int separator = entry.lastIndexOf('=');
@@ -38,7 +41,8 @@ public final class PostureConfigEntries {
                 continue;
             }
 
-            ResourceLocation id = ResourceLocation.tryParse(entry.substring(0, separator).trim());
+            String rawId = entry.substring(0, separator).trim();
+            T id = rawId.isEmpty() ? null : idParser.apply(rawId);
             float multiplier;
             try {
                 multiplier = Float.parseFloat(entry.substring(separator + 1).trim());
