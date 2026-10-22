@@ -1,44 +1,45 @@
 package dev.nire9734.epicfightposture.neoforge;
 
+import dev.nire9734.epicfightposture.PostureConfigPolicy;
 import java.util.Set;
-import net.minecraft.resources.ResourceLocation;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/** Server policy must match Forge without disabling third-party patches. */
+/** Pure policy tests: NeoForge's test classpath does not include game classes. */
 class NeoForgeServerSettingsTest {
-    private static final ResourceLocation ZOMBIE = ResourceLocation.tryParse("minecraft:zombie");
-    private static final ResourceLocation MODDED = ResourceLocation.tryParse("cataclysm:ignis");
-
-    private static NeoForgeServerSettings.Snapshot snapshot(
-            boolean automatic, Set<ResourceLocation> blacklist, Set<String> allow, Set<String> deny) {
-        return new NeoForgeServerSettings.Snapshot(1.0D, 1.0D, true,
-                automatic, automatic, automatic, blacklist, allow, deny);
+    private static boolean blocked(String id, boolean efpiOwned, boolean automatic,
+            Set<String> blacklist, Set<String> allow, Set<String> deny) {
+        String namespace = id.substring(0, id.indexOf(':'));
+        boolean allowed = PostureConfigPolicy.allowsAutomatic(automatic, namespace, allow, deny);
+        return PostureConfigPolicy.blocksPosture(id, blacklist, efpiOwned, allowed);
     }
 
     @Test
     void disablingAutomaticCompatibilityOnlyExcludesEfpiOwnedMobs() {
-        var settings = snapshot(false, Set.of(), Set.of(), Set.of());
-        assertTrue(settings.blocksPosture(MODDED, true));
-        assertFalse(settings.blocksPosture(MODDED, false));
-        assertTrue(settings.blocksPosture(ZOMBIE, true));
-        assertFalse(settings.blocksPosture(ZOMBIE, false));
+        assertTrue(blocked("cataclysm:ignis", true, false, Set.of(), Set.of(), Set.of()));
+        assertFalse(blocked("cataclysm:ignis", false, false, Set.of(), Set.of(), Set.of()));
+        assertTrue(blocked("minecraft:zombie", true, false, Set.of(), Set.of(), Set.of()));
+        assertFalse(blocked("minecraft:zombie", false, false, Set.of(), Set.of(), Set.of()));
     }
 
     @Test
     void explicitBlacklistExcludesBothOwnedAndExistingPatches() {
-        var settings = snapshot(true, Set.of(MODDED), Set.of(), Set.of());
-        assertTrue(settings.blocksPosture(MODDED, true));
-        assertTrue(settings.blocksPosture(MODDED, false));
-        assertFalse(settings.blocksPosture(ZOMBIE, true));
+        assertTrue(blocked("cataclysm:ignis", true, true,
+                Set.of("cataclysm:ignis"), Set.of(), Set.of()));
+        assertTrue(blocked("cataclysm:ignis", false, true,
+                Set.of("cataclysm:ignis"), Set.of(), Set.of()));
+        assertFalse(blocked("minecraft:zombie", true, true,
+                Set.of("cataclysm:ignis"), Set.of(), Set.of()));
     }
 
     @Test
     void modFiltersOnlyExcludeEfpiOwnedAndNeverExcludeVanilla() {
-        var settings = snapshot(true, Set.of(), Set.of("cataclysm"), Set.of("cataclysm"));
-        assertTrue(settings.blocksPosture(MODDED, true));
-        assertFalse(settings.blocksPosture(MODDED, false));
-        assertFalse(settings.blocksPosture(ZOMBIE, true));
+        assertTrue(blocked("cataclysm:ignis", true, true,
+                Set.of(), Set.of("cataclysm"), Set.of("cataclysm")));
+        assertFalse(blocked("cataclysm:ignis", false, true,
+                Set.of(), Set.of("cataclysm"), Set.of("cataclysm")));
+        assertFalse(blocked("minecraft:zombie", true, true,
+                Set.of(), Set.of("cataclysm"), Set.of("cataclysm")));
     }
 }
