@@ -9,7 +9,7 @@ on:
     paths:
       - 'neoforge-1.21.1/**'
       - 'common/**'
-      - 'build.gradle'
+      - 'forge-1.20.1/build.gradle'
       - '.github/workflows/build-neoforge-port.yml'
   workflow_dispatch:
 

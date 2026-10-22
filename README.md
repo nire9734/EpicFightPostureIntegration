@@ -1,7 +1,9 @@
 # Epic Fight Posture Integration
 
-This README describes the Forge 1.20.1 edition. The unreleased NeoForge 1.21.1
-port is built from the same development tree; see
+This README describes the Forge 1.20.1 edition, now built from
+[`forge-1.20.1/`](forge-1.20.1/). Loader-independent source code lives in
+[`common/`](common/), alongside the unreleased
+[`neoforge-1.21.1/`](neoforge-1.21.1/) port; see
 [NeoForge port notes](neoforge-1.21.1/README.md) and
 [development/branch policy](DEVELOPMENT.md). The released `main` branch remains
 at 3.0.1; 3.0.2 and NeoForge are still under development.

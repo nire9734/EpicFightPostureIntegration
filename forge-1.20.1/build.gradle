@@ -20,8 +20,8 @@ java {
 // Compile one physical copy of the portable logic in both loader builds.
 // The NeoForge project has its own Gradle wrapper/toolchain but uses this tree.
 sourceSets {
-    main.java.srcDir('common/src/main/java')
-    test.java.srcDir('common/src/test/java')
+    main.java.srcDir('../common/src/main/java')
+    test.java.srcDir('../common/src/test/java')
 }
 
 minecraft {
@@ -89,7 +89,7 @@ tasks.named('processResources', ProcessResources).configure {
 }
 
 tasks.named('jar', Jar).configure {
-    from('LICENSE') {
+    from('../LICENSE') {
         rename { "LICENSE_${mod_id}" }
     }
 
@@ -117,9 +117,9 @@ tasks.register('checkHumanoidCoreDependencies') {
 
     doLast {
         def coreDirectories = [
-            file('common/src/main/java/dev/nire9734/epicfightposture/compat/humanoid/rig'),
-            file('common/src/main/java/dev/nire9734/epicfightposture/compat/humanoid/retarget'),
-            file('common/src/main/java/dev/nire9734/epicfightposture/compat/humanoid/skeleton')
+            file('../common/src/main/java/dev/nire9734/epicfightposture/compat/humanoid/rig'),
+            file('../common/src/main/java/dev/nire9734/epicfightposture/compat/humanoid/retarget'),
+            file('../common/src/main/java/dev/nire9734/epicfightposture/compat/humanoid/skeleton')
         ]
         def forbiddenPrefixes = [
             'net.minecraft',

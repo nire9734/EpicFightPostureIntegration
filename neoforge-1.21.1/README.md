@@ -60,7 +60,8 @@ been verified in a live client or dedicated server.**
 ## Development build
 
 This is an independent ModDevGradle 2.0.148 build within the multiloader
-development tree; the repository root builds Forge 1.20.1 with Gradle 8.8.
+development tree; `../forge-1.20.1/` independently builds Forge 1.20.1
+with Gradle 8.8.
 
 ```sh
 cd neoforge-1.21.1

@@ -32,16 +32,18 @@ jobs:
           cache: gradle
 
       - name: Make Gradle wrapper executable
+        working-directory: forge-1.20.1
         run: chmod +x gradlew
 
       - name: Build
+        working-directory: forge-1.20.1
         run: ./gradlew clean build --stacktrace
 
       - name: Upload JAR
         uses: actions/upload-artifact@v6
         with:
           name: epicfight-posture-integration
-          path: build/libs/*.jar
+          path: forge-1.20.1/build/libs/*.jar
           if-no-files-found: error
 
   wrapper-smoke-windows:
@@ -59,4 +61,5 @@ jobs:
 
       - name: Verify Windows Gradle bootstrap
         shell: cmd
+        working-directory: forge-1.20.1
         run: gradlew.bat --version

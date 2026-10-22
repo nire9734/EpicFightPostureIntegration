@@ -23,7 +23,9 @@ unfinished NeoForge adapter or overwrite the 3.0.1 release branch.
   storage, rig/skeleton inference, retargeting, and the source-shared Epic Fight
   spider animation/armature adapters.
 - `common/src/test/java`: corresponding shared unit tests.
-- `src/main/java`, `src/main/resources`: Minecraft 1.20.1 Forge-specific code.
+- `forge-1.20.1/src/main/java`, `forge-1.20.1/src/main/resources`:
+  Minecraft 1.20.1 Forge-specific code. Forge's Gradle wrapper and build files
+  also live inside `forge-1.20.1/`.
 - `neoforge-1.21.1/src/main`, `neoforge-1.21.1/src/test`: Minecraft 1.21.1
   NeoForge-specific adapters, mixins, and tests.
 
@@ -42,13 +44,15 @@ change, followed by builds and tests for **both** loaders.
 Forge retains ForgeGradle/Gradle 8.8 and **Java 17**:
 
 ```sh
+cd forge-1.20.1
 ./gradlew clean build
 ```
 
 NeoForge retains ModDevGradle/Gradle 9.2.1 and **Java 21**:
 
 ```sh
-gradle -p neoforge-1.21.1 clean build
+cd neoforge-1.21.1
+gradle clean build
 ```
 
 Use the appropriate Gradle installation for each command. The GitHub Actions
