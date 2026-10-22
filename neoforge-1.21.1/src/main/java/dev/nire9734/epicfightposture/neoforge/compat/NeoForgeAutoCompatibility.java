@@ -1,7 +1,7 @@
 package dev.nire9734.epicfightposture.neoforge.compat;
 
 import com.mojang.logging.LogUtils;
-import dev.nire9734.epicfightposture.neoforge.NeoForgePostureConfig;
+import dev.nire9734.epicfightposture.neoforge.NeoForgeServerSettings;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.EntityType;
@@ -70,7 +70,7 @@ public final class NeoForgeAutoCompatibility {
                 EXTERNALLY_PATCHED.remove(type);
             }
         }
-        if (!NeoForgePostureConfig.AUTOMATIC_COMPATIBILITY.get()) return;
+        if (!NeoForgeServerSettings.hasRegistryCandidates()) return;
 
         // Respect datapack-owned providers even if they are not exposed by
         // getTypeEntry(). Failure to inspect ownership disables this feature.
@@ -96,7 +96,8 @@ public final class NeoForgeAutoCompatibility {
         // physical providers. Never retain one taken over by an addon.
         for (EntityType<?> type : previousOwned) {
             if (OWNED.contains(type) || event.getTypeEntry().containsKey(type)
-                    || datapackOverrides.containsKey(type) || !mayPrepareRenderer(type)) continue;
+                    || datapackOverrides.containsKey(type)
+                    || !NeoForgeServerSettings.canRegister(BuiltInRegistries.ENTITY_TYPE.getKey(type))) continue;
             try {
                 Map<EntityType<?>, Function<Entity, EntityPatch<?>>> providers = providerMap("capabilities");
                 if (providers == null || (providers.containsKey(type)
@@ -123,7 +124,7 @@ public final class NeoForgeAutoCompatibility {
             if (type == null || type == EntityType.PLAYER
                     || OWNED.contains(type) || EXTERNALLY_PATCHED.contains(type)
                     || event.getTypeEntry().containsKey(type) || datapackOverrides.containsKey(type)
-                    || !mayPrepareRenderer(type)) continue;
+                    || !NeoForgeServerSettings.canRegister(id)) continue;
             boolean spider = NeoForgeRendererDiscoveryServer.activeSpiders().contains(id);
             if (spider) {
                 Armatures.registerEntityTypeArmature(type, Armatures.SPIDER);
@@ -148,12 +149,7 @@ public final class NeoForgeAutoCompatibility {
     private static <T extends Mob> void registerCandidate(EntityPatchRegistryEvent event,
                                                            EntityType<T> type, Map<?, ?> overrides) {
         ResourceLocation id = BuiltInRegistries.ENTITY_TYPE.getKey(type);
-        if (!AutoCompatibilityRules.allows(
-                id == null ? null : id.toString(),
-                NeoForgePostureConfig.AUTOMATIC_COMPATIBILITY.get(),
-                NeoForgePostureConfig.ENTITY_BLACKLIST.get(),
-                NeoForgePostureConfig.MOD_ALLOWLIST.get(),
-                NeoForgePostureConfig.MOD_DENYLIST.get())) return;
+        if (!NeoForgeServerSettings.canRegister(id)) return;
         if (event.getTypeEntry().containsKey(type) || overrides.containsKey(type)) {
             LOGGER.debug("EFPI skipped {} because another Epic Fight patch already owns it", id);
             return;
@@ -169,12 +165,7 @@ public final class NeoForgeAutoCompatibility {
     public static synchronized boolean isEnabled(EntityType<?> type) {
         ResourceLocation id = type == null ? null : BuiltInRegistries.ENTITY_TYPE.getKey(type);
         return type != null && OWNED.contains(type) && !RUNTIME_REJECTED.contains(type)
-                && AutoCompatibilityRules.allows(
-                id == null ? null : id.toString(),
-                NeoForgePostureConfig.AUTOMATIC_COMPATIBILITY.get(),
-                NeoForgePostureConfig.ENTITY_BLACKLIST.get(),
-                NeoForgePostureConfig.MOD_ALLOWLIST.get(),
-                NeoForgePostureConfig.MOD_DENYLIST.get());
+                && NeoForgeServerSettings.allows(id);
     }
 
     /** Snapshot from the registry event before EFPI added any patches. */
@@ -191,12 +182,7 @@ public final class NeoForgeAutoCompatibility {
     public static synchronized boolean mayPrepareRenderer(EntityType<?> type) {
         if (type == null || type == EntityType.PLAYER) return false;
         ResourceLocation id = BuiltInRegistries.ENTITY_TYPE.getKey(type);
-        return AutoCompatibilityRules.allows(
-                id == null ? null : id.toString(),
-                NeoForgePostureConfig.AUTOMATIC_COMPATIBILITY.get(),
-                NeoForgePostureConfig.ENTITY_BLACKLIST.get(),
-                NeoForgePostureConfig.MOD_ALLOWLIST.get(),
-                NeoForgePostureConfig.MOD_DENYLIST.get());
+        return NeoForgeServerSettings.allows(id);
     }
 
     /** Only called on client after verifying renderer ownership and skin mesh. */

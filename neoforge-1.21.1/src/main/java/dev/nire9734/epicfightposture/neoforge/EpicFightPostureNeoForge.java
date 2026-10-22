@@ -8,6 +8,7 @@ import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.bus.api.IEventBus;
 import dev.nire9734.epicfightposture.neoforge.network.NeoForgePostureNetworking;
+import dev.nire9734.epicfightposture.neoforge.network.NeoForgeServerSettingsSync;
 import net.neoforged.fml.config.ModConfig;
 import dev.nire9734.epicfightposture.NeoForgePostureServerEvents;
 import dev.nire9734.epicfightposture.neoforge.compat.NeoForgeAutoCompatibility;
@@ -29,6 +30,7 @@ public final class EpicFightPostureNeoForge {
             dev.nire9734.epicfightposture.neoforge.client.NeoForgeClientConfigRegistration.register(modContainer);
         }
         modBus.addListener(NeoForgePostureNetworking::registerPayloads);
+        NeoForgeServerSettingsSync.register(modBus);
         NeoForgeRendererDiscoveryServer.bootstrap();
         NeoForgeAutoCompatibility.register();
         NeoForgePostureServerEvents.register();

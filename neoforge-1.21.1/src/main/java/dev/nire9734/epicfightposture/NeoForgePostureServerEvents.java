@@ -119,9 +119,12 @@ public final class NeoForgePostureServerEvents {
         if (state.postureState == PostureState.BROKEN || state.postureState == PostureState.EXECUTING) {
             if (isExecuting(mob)) {
                 PENDING_EXECUTION_START.remove(mob);
-                if (state.postureState != PostureState.EXECUTING) state.enterExecution();
-                state.current = 0.0F;
-                dev.nire9734.epicfightposture.neoforge.network.NeoForgePostureSync.syncPeriodic(mob, stateForSync(mob));
+                if (state.postureState != PostureState.EXECUTING) {
+                    state.enterExecution();
+                    dev.nire9734.epicfightposture.neoforge.network.NeoForgePostureSync.syncNow(mob, stateForSync(mob));
+                } else {
+                    state.current = 0.0F;
+                }
                 return;
             }
             if (state.postureState == PostureState.EXECUTING) {
@@ -137,10 +140,18 @@ public final class NeoForgePostureServerEvents {
                 return;
             }
             LivingEntityPatch<?> patch = EpicFightCapabilities.getEntityPatch(mob, LivingEntityPatch.class);
-            if (isActiveNeutralize(patch)) state.brokenTicks++;
-            else state.beginRecovery(RECOVERY_TICKS);
+            if (isActiveNeutralize(patch)) {
+                state.brokenTicks++;
+            } else {
+                state.beginRecovery(RECOVERY_TICKS);
+                dev.nire9734.epicfightposture.neoforge.network.NeoForgePostureSync.syncNow(mob, stateForSync(mob));
+                return;
+            }
         } else if (state.postureState == PostureState.RECOVERING) {
-            state.advanceRecovery(RECOVERY_TICKS);
+            if (state.advanceRecovery(RECOVERY_TICKS)) {
+                dev.nire9734.epicfightposture.neoforge.network.NeoForgePostureSync.syncNow(mob, stateForSync(mob));
+                return;
+            }
         } else if (state.postureState == PostureState.NORMAL) {
             state.advanceRegeneration(NeoForgePostureConfig.REGEN_PERCENT_PER_SECOND.get().floatValue() / 100.0F);
         }
