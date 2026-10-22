@@ -172,21 +172,14 @@ public final class HumanoidBackendRegistry {
                 }
             }
 
-            boolean runtimeReady;
-            if (oursAlready) {
-                runtimeReady = armatureOverride == null
-                        || VanillaHumanoidCompat.refreshRuntimeArmature(
-                                entityType,
-                                VanillaHumanoidCompat.CompatibilityKind.EXTENDED_HUMANOID,
-                                armatureOverride
-                        );
-            } else {
-                runtimeReady = VanillaHumanoidCompat.registerDiscoveredAtRuntime(
-                        entityType,
-                        VanillaHumanoidCompat.CompatibilityKind.EXTENDED_HUMANOID,
-                        armatureOverride
-                );
-            }
+            // Even an EFPI-owned target can lose its physical provider during
+            // a world change. Verify/recover it on every renderer scan for all
+            // backends (ModelPart, GeckoLib and Lionfish alike).
+            boolean runtimeReady = VanillaHumanoidCompat.registerDiscoveredAtRuntime(
+                    entityType,
+                    VanillaHumanoidCompat.CompatibilityKind.EXTENDED_HUMANOID,
+                    armatureOverride
+            );
             if (!runtimeReady) {
                 if (oursAlready) {
                     VanillaHumanoidCompat.rejectRuntimeCompatibility(entityType);

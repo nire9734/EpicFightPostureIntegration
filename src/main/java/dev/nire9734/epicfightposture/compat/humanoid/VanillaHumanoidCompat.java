@@ -34,6 +34,7 @@ public final class VanillaHumanoidCompat {
     private static volatile Map<ResourceLocation, CompatibilityKind> cachedDetected = Map.of();
     private static volatile Set<ResourceLocation> externallyPatched = Set.of();
     private static final Map<ResourceLocation, CompatibilityKind> registeredByEfpi = new HashMap<>();
+    private static final Map<ResourceLocation, AssetAccessor<? extends Armature>> runtimeArmatures = new HashMap<>();
     private static final Set<ResourceLocation> runtimeRejected = new HashSet<>();
 
     public enum CompatibilityKind {
@@ -60,6 +61,7 @@ public final class VanillaHumanoidCompat {
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public static synchronized void onEntityPatchRegistry(EntityPatchRegistryEvent event) {
+        Map<ResourceLocation, CompatibilityKind> previousOwnership = new HashMap<>(registeredByEfpi);
         registeredByEfpi.clear();
         runtimeRejected.clear();
 
@@ -79,13 +81,37 @@ public final class VanillaHumanoidCompat {
             CompatibilityKind kind = target.getValue();
             if (PostureServerConfig.isBlacklisted(entityId)
                     || !PostureServerConfig.isAutomaticCompatibilityAllowed(entityId)
-                    || existingPatchIds.contains(entityId)
                     || !compatibilityKindEnabled(kind)) {
                 continue;
             }
 
             EntityType<?> entityType = ForgeRegistries.ENTITY_TYPES.getValue(entityId);
-            if (entityType == null || entityType == EntityType.PLAYER || event.getTypeEntry().containsKey(entityType)) {
+            if (entityType == null || entityType == EntityType.PLAYER) {
+                continue;
+            }
+
+            if (event.getTypeEntry().containsKey(entityType)) {
+                // Epic Fight can recreate this event without restarting Minecraft.
+                // Its map may still hold our previous entry; it is not an addon.
+                if (previousOwnership.get(entityId) == kind
+                        && EpicFightPatchOwnership.isOwnedEventRegistration(
+                                entityType, event.getTypeEntry().get(entityType))) {
+                    registeredByEfpi.put(entityId, kind);
+                    existingPatchIds.remove(entityId);
+                }
+                continue;
+            }
+
+            EpicFightPatchOwnership.State state = EpicFightPatchOwnership.state(entityType);
+            if (previousOwnership.get(entityId) == kind
+                    && state == EpicFightPatchOwnership.State.OWNED) {
+                // A custom runtime provider from the previous world is still
+                // installed. Keep its ownership rather than classing it as foreign.
+                registeredByEfpi.put(entityId, kind);
+                existingPatchIds.remove(entityId);
+                continue;
+            }
+            if (existingPatchIds.contains(entityId) || state != EpicFightPatchOwnership.State.MISSING) {
                 continue;
             }
 
@@ -100,6 +126,8 @@ public final class VanillaHumanoidCompat {
             }
 
             registerIntoEvent(event, entityType, kind);
+            EpicFightPatchOwnership.recordEventRegistration(
+                    entityType, event.getTypeEntry().get(entityType));
             registeredByEfpi.put(entityId, kind);
         }
         externallyPatched = Set.copyOf(existingPatchIds);
@@ -164,29 +192,55 @@ public final class VanillaHumanoidCompat {
             return false;
         }
 
-        // A custom patch supplied by an Epic Fight addon has ownership priority.
-        // Never overwrite it with EFPI's lightweight patch. This check is repeated
-        // here because custom registrations are not included in EF's public
-        // getPatchedEntities() result and may appear after the registry snapshot.
-        if (!registeredByEfpi.containsKey(id) && EpicFightPatchOwnership.hasCustomPatch(entityType)) {
+        EpicFightPatchOwnership.State state = EpicFightPatchOwnership.state(entityType);
+        if (state == EpicFightPatchOwnership.State.UNKNOWN) {
+            return false;
+        }
+        // An addon may have replaced an EFPI patch between world loads.
+        // Identity-based ownership checking ensures we never overwrite it.
+        if (state == EpicFightPatchOwnership.State.FOREIGN) {
             Set<ResourceLocation> updatedExternal = new HashSet<>(externallyPatched);
             updatedExternal.add(id);
             externallyPatched = Set.copyOf(updatedExternal);
-            LOGGER.debug("EFPI skipped automatic compatibility for {} because an Epic Fight custom patch is already registered",
+            LOGGER.debug("EFPI skipped automatic compatibility for {} because another Epic Fight patch owns it",
                     id);
             return false;
         }
 
+        CompatibilityKind previous = registeredByEfpi.get(id);
+        if (previous != null && previous != kind && state == EpicFightPatchOwnership.State.OWNED) {
+            // The patch class/armature is tied to the earlier renderer kind.
+            runtimeRejected.add(id);
+            return false;
+        }
+
         try {
-            registerRuntime(entityType, kind, armatureOverride);
+            if (state == EpicFightPatchOwnership.State.MISSING) {
+                registerRuntime(entityType, kind, armatureOverride);
+                if (!EpicFightPatchOwnership.recordRuntimeRegistration(entityType)) {
+                    runtimeRejected.add(id);
+                    return false;
+                }
+                LOGGER.debug("EFPI installed/recovered runtime provider for {}", id);
+            } else {
+                Armatures.registerEntityTypeArmature(entityType,
+                        kind == CompatibilityKind.VANILLA_SPIDER ? Armatures.SPIDER
+                                : armatureOverride != null ? armatureOverride : Armatures.BIPED);
+            }
             registeredByEfpi.put(id, kind);
             runtimeRejected.remove(id);
+            if (armatureOverride != null) {
+                runtimeArmatures.put(id, armatureOverride);
+            } else if (kind == CompatibilityKind.VANILLA_SPIDER
+                    || kind == CompatibilityKind.VANILLA_HUMANOID) {
+                runtimeArmatures.remove(id);
+            }
 
             Map<ResourceLocation, CompatibilityKind> updated = new HashMap<>(cachedDetected);
-            CompatibilityKind previous = updated.put(id, kind);
-            if (previous != null && previous != kind) {
+            CompatibilityKind previousDetected = updated.put(id, kind);
+            if (previousDetected != null && previousDetected != kind) {
                 LOGGER.debug("EFPI renderer compatibility kind changed for {} from {} to {}; using the latest scan",
-                        id, previous, kind);
+                        id, previousDetected, kind);
             }
             cachedDetected = Map.copyOf(updated);
             return true;
@@ -196,13 +250,7 @@ public final class VanillaHumanoidCompat {
         }
     }
 
-    /**
-     * Refreshes only the runtime armature mapping for an EFPI-owned patch.
-     *
-     * <p>Renderer/model reloads can rebuild a target descriptor without requiring
-     * a second EntityPatchProvider registration. Keeping those operations separate
-     * avoids a new mesh/descriptor being paired with the armature from an older scan.</p>
-     */
+    /** Revalidate provider ownership and recover it if a world reload cleared it. */
     public static synchronized boolean refreshRuntimeArmature(
             EntityType<?> entityType,
             CompatibilityKind kind,
@@ -217,15 +265,42 @@ public final class VanillaHumanoidCompat {
             return false;
         }
 
-        try {
-            Armatures.registerEntityTypeArmature(entityType, armatureOverride);
-            runtimeRejected.remove(id);
-            return true;
-        } catch (Throwable throwable) {
-            runtimeRejected.add(id);
-            LOGGER.warn("Failed to refresh runtime humanoid armature for {}; compatibility is disabled until a later successful scan",
-                    id, throwable);
-            return false;
+        return registerDiscoveredAtRuntime(entityType, kind, armatureOverride);
+    }
+
+    /**
+     * Epic Fight can rebuild its provider maps on integrated-server world
+     * changes without rebuilding the client renderers. Rebind only a missing
+     * EFPI-owned provider; never replace an unknown or addon-owned one.
+     */
+    public static synchronized void recoverClientRegistrationsOnWorldJoin() {
+        if (FMLEnvironment.dist != Dist.CLIENT) {
+            return;
+        }
+        int recovered = 0;
+        for (Map.Entry<ResourceLocation, CompatibilityKind> entry : Map.copyOf(registeredByEfpi).entrySet()) {
+            ResourceLocation id = entry.getKey();
+            if (runtimeRejected.contains(id)) {
+                continue;
+            }
+            EntityType<?> type = ForgeRegistries.ENTITY_TYPES.getValue(id);
+            if (type == null) {
+                continue;
+            }
+            EpicFightPatchOwnership.State state = EpicFightPatchOwnership.state(type);
+            if (state == EpicFightPatchOwnership.State.MISSING) {
+                if (registerDiscoveredAtRuntime(type, entry.getValue(), runtimeArmatures.get(id))) {
+                    recovered++;
+                } else {
+                    runtimeRejected.add(id);
+                }
+            } else if (state == EpicFightPatchOwnership.State.FOREIGN
+                    || state == EpicFightPatchOwnership.State.UNKNOWN) {
+                runtimeRejected.add(id);
+            }
+        }
+        if (recovered > 0) {
+            LOGGER.info("EFPI recovered {} automatic compatibility provider(s) after world join", recovered);
         }
     }
 

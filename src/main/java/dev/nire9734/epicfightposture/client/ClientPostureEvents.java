@@ -2,6 +2,7 @@ package dev.nire9734.epicfightposture.client;
 
 import dev.nire9734.epicfightposture.EpicFightPostureIntegration;
 import dev.nire9734.epicfightposture.PostureServerConfig;
+import dev.nire9734.epicfightposture.compat.humanoid.VanillaHumanoidCompat;
 import net.minecraft.world.entity.Entity;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
@@ -31,6 +32,11 @@ public final class ClientPostureEvents {
         if (event.getLevel().isClientSide()) {
             ClientPostureStore.clear();
         }
+    }
+
+    @SubscribeEvent
+    public static void onLoggingIn(ClientPlayerNetworkEvent.LoggingIn event) {
+        VanillaHumanoidCompat.recoverClientRegistrationsOnWorldJoin();
     }
 
     @SubscribeEvent

@@ -138,7 +138,7 @@ public final class VanillaHumanoidClientCompat {
                 continue;
             }
 
-            if (!oursAlready && !VanillaHumanoidCompat.registerDiscoveredAtRuntime(
+            if (!VanillaHumanoidCompat.registerDiscoveredAtRuntime(
                     entityType,
                     VanillaHumanoidCompat.CompatibilityKind.VANILLA_HUMANOID)) {
                 continue;
@@ -177,7 +177,7 @@ public final class VanillaHumanoidClientCompat {
                 continue;
             }
 
-            if (!oursAlready && !VanillaHumanoidCompat.registerDiscoveredAtRuntime(
+            if (!VanillaHumanoidCompat.registerDiscoveredAtRuntime(
                     entityType,
                     VanillaHumanoidCompat.CompatibilityKind.VANILLA_SPIDER)) {
                 continue;

@@ -113,18 +113,16 @@ public final class HumanoidDiscoveryServer {
             return;
         }
 
-        String summary = "EFPI: renderer discovery: "
-                + result.pendingCount() + " confirmed ("
-                + result.pendingVanillaCount() + " vanilla humanoid, "
-                + result.pendingExtendedCount() + " extended humanoid, "
-                + result.pendingSpiderCount() + " vanilla SpiderModel), "
-                + result.conflictCount() + " conflict(s).";
         if (result.restartRequired()) {
-            summary += " Restart the server to apply the pending compatibility list.";
-        } else {
-            summary += " No restart is required.";
+            String summary = "EFPI: renderer discovery: "
+                    + result.pendingCount() + " confirmed ("
+                    + result.pendingVanillaCount() + " vanilla humanoid, "
+                    + result.pendingExtendedCount() + " extended humanoid, "
+                    + result.pendingSpiderCount() + " vanilla SpiderModel), "
+                    + result.conflictCount() + " conflict(s)."
+                    + " Restart the server to apply the pending compatibility list.";
+            sender.sendSystemMessage(Component.literal(summary));
         }
-        sender.sendSystemMessage(Component.literal(summary));
     }
 
     private static boolean hasOverlap(Set<ResourceLocation> first, Set<ResourceLocation> second) {
