@@ -221,7 +221,6 @@ public final class VanillaHumanoidCompat {
                     runtimeRejected.add(id);
                     return false;
                 }
-                LOGGER.debug("EFPI installed/recovered runtime provider for {}", id);
             } else {
                 Armatures.registerEntityTypeArmature(entityType,
                         kind == CompatibilityKind.VANILLA_SPIDER ? Armatures.SPIDER
@@ -277,7 +276,6 @@ public final class VanillaHumanoidCompat {
         if (FMLEnvironment.dist != Dist.CLIENT) {
             return;
         }
-        int recovered = 0;
         for (Map.Entry<ResourceLocation, CompatibilityKind> entry : Map.copyOf(registeredByEfpi).entrySet()) {
             ResourceLocation id = entry.getKey();
             if (runtimeRejected.contains(id)) {
@@ -290,20 +288,13 @@ public final class VanillaHumanoidCompat {
             EpicFightPatchOwnership.State state = EpicFightPatchOwnership.state(type);
             if (state == EpicFightPatchOwnership.State.MISSING
                     || state == EpicFightPatchOwnership.State.OWNED) {
-                if (registerDiscoveredAtRuntime(type, entry.getValue(), runtimeArmatures.get(id))) {
-                    if (state == EpicFightPatchOwnership.State.MISSING) {
-                        recovered++;
-                    }
-                } else {
+                if (!registerDiscoveredAtRuntime(type, entry.getValue(), runtimeArmatures.get(id))) {
                     runtimeRejected.add(id);
                 }
             } else if (state == EpicFightPatchOwnership.State.FOREIGN
                     || state == EpicFightPatchOwnership.State.UNKNOWN) {
                 runtimeRejected.add(id);
             }
-        }
-        if (recovered > 0) {
-            LOGGER.info("EFPI recovered {} automatic compatibility provider(s) after world join", recovered);
         }
     }
 
@@ -326,9 +317,7 @@ public final class VanillaHumanoidCompat {
         }
         EpicFightPatchOwnership.State state = EpicFightPatchOwnership.state(entityType);
         if (state == EpicFightPatchOwnership.State.MISSING) {
-            if (registerDiscoveredAtRuntime(entityType, kind, runtimeArmatures.get(id))) {
-                LOGGER.info("EFPI recovered provider before attaching Epic Fight patch to {}", id);
-            } else {
+            if (!registerDiscoveredAtRuntime(entityType, kind, runtimeArmatures.get(id))) {
                 runtimeRejected.add(id);
             }
         } else if (state == EpicFightPatchOwnership.State.FOREIGN
