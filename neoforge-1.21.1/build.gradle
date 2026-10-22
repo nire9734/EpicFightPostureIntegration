@@ -40,6 +40,7 @@ sourceSets {
             srcDir('../common/src/main/java')
             include 'dev/nire9734/epicfightposture/PostureBalance.java'
             include 'dev/nire9734/epicfightposture/PostureConfigEntries.java'
+            include 'dev/nire9734/epicfightposture/PostureConfigPolicy.java'
             include 'dev/nire9734/epicfightposture/PostureDeathSafety.java'
             include 'dev/nire9734/epicfightposture/PostureRuntimeState.java'
             include 'dev/nire9734/epicfightposture/NeoForgeEntityAttributeAdapter.java'
