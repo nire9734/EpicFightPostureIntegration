@@ -1,6 +1,8 @@
 package dev.nire9734.epicfightposture.neoforge;
 
 import org.slf4j.Logger;
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.fml.loading.FMLEnvironment;
 import com.mojang.logging.LogUtils;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.ModContainer;
@@ -23,6 +25,9 @@ public final class EpicFightPostureNeoForge {
     public EpicFightPostureNeoForge(IEventBus modBus, ModContainer modContainer) {
         modContainer.registerConfig(ModConfig.Type.COMMON, NeoForgePostureConfig.SPEC);
         modContainer.registerConfig(ModConfig.Type.CLIENT, NeoForgePostureClientConfig.SPEC);
+        if (FMLEnvironment.dist == Dist.CLIENT) {
+            dev.nire9734.epicfightposture.neoforge.client.NeoForgeClientConfigRegistration.register(modContainer);
+        }
         modBus.addListener(NeoForgePostureNetworking::registerPayloads);
         NeoForgeRendererDiscoveryServer.bootstrap();
         NeoForgeAutoCompatibility.register();

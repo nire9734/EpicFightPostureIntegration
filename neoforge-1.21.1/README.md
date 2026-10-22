@@ -431,6 +431,7 @@ mounted ModelPart mob, and world re-entry before release.
   70%. Change `sound.execution_sound_volume_multiplier` in the NeoForge
   client config file (range 0.0–1.0); this does not change server sounds or
   affect other sound effects.
-- Forge's in-game settings screen is not ported yet. Real-world testing of
-  interrupted item use, both execution sounds, and dedicated-server loading
-  is still required.
+- The client config screen is accessible from the NeoForge Mods menu, with
+  the same slider/reset/done controls and English/Japanese labels as Forge.
+  Real-world testing of interrupted item use, both execution sounds,
+  the settings screen, and dedicated-server loading is still required.
