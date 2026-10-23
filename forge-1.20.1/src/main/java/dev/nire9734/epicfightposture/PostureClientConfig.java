@@ -16,16 +16,15 @@ public final class PostureClientConfig {
     static {
         BUILDER.push("hud");
         MOB_HEALTH_BAR_VISIBILITY = BUILDER
-                .comment("Visibility of EFPI-owned overhead mob health/posture bars only.",
-                        "Combat Evolution-patched mobs and ordinary Epic Fight HUDs are unaffected.")
+                .comment("When to show HP and posture bars added by this mod.")
                 .defineEnum("mob_health_bar_visibility", PostureHudPolicy.Visibility.DAMAGED_ONLY);
         BUILDER.pop();
 
         BUILDER.push("sound");
         EXECUTION_SOUND_VOLUME_MULTIPLIER = BUILDER
                 .comment(
-                        "Client-side volume multiplier for Combat Evolution execution sound effects.",
-                        "1.0 = Combat Evolution's original volume, 0.5 = half volume, 0.0 = muted."
+                        "Volume of execution sound effects.",
+                        "1.0 = normal, 0.5 = half, 0.0 = muted."
                 )
                 .defineInRange(
                         "execution_sound_volume_multiplier",

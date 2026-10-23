@@ -1,11 +1,11 @@
 {
   "config.epicfight_posture_integration.title": "Epic Fight Posture Integration",
-  "config.epicfight_posture_integration.mob_health_bar_visibility": "Mob Health/Posture HUD: %s",
-  "config.epicfight_posture_integration.mob_health_bar_visibility.description": "EFPI-owned mobs only; CE-patched mobs are unaffected.",
+  "config.epicfight_posture_integration.mob_health_bar_visibility": "HP & Posture Bars: %s",
+  "config.epicfight_posture_integration.mob_health_bar_visibility.description": "Choose when HP and posture bars appear.",
   "config.epicfight_posture_integration.mob_health_bar_visibility.always": "Always",
   "config.epicfight_posture_integration.mob_health_bar_visibility.damaged_only": "Damaged Only",
   "config.epicfight_posture_integration.mob_health_bar_visibility.hidden": "Hidden",
   "config.epicfight_posture_integration.execution_sound_volume": "Execution Sound Volume: %s%%",
-  "config.epicfight_posture_integration.execution_sound_volume.description": "Adjusts Combat Evolution execution sounds on this client only.",
+  "config.epicfight_posture_integration.execution_sound_volume.description": "Adjust execution sound volume.",
   "config.epicfight_posture_integration.reset": "Reset"
 }
