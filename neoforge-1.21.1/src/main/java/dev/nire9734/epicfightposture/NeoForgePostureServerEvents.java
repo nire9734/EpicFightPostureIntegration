@@ -164,7 +164,7 @@ public final class NeoForgePostureServerEvents {
 
     /** Called exactly once by the Epic Fight parry event's setParried(true) hook. */
     public static void onParried(LivingEntity attacker) {
-        if (!(attacker.level() instanceof ServerLevel)
+        if (attacker == null || !(attacker.level() instanceof ServerLevel)
                 || attacker instanceof Player
                 || !canReceive(attacker) || isBlacklisted(attacker)) return;
         LivingEntity mob = attacker;

@@ -75,6 +75,8 @@ sourceSets {
             include 'dev/nire9734/epicfightposture/client/PostureHudPolicyTest.java'
             include 'dev/nire9734/epicfightposture/compat/humanoid/RendererDiscoverySharedTest.java'
             include 'dev/nire9734/epicfightposture/compat/humanoid/RendererDiscoveryReportRulesTest.java'
+            include 'dev/nire9734/epicfightposture/compat/humanoid/RendererDiscoveryStoreTest.java'
+            include 'dev/nire9734/epicfightposture/compat/humanoid/ModSetFingerprintTest.java'
             include 'dev/nire9734/epicfightposture/compat/humanoid/rig/**'
             include 'dev/nire9734/epicfightposture/compat/humanoid/retarget/**'
             include 'dev/nire9734/epicfightposture/compat/humanoid/skeleton/**'
@@ -115,9 +117,6 @@ dependencies {
     // Gradle 9 no longer supplies the JUnit Platform launcher implicitly.
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 
-    // Integration dependencies (planned; not enabled until the adapter exists):
-    // compileOnly "curse.maven:epic-fight-mod-${epic_fight_project}:${epic_fight_file}"
-    // compileOnly "curse.maven:combat-evolution-${combat_evolution_project}:${combat_evolution_file}"
 }
 
 tasks.named('test', Test).configure {

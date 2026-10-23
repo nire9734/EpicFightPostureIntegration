@@ -52,6 +52,18 @@ import java.util.concurrent.ConcurrentHashMap;
 final class GeckoAttachmentBridge {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final Set<Class<?>> WARNED_RENDERERS = ConcurrentHashMap.newKeySet();
+    private static final GeckoAttachmentCore.BoneAdapter ADAPTER = new GeckoAttachmentCore.BoneAdapter() {
+        @Override public void resetBone(GeoBone bone) { resetBoneToInitial(bone); }
+        @Override public void prepareMatrix(PoseStack bindStack, GeoBone bone) {
+            RenderUtils.prepMatrixForBone(bindStack, bone);
+        }
+        @Override public void multiplyPose(PoseStack poseStack, Matrix4f transform) {
+            poseStack.mulPoseMatrix(transform);
+        }
+        @Override public void applyJointAnimation(GeoBone bone, Armature armature, Pose pose, int jointId) {
+            applyJointAnimationToSourceBone(bone, armature, pose, jointId);
+        }
+    };
 
     static void syncAndRenderLayers(
             LivingEntity entity,
@@ -82,7 +94,7 @@ final class GeckoAttachmentBridge {
             );
 
             for (GeoBone top : bakedModel.topLevelBones()) {
-                resetTreeToInitial(top);
+                GeckoAttachmentCore.resetTree(top, ADAPTER);
             }
 
             Armature armature = entityPatch.getArmature();
@@ -111,29 +123,23 @@ final class GeckoAttachmentBridge {
                 if (renderType != null && baseBuffer != null) {
                     PoseStack bindStack = new PoseStack();
                     for (GeoBone top : bakedModel.topLevelBones()) {
-                        replayBoneLayers(
-                                top,
-                                semanticRig,
-                                armature,
-                                poseMatrices,
-                                layers,
-                                animatable,
-                                renderType,
-                                bufferSource,
-                                baseBuffer,
-                                poseStack,
-                                bindStack,
-                                packedLight,
-                                packedOverlay,
-                                partialTicks
-                        );
+                        GeckoAttachmentCore.replayBoneLayers(top, semanticRig, armature,
+                                poseMatrices, poseStack, bindStack, ADAPTER,
+                                (bone, stack) -> {
+                                    for (GeoRenderLayer layer : layers) {
+                                        layer.renderForBone(stack, animatable, bone, renderType,
+                                                bufferSource, baseBuffer, partialTicks,
+                                                packedLight, packedOverlay);
+                                    }
+                                });
                     }
                 }
             }
 
             Pose efPose = entityPatch.getAnimator().getPose(partialTicks);
             for (GeoBone top : bakedModel.topLevelBones()) {
-                syncPostRenderAnchors(top, -1, semanticRig, armature, efPose);
+                GeckoAttachmentCore.syncPostRenderAnchors(top, -1, semanticRig,
+                        armature, efPose, ADAPTER);
             }
         } catch (Throwable throwable) {
             if (WARNED_RENDERERS.add(sourceRenderer.getClass())) {
@@ -143,99 +149,6 @@ final class GeckoAttachmentBridge {
                         entity.getType(),
                         throwable
                 );
-            }
-        }
-    }
-
-    private static void replayBoneLayers(
-            GeoBone bone,
-            GeckoResolvedHumanoidRig semanticRig,
-            Armature armature,
-            OpenMatrix4f[] poseMatrices,
-            List<GeoRenderLayer> layers,
-            GeoAnimatable animatable,
-            RenderType renderType,
-            MultiBufferSource bufferSource,
-            VertexConsumer baseBuffer,
-            PoseStack poseStack,
-            PoseStack bindStack,
-            int packedLight,
-            int packedOverlay,
-            float partialTicks) {
-        if (bone == null) {
-            return;
-        }
-
-        int jointId = semanticRig.deformationJointId(bone);
-
-        bindStack.pushPose();
-        RenderUtils.prepMatrixForBone(bindStack, bone);
-        Matrix4f geoBind = new Matrix4f(bindStack.last().pose());
-
-        Matrix4f attachment = GeckoAttachmentMath.attachmentMatrix(
-                armature, poseMatrices, jointId, geoBind);
-
-        poseStack.pushPose();
-        poseStack.mulPoseMatrix(attachment);
-
-        for (GeoRenderLayer layer : layers) {
-            layer.renderForBone(
-                    poseStack,
-                    animatable,
-                    bone,
-                    renderType,
-                    bufferSource,
-                    baseBuffer,
-                    partialTicks,
-                    packedLight,
-                    packedOverlay
-            );
-        }
-
-        poseStack.popPose();
-
-        if (!bone.isHidingChildren()) {
-            for (GeoBone child : bone.getChildBones()) {
-                replayBoneLayers(
-                        child,
-                        semanticRig,
-                        armature,
-                        poseMatrices,
-                        layers,
-                        animatable,
-                        renderType,
-                        bufferSource,
-                        baseBuffer,
-                        poseStack,
-                        bindStack,
-                        packedLight,
-                        packedOverlay,
-                        partialTicks
-                );
-            }
-        }
-
-        bindStack.popPose();
-    }
-
-    private static void syncPostRenderAnchors(
-            GeoBone bone,
-            int inheritedJoint,
-            GeckoResolvedHumanoidRig semanticRig,
-            Armature armature,
-            Pose efPose) {
-        if (bone == null) {
-            return;
-        }
-
-        int jointId = semanticRig.deformationJointId(bone);
-        if (inheritedJoint < 0 || jointId != inheritedJoint) {
-            applyJointAnimationToSourceBone(bone, armature, efPose, jointId);
-        }
-
-        if (!bone.isHidingChildren()) {
-            for (GeoBone child : bone.getChildBones()) {
-                syncPostRenderAnchors(child, jointId, semanticRig, armature, efPose);
             }
         }
     }
@@ -269,7 +182,7 @@ final class GeckoAttachmentBridge {
         bone.setScaleZ(snapshot.getScaleZ() * scale.z);
     }
 
-    private static void resetTreeToInitial(GeoBone bone) {
+    private static void resetBoneToInitial(GeoBone bone) {
         if (bone == null) {
             return;
         }
@@ -287,9 +200,6 @@ final class GeckoAttachmentBridge {
             bone.setScaleZ(snapshot.getScaleZ());
         }
 
-        for (GeoBone child : bone.getChildBones()) {
-            resetTreeToInitial(child);
-        }
     }
 
     private GeckoAttachmentBridge() {

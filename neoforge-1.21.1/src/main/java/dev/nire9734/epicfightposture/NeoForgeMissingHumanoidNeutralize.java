@@ -1,7 +1,6 @@
 package dev.nire9734.epicfightposture;
 
 import com.mojang.logging.LogUtils;
-import dev.nire9734.epicfightposture.neoforge.NeoForgePostureConfig;
 import dev.nire9734.epicfightposture.neoforge.NeoForgeServerSettings;
 import dev.nire9734.epicfightposture.neoforge.compat.NeoForgeAutoCompatibility;
 import net.minecraft.core.registries.BuiltInRegistries;
