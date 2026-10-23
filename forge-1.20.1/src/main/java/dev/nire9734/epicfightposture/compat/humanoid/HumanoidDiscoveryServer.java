@@ -8,6 +8,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.EntityType;
 import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.event.entity.player.PermissionsChangedEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
@@ -31,6 +32,22 @@ public final class HumanoidDiscoveryServer {
         if (FMLEnvironment.dist != Dist.DEDICATED_SERVER
                 || !(event.getEntity() instanceof ServerPlayer player)
                 || !player.hasPermissions(REQUIRED_PERMISSION_LEVEL)) {
+            return;
+        }
+        requestScan(player);
+    }
+
+    /**
+     * OP is often granted after the first join. Request the renderer scan on
+     * permission elevation so the operator need not reconnect.
+     */
+    @SubscribeEvent
+    public static void onPermissionsChanged(PermissionsChangedEvent event) {
+        if (FMLEnvironment.dist != Dist.DEDICATED_SERVER
+                || event.isCanceled()
+                || event.getOldLevel() >= REQUIRED_PERMISSION_LEVEL
+                || event.getNewLevel() < REQUIRED_PERMISSION_LEVEL
+                || !(event.getEntity() instanceof ServerPlayer player)) {
             return;
         }
         requestScan(player);
