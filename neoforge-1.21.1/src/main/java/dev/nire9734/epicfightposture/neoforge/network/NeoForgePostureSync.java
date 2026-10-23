@@ -54,7 +54,7 @@ public final class NeoForgePostureSync {
     private static void onStartTracking(PlayerEvent.StartTracking event) {
         if (!(event.getEntity() instanceof ServerPlayer player) ||
                 !(event.getTarget() instanceof Mob mob)) return;
-        NeoForgePostureServerEvents.SyncState state = NeoForgePostureServerEvents.stateForSync(mob);
+        NeoForgePostureServerEvents.SyncState state = NeoForgePostureServerEvents.stateForTracking(mob);
         if (state != null) {
             Snapshot snapshot = new Snapshot(state.current(), state.max(), state.broken());
             PacketDistributor.sendToPlayer(player, packet(mob, snapshot, true));

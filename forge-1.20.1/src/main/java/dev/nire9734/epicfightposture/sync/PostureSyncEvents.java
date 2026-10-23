@@ -79,7 +79,9 @@ public final class PostureSyncEvents {
         if (!(target instanceof LivingEntity livingEntity) || !(event.getEntity() instanceof ServerPlayer player)) {
             return;
         }
-        Snapshot snapshot = snapshot(livingEntity, false);
+        // Initialize the client's HUD even before the first attack. The
+        // pristine snapshot does not create a ticking server combat state.
+        Snapshot snapshot = snapshot(livingEntity, true);
         if (snapshot != null) {
             BridgeNetwork.sendPlayer(player, packet(livingEntity, snapshot, true));
         }
@@ -105,8 +107,8 @@ public final class PostureSyncEvents {
         );
     }
 
-    private static Snapshot snapshot(LivingEntity entity, boolean forceCreate) {
-        PostureManager.SyncState state = PostureManager.syncState(entity, forceCreate);
+    private static Snapshot snapshot(LivingEntity entity, boolean includePristine) {
+        PostureManager.SyncState state = PostureManager.syncState(entity, includePristine);
         return state == null ? null : new Snapshot(state.current(), state.max(), state.broken());
     }
 

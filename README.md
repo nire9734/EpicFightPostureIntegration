@@ -124,6 +124,9 @@ local player's execution capability.
 
 For EFPI-owned mobs, the overhead HP/posture HUD uses an independent client
 visibility preference: `DAMAGED_ONLY` (default), `ALWAYS`, or `HIDDEN`.
+`ALWAYS` also shows full HP/posture before the mob has been attacked. A
+one-time pristine posture snapshot is sent when tracking starts; it does not
+create a continuously updated server-side combat state for untouched mobs.
 In `DAMAGED_ONLY`, HP loss, EFPI posture loss/guard break, or a recent hit
 reveals the bar; targeting or status effects alone do not. The bar disappears
 after full recovery. The Epic Fight `NONE` option does not control EFPI-owned

@@ -129,7 +129,9 @@ posture targets, matching the Forge edition's health/posture layout. CE-owned
 mob HUDs remain rendered by CE itself, without any EFPI visibility override.
 EFPI-owned overhead bars use the independent client preference
 `hud.mob_health_bar_visibility`: `ALWAYS`, `DAMAGED_ONLY` (default), or
-`HIDDEN`. In `DAMAGED_ONLY`, HP/posture loss or a recent hit reveals the bar;
+`HIDDEN`. `ALWAYS` includes previously untouched mobs: their initial tracking
+packet carries a full posture value without starting continuous server updates.
+In `DAMAGED_ONLY`, HP/posture loss or a recent hit reveals the bar;
 targeting or effects alone do not. Epic Fight's `NONE` setting applies to
 ordinary EF/CE bars but not EFPI-owned bars. Players, CE-patched mobs, and
 other mobs keep their native Epic Fight/CE behavior. Supported EFPI bosses

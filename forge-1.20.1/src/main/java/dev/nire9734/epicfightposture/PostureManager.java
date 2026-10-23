@@ -233,8 +233,12 @@ public final class PostureManager {
         PostureSyncEvents.syncNow(target);
     }
 
-    /** Read-only state used by the network synchronizer. */
-    public static SyncState syncState(LivingEntity entity, boolean forceCreate) {
+    /**
+     * Read-only state used by the network synchronizer. When a client starts
+     * tracking an eligible, unhurt mob, send a pristine snapshot without
+     * allocating a combat state that would need ticking for its entire life.
+     */
+    public static SyncState syncState(LivingEntity entity, boolean includePristine) {
         if (entity == null || !RuntimeAccess.isServerEntity(entity)) {
             return null;
         }
@@ -243,12 +247,13 @@ public final class PostureManager {
         }
 
         PostureRuntimeState state = STATES.get(entity);
-        if (state == null && forceCreate) {
+        if (state == null && includePristine) {
             LivingEntityPatch<?> patch = getPatch(entity);
             if (!isEligiblePostureEntity(entity, patch)) {
                 return null;
             }
-            state = state(entity);
+            float max = calculateMaxPosture(entity);
+            return new SyncState(max, max, false);
         }
         return state == null ? null : new SyncState(state.current, state.max, state.isBrokenForHud());
     }

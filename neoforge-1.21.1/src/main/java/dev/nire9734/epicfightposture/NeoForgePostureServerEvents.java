@@ -271,6 +271,26 @@ public final class NeoForgePostureServerEvents {
         return state == null ? null : new SyncState(state.current, state.max, state.isBrokenForHud());
     }
 
+    /**
+     * Give newly tracking clients a full posture bar before the first hit.
+     * Do not add the pristine mob to STATES: passive mobs should not acquire
+     * per-tick posture updates merely because their HUD is visible.
+     */
+    public static SyncState stateForTracking(Mob mob) {
+        if (!(mob.level() instanceof ServerLevel) || !canReceive(mob)) {
+            return null;
+        }
+        SyncState existing = stateForSync(mob);
+        if (existing != null) return existing;
+        if (isBlacklisted(mob)) return null;
+
+        LivingEntityPatch<?> patch = EpicFightCapabilities.getEntityPatch(mob, LivingEntityPatch.class);
+        if (!isEligiblePostureEntity(mob, patch)) return null;
+
+        float max = maximumPosture(mob);
+        return new SyncState(max, max, false);
+    }
+
     /** Clear per-mob posture state when the entity leaves the server level. */
     public static void forget(Mob mob) {
         STATES.remove(mob);
