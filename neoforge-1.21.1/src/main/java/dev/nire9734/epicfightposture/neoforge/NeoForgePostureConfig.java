@@ -11,15 +11,16 @@ import net.neoforged.neoforge.common.ModConfigSpec;
 public final class NeoForgePostureConfig {
     public static final ModConfigSpec SPEC;
 
-    public static final ModConfigSpec.DoubleValue MAXIMUM_POSTURE_MULTIPLIER;
-    public static final ModConfigSpec.DoubleValue POSTURE_DAMAGE_MULTIPLIER;
+    public static final ModConfigSpec.DoubleValue ATTACK_POSTURE_DAMAGE_MULTIPLIER;
+    public static final ModConfigSpec.DoubleValue PARRY_POSTURE_DAMAGE_MULTIPLIER;
     public static final ModConfigSpec.DoubleValue PARRY_BASE_MAX_PERCENT;
     public static final ModConfigSpec.DoubleValue PARRY_BASE_MIN_PERCENT;
     public static final ModConfigSpec.DoubleValue POSTURE_BREAK_RESISTANCE_STEP;
     public static final ModConfigSpec.DoubleValue POSTURE_BREAK_RESISTANCE_MAX;
     public static final ModConfigSpec.DoubleValue REGEN_DELAY_SECONDS;
     public static final ModConfigSpec.DoubleValue REGEN_PERCENT_PER_SECOND;
-    public static final ModConfigSpec.ConfigValue<List<? extends String>> POSTURE_MULTIPLIERS;
+    public static final ModConfigSpec.ConfigValue<List<? extends String>> ATTACK_POSTURE_DAMAGE_MULTIPLIERS;
+    public static final ModConfigSpec.ConfigValue<List<? extends String>> PARRY_POSTURE_DAMAGE_MULTIPLIERS;
     public static final ModConfigSpec.ConfigValue<List<? extends String>> ENTITY_BLACKLIST;
     public static final ModConfigSpec.BooleanValue AUTOMATIC_COMPATIBILITY;
     public static final ModConfigSpec.ConfigValue<List<? extends String>> MOD_ALLOWLIST;
@@ -29,17 +30,17 @@ public final class NeoForgePostureConfig {
         ModConfigSpec.Builder builder = new ModConfigSpec.Builder();
 
         builder.push("posture");
-        MAXIMUM_POSTURE_MULTIPLIER = builder
-                .comment("Multiplier for maximum Posture. Higher values make attack-based guard breaks harder.")
-                .defineInRange("maximum_posture_multiplier", 1.0D, 0.1D, 100.0D);
-        POSTURE_DAMAGE_MULTIPLIER = builder
+        ATTACK_POSTURE_DAMAGE_MULTIPLIER = builder
                 .comment("Multiplier for Posture damage from attacks, not parries.")
-                .defineInRange("posture_damage_multiplier", 1.0D, 0.0D, 100.0D);
+                .defineInRange("attack_posture_damage_multiplier", 1.0D, 0.0D, 100.0D);
+        PARRY_POSTURE_DAMAGE_MULTIPLIER = builder
+                .comment("Multiplier for Posture damage from parries, not attacks.")
+                .defineInRange("parry_posture_damage_multiplier", 1.0D, 0.0D, 100.0D);
         PARRY_BASE_MAX_PERCENT = builder
-                .comment("Maximum percentage of Posture removed by a parry against mobs with low base health and armor.")
+                .comment("Maximum parry percentage before parry damage multipliers, for mobs with low base health and armor.")
                 .defineInRange("parry_base_max_percent", 22.0D, 0.0D, 100.0D);
         PARRY_BASE_MIN_PERCENT = builder
-                .comment("Parry percentage approached against mobs with high base health and armor.")
+                .comment("Parry percentage before parry damage multipliers, approached for mobs with high base health and armor.")
                 .defineInRange("parry_base_min_percent", 8.0D, 0.0D, 100.0D);
         POSTURE_BREAK_RESISTANCE_STEP = builder
                 .comment("Increase in resistance for each confirmed guard break.")
@@ -61,9 +62,14 @@ public final class NeoForgePostureConfig {
         builder.pop();
 
         builder.push("entities");
-        POSTURE_MULTIPLIERS = builder
-                .comment("Override a mob type's maximum Posture. Example: [\"cataclysm:ignis=0.25\"]")
-                .defineListAllowEmpty("posture_multipliers", List.of(), () -> "", value -> value instanceof String);
+        ATTACK_POSTURE_DAMAGE_MULTIPLIERS = builder
+                .comment("Override a mob type's attack Posture damage multiplier (not parries).",
+                        "Replaces the global attack multiplier. Range: 0.0-100.0. Example: [\"cataclysm:ignis=0.25\"]")
+                .defineListAllowEmpty("attack_posture_damage_multipliers", List.of(), () -> "", value -> value instanceof String);
+        PARRY_POSTURE_DAMAGE_MULTIPLIERS = builder
+                .comment("Override a mob type's parry Posture damage multiplier (not attacks).",
+                        "Replaces the global parry multiplier. Range: 0.0-100.0. Example: [\"cataclysm:ignis=0.5\"]")
+                .defineListAllowEmpty("parry_posture_damage_multipliers", List.of(), () -> "", value -> value instanceof String);
         ENTITY_BLACKLIST = builder
                 .comment("Mob types excluded from Posture. Example: [\"minecraft:zombie\"]")
                 .defineListAllowEmpty("entity_blacklist", List.of(), () -> "", value -> value instanceof String);

@@ -546,7 +546,8 @@ cases against Forge 3.0.2 for behavior comparison.
 3. **State sync:** verify HUD for a newly spawned and a previously saved Mob,
    with two clients tracking the same Mob, plus chunk unload/reload, death,
    execution ending, disconnect, and rejoin. No stale, swapped, or stuck HUDs.
-4. **Configuration:** test `entities.posture_multipliers` with whitespace and
+4. **Configuration:** test `entities.attack_posture_damage_multipliers` and
+   `entities.parry_posture_damage_multipliers` with whitespace and
    duplicate entries, `entities.entity_blacklist`, automatic compatibility
    on/off and mod allow/deny lists. Reload the server config while connected:
    changes should apply without requiring client resource reload. Existing

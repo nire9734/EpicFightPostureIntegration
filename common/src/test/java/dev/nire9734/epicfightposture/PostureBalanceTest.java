@@ -50,8 +50,20 @@ class PostureBalanceTest {
         float leveled = attack(60.8F, 1214, 1214, 242.8F, 3) / 60.8F;
         assertEquals(.108F, zombie, EPS);
         assertEquals(zombie, leveled, EPS);
-        // The per-entity maximum-posture multiplier still weakens attacks.
         assertEquals(.27F, attack(10, 100, 100, 50, 3) / 10, EPS);
+    }
+
+    @Test
+    void independentAttackAndParryMultipliersDoNotAlterMaximumPosture() {
+        float maximumPosture = 100.0F;
+        float attackBase = attack(maximumPosture, 100, 100, 50, 3);
+        float parryBase = PostureBalance.parryDamage(maximumPosture, .22F, .08F, 20, 20, .7F);
+
+        assertEquals(27.0F, attackBase, EPS);
+        assertEquals(22.0F, parryBase, EPS);
+        assertEquals(54.0F, attackBase * 2.0F, EPS);
+        assertEquals(11.0F, parryBase * 0.5F, EPS);
+        assertEquals(100.0F, maximumPosture, EPS);
     }
 
     @Test

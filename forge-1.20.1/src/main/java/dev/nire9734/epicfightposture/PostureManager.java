@@ -103,7 +103,7 @@ public final class PostureManager {
                 pending.healthBefore(),
                 actualLoss,
                 pending.impact(),
-                PostureServerConfig.attackPostureCoefficient()
+                PostureServerConfig.attackPostureCoefficient(entityTypeId(target))
         );
         damagePosture(target, patch, postureDamage);
     }
@@ -134,6 +134,7 @@ public final class PostureManager {
                 EHP_REFERENCE_HEALTH,
                 (float) EHP_EXPONENT
         );
+        postureDamage *= PostureServerConfig.parryPostureDamageMultiplier(entityTypeId(target));
         float resistance = breakResistanceMultiplier(state);
         float previousPosture = state.current;
         boolean broken = state.applyDamage(postureDamage, resistance, regenDelayTicks());
@@ -430,24 +431,19 @@ public final class PostureManager {
         boolean useArmor = PostureServerConfig.useArmorScaling();
         float armor = useArmor ? finiteOr((float) entity.getAttributeValue(Attributes.ARMOR), 0.0F) : 0.0F;
         float toughness = useArmor ? finiteOr((float) entity.getAttributeValue(Attributes.ARMOR_TOUGHNESS), 0.0F) : 0.0F;
-        float multiplier = finiteOr(
-                PostureServerConfig.maximumPostureMultiplier(entityTypeId(entity)),
-                1.0F
-        );
         float minimum = finiteOr(PostureServerConfig.minimumPosture(), 1.0F);
 
         if (state.inputsInitialized
                 && Float.floatToIntBits(state.lastMaxHealth) == Float.floatToIntBits(maxHealth)
                 && Float.floatToIntBits(state.lastArmor) == Float.floatToIntBits(armor)
                 && Float.floatToIntBits(state.lastToughness) == Float.floatToIntBits(toughness)
-                && Float.floatToIntBits(state.lastMultiplier) == Float.floatToIntBits(multiplier)
                 && Float.floatToIntBits(state.lastMinimum) == Float.floatToIntBits(minimum)
                 && state.lastUseArmorScaling == useArmor) {
             return;
         }
 
-        captureInputs(maxHealth, armor, toughness, multiplier, minimum, useArmor, state);
-        float newMax = calculateMaxPosture(maxHealth, armor, toughness, multiplier, minimum);
+        captureInputs(maxHealth, armor, toughness, minimum, useArmor, state);
+        float newMax = calculateMaxPosture(maxHealth, armor, toughness, minimum);
         if (Math.abs(newMax - state.max) < 0.01F) {
             return;
         }
@@ -464,7 +460,6 @@ public final class PostureManager {
                 maxHealth,
                 armor,
                 toughness,
-                finiteOr(PostureServerConfig.maximumPostureMultiplier(entityTypeId(entity)), 1.0F),
                 finiteOr(PostureServerConfig.minimumPosture(), 1.0F),
                 useArmor,
                 state
@@ -475,14 +470,12 @@ public final class PostureManager {
             float maxHealth,
             float armor,
             float toughness,
-            float multiplier,
             float minimum,
             boolean useArmor,
             PostureRuntimeState state) {
         state.lastMaxHealth = maxHealth;
         state.lastArmor = armor;
         state.lastToughness = toughness;
-        state.lastMultiplier = multiplier;
         state.lastMinimum = minimum;
         state.lastUseArmorScaling = useArmor;
         state.inputsInitialized = true;
@@ -560,7 +553,6 @@ public final class PostureManager {
                 maxHealth,
                 armor,
                 toughness,
-                finiteOr(PostureServerConfig.maximumPostureMultiplier(entityTypeId(entity)), 1.0F),
                 finiteOr(PostureServerConfig.minimumPosture(), 1.0F)
         );
     }
@@ -569,7 +561,6 @@ public final class PostureManager {
             float maxHealth,
             float armor,
             float toughness,
-            float multiplier,
             float minimum) {
         if (maxHealth <= 0.0F) {
             maxHealth = EHP_REFERENCE_HEALTH;
@@ -583,11 +574,7 @@ public final class PostureManager {
         if (!Float.isFinite(posture) || posture <= 0.0F) {
             posture = EHP_REFERENCE_POSTURE;
         }
-        float scaled = posture * multiplier;
-        if (!Float.isFinite(scaled) || scaled <= 0.0F) {
-            scaled = EHP_REFERENCE_POSTURE;
-        }
-        return clamp(Math.max(minimum, scaled), 0.1F, MAX_SAFE_POSTURE);
+        return clamp(Math.max(minimum, posture), 0.1F, MAX_SAFE_POSTURE);
     }
 
     /** Terminal health states must not schedule or play a new posture-break animation. */

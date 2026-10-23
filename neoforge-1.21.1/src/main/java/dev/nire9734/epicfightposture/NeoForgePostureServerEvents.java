@@ -76,7 +76,8 @@ public final class NeoForgePostureServerEvents {
         float before = Math.min(maxHealth, mob.getHealth() + loss);
         float pressure = PostureBalance.attackPostureDamage(
                 basePosture(mob), maxHealth, before, loss, impact,
-                .54F * NeoForgePostureConfig.POSTURE_DAMAGE_MULTIPLIER.get().floatValue());
+                .54F * NeoForgeServerSettings.attackPostureDamageMultiplier(
+                        BuiltInRegistries.ENTITY_TYPE.getKey(mob.getType())));
         if (!Float.isFinite(pressure) || pressure <= 0.0F) return;
 
         float resistance = PostureBalance.breakResistanceMultiplier(
@@ -178,6 +179,8 @@ public final class NeoForgePostureServerEvents {
                 NeoForgePostureConfig.PARRY_BASE_MAX_PERCENT.get().floatValue() / 100.0F,
                 NeoForgePostureConfig.PARRY_BASE_MIN_PERCENT.get().floatValue() / 100.0F,
                 innateEhp, 20.0F, .7F);
+        damage *= NeoForgeServerSettings.parryPostureDamageMultiplier(
+                BuiltInRegistries.ENTITY_TYPE.getKey(mob.getType()));
         float resistance = PostureBalance.breakResistanceMultiplier(
                 state.completedBreaks,
                 NeoForgePostureConfig.POSTURE_BREAK_RESISTANCE_STEP.get().floatValue(),
@@ -335,9 +338,7 @@ public final class NeoForgePostureServerEvents {
     }
 
     private static float maximumPosture(Mob mob) {
-        ResourceLocation id = BuiltInRegistries.ENTITY_TYPE.getKey(mob.getType());
-        float multiplier = NeoForgeServerSettings.maximumPostureMultiplier(id);
-        return Math.max(1.0F, Math.min(1_000_000.0F, basePosture(mob) * multiplier));
+        return Math.max(1.0F, basePosture(mob));
     }
 
     private static boolean hasDistinctNeutralize(LivingEntityPatch<?> patch) {

@@ -30,10 +30,10 @@ A tested combination uses Forge 47.4.10, Epic Fight 20.14.17, Combat Evolution 2
 - Target-proportioned humanoid retargeting for posture/execution states while preserving normal mob behavior.
 - Health + Posture HUD.
 - EHP-based maximum posture, linear observed-HP-loss attacks, level-stable innate-EHP parries, Impact-weighted direct attacks, and configurable regeneration.
-- Per-entity maximum-posture overrides, entity blacklist, and mod-level automatic-compatibility allow/deny filtering.
+- Independent per-entity attack/parry Posture damage overrides, entity blacklist, and mod-level automatic-compatibility allow/deny filtering.
 - Dedicated-server renderer discovery with generated cache and multiplayer policy synchronization.
 
-## Posture calculations (3.0.1)
+## Posture calculations (3.0.2 development)
 
 Posture is a separate, server-authoritative resource. Normal attacks and successful parries lower it; reaching zero attempts Epic Fight's `NEUTRALIZE` guard-break animation, which Combat Evolution can use for executions. Damage, posture regeneration and execution damage are separate systems.
 
@@ -48,10 +48,10 @@ received_fraction = clamp(1 - armor_points / 25, 0.2, 1.0)
 EHP = maximum_health / received_fraction
 
 P_base = 3.2 * max(0.01, EHP / 20)^0.7
-P_max = clamp(max(1.0, P_base * M_max), 0.1, 1,000,000)
+P_max = clamp(max(1.0, P_base), 0.1, 1,000,000)
 ```
 
-`M_max` is `posture.maximum_posture_multiplier` (default `1.0`), **replaced** by a matching entry in `entities.posture_multipliers` rather than multiplied twice. The formulas assume valid positive maximum HP; the implementation also guards against invalid/non-finite attributes and applies a minimum and safety cap.
+Maximum Posture uses the original 1.0 scaling and cannot be changed through config. The formulas assume valid positive maximum HP; the implementation also guards against invalid/non-finite attributes and applies a minimum and safety cap.
 
 For example, a 20-HP target with zero armor has `EHP = 20` and `P_max = 3.2` at default settings; a 40-HP target with zero armor has about `5.20` maximum posture. Increased armor/toughness raises EHP and therefore posture. Maximum posture uses **current total attributes**, including applicable attribute modifiers, and is refreshed as they change. Changes preserve the remaining posture percentage outside locked guard-break/execution states.
 
@@ -64,13 +64,13 @@ HP_loss_fraction = clamp(H_before / H_max, 0, 1)
                    - clamp((H_before - L) / H_max, 0, 1)
 Impact_scale = clamp(0.7 + 0.3*sqrt(Impact / 3), 0.7, 1.5)
 raw_attack_posture = P_base * 0.54 * Impact_scale
-                     * HP_loss_fraction * posture_damage_multiplier
+                     * HP_loss_fraction * attack_posture_damage_multiplier
 attack_posture_damage = raw_attack_posture / R
 ```
 
-Nonpositive or invalid Impact generates zero direct-hit posture. Epic Fight attacks retain their actual Impact; other eligible direct player hits retain the existing bounded Impact estimate. Indirect/environmental hits remain excluded. `posture.posture_damage_multiplier` defaults to `1.0` and scales the internal **0.54** attack coefficient.
+Nonpositive or invalid Impact generates zero direct-hit posture. Epic Fight attacks retain their actual Impact; other eligible direct player hits retain the existing bounded Impact estimate. Indirect/environmental hits remain excluded. `posture.attack_posture_damage_multiplier` defaults to `1.0` and scales the internal **0.54** attack coefficient; `entities.attack_posture_damage_multipliers` can override it per mob type.
 
-At Impact 3, maximum-posture multiplier 1.0 and zero regeneration, reducing an entire HP bar generates only **about 54% maximum posture**, before resistance. Equal fractions of HP loss always yield equal posture pressure regardless of remaining HP. For example, with `P_base = P_max = 3.2`, an Impact-3 hit removing 10 of 20 HP generates `0.864` posture; a second equal hit generates another `0.864`, with no late-HP finisher bonus. Increasing maximum posture by a global/per-entity multiplier still lowers attacks' relative effectiveness.
+At Impact 3, default attack multiplier and zero regeneration, reducing an entire HP bar generates only **about 54% maximum posture**, before resistance. Equal fractions of HP loss always yield equal posture pressure regardless of remaining HP. For example, with `P_base = P_max = 3.2`, an Impact-3 hit removing 10 of 20 HP generates `0.864` posture; a second equal hit generates another `0.864`, with no late-HP finisher bonus. Changing the attack multiplier does not affect parry damage.
 
 Unrelated healing between the event and the observed HP change can influence damage attribution.
 
@@ -86,13 +86,13 @@ parry_fraction = [p_min + (p_max - p_min)
 p_max = parry_base_max_percent  (default 22)
 p_min = parry_base_min_percent  (default 8)
 
-raw_parry_posture = P_max * parry_fraction
+raw_parry_posture = P_max * parry_fraction * parry_posture_damage_multiplier
 parry_posture_damage = raw_parry_posture / R
 ```
 
-The parry percentage is **independent of current HP**. It starts at 22% for innate EHP 20 or below and approaches 8% for very large innate EHP; the EHP curve uses an exponent of `0.7`. Unlike direct attacks, parries use actual `P_max`, which continues to scale with live HP/armor and maximum-posture multipliers.
+The base parry percentage is **independent of current HP**. It starts at 22% for innate EHP 20 or below and approaches 8% for very large innate EHP; the EHP curve uses an exponent of `0.7`. Parry damage is calculated from the target's live-attribute `P_max`, multiplied by `posture.parry_posture_damage_multiplier` (default `1.0`). `entities.parry_posture_damage_multipliers` can override that multiplier per mob type, independently from attack damage. Both damage multipliers act before repeated-break resistance.
 
-Cataclysm's standard Maledictus default attributes (420 HP, 10 armor, 0 toughness) give innate EHP about **552.63** and parry damage about **9.37%** maximum posture. Provided those EntityType defaults remain the same, a Soulrend Lv.250 Maledictus uses that same percentage. A mod-supplied different EntityType baseline must be validated in game.
+Cataclysm's standard Maledictus default attributes (420 HP, 10 armor, 0 toughness) give innate EHP about **552.63** and parry damage about **9.37% of `P_max`** at the default parry multiplier. Provided those EntityType defaults remain the same, a Soulrend Lv.250 Maledictus uses that same percentage; `parry_posture_damage_multiplier=0.5` makes it about **4.69% of `P_max`**. A mod-supplied different EntityType baseline must be validated in game.
 
 ### 4. Repeat-break resistance
 
@@ -195,19 +195,19 @@ Server policy is stored at:
 config/epicfight_posture_integration/server.toml
 ```
 
-3.0.1 defaults (for newly generated configurations):
+3.0.2 development defaults (for newly generated configurations, shared by both loaders):
 
 ```toml
 [posture]
 
-# Multiplier for the maximum Posture of all entities.
-# Default: 1.0 | Range: 0.1-100.0
-maximum_posture_multiplier = 1.0
-
 # Multiplier for attack Posture damage from final HP lost.
 # Impact gives a bounded bonus; 1.0 uses the internal 0.54 attack coefficient.
 # Default: 1.0 | Range: 0.0-100.0
-posture_damage_multiplier = 1.0
+attack_posture_damage_multiplier = 1.0
+
+# Multiplier for parry Posture damage, independent of attacks.
+# Default: 1.0 | Range: 0.0-100.0
+parry_posture_damage_multiplier = 1.0
 
 # Maximum base parry Posture damage (% of maximum) for innate EHP <= 20.
 # Innate EHP below 20 is clamped to 20 for parry scaling.
@@ -244,11 +244,17 @@ percent_per_second = 2.0
 
 [entities]
 
-# Per-entity maximum Posture multipliers.
-# Overrides maximum_posture_multiplier for the specified entity.
-# Default: [] | Multiplier range: 0.01-100.0
+# Per-entity attack Posture damage multipliers (not parries).
+# Replaces attack_posture_damage_multiplier for the specified entity.
+# Default: [] | Multiplier range: 0.0-100.0
 # Example: ["cataclysm:ignis=0.25"]
-posture_multipliers = []
+attack_posture_damage_multipliers = []
+
+# Per-entity parry Posture damage multipliers (not attacks).
+# Replaces parry_posture_damage_multiplier for the specified entity.
+# Default: [] | Multiplier range: 0.0-100.0
+# Example: ["cataclysm:ignis=0.5"]
+parry_posture_damage_multipliers = []
 
 # Entities completely excluded from EFPI.
 # Default: []
@@ -276,7 +282,7 @@ mod_allowlist = []
 mod_denylist = []
 ```
 
-`posture_multipliers` replaces `maximum_posture_multiplier` for the specified entity rather than multiplying it again.
+The attack/parry entity overrides replace the corresponding global damage multiplier, rather than multiplying it again. Missing entries use the global value. `0.0` disables that source of Posture damage for the specified mob.
 
 Automatic compatibility policy works as follows:
 
@@ -303,9 +309,9 @@ The cache uses schema version `2`. It is generated state, not a user configurati
 
 ## Updating from 3.0.1 to 3.0.2
 
-3.0.2 improves the comments in newly generated `config/epicfight_posture_integration/server.toml` so each setting is easier to understand. **All configuration keys, defaults and gameplay behavior are unchanged.** Replace the 3.0.1 JAR with the 3.0.2 JAR on client and server.
+3.0.2 development removes `posture.maximum_posture_multiplier` and `entities.posture_multipliers`: maximum Posture always uses the previous 1.0 multiplier. It also replaces `posture.posture_damage_multiplier` with `posture.attack_posture_damage_multiplier`, and introduces independent `posture.parry_posture_damage_multiplier`, `entities.attack_posture_damage_multipliers` and `entities.parry_posture_damage_multipliers`. Their defaults are 1.0 (empty per-entity lists). The baseline attack/parry formulas remain unchanged.
 
-Forge may keep existing configuration comments unchanged when upgrading. To get the clearer comments, back up your `server.toml`, then let Forge regenerate it and reapply any customized settings. Do not delete your configuration without saving those values first.
+**Previous multiplier values are not automatically migrated.** To generate a clean 3.0.2 development config, back up your old `server.toml` and allow the game to regenerate it, then set any desired new multipliers manually. Do not delete your configuration without saving other custom settings first.
 
 ## Upgrading from 3.0.0 to 3.0.1
 

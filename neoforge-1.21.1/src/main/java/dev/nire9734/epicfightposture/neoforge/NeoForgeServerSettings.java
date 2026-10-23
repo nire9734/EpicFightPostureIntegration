@@ -52,7 +52,9 @@ public final class NeoForgeServerSettings {
         }
     }
 
-    private record LocalSettings(Snapshot snapshot, Map<ResourceLocation, Float> entityMultipliers) {}
+    private record LocalSettings(Snapshot snapshot,
+                                 Map<ResourceLocation, Float> attackDamageMultipliers,
+                                 Map<ResourceLocation, Float> parryDamageMultipliers) {}
 
     private static final Snapshot CLIENT_FAIL_CLOSED = new Snapshot(
             1.0D, 1.0D, true, false, false, false, Set.of(), Set.of(), Set.of());
@@ -67,11 +69,18 @@ public final class NeoForgeServerSettings {
         return localSettings().snapshot();
     }
 
-    /** Server-only override; an entity's configured value replaces the global one. */
-    public static float maximumPostureMultiplier(ResourceLocation id) {
+    /** Server-only attack damage multiplier; an entity override replaces the global one. */
+    public static float attackPostureDamageMultiplier(ResourceLocation id) {
         LocalSettings settings = localSettings();
-        Float override = id == null ? null : settings.entityMultipliers().get(id);
-        return override != null ? override : (float) settings.snapshot().globalMultiplier();
+        return PostureConfigEntries.multiplierFor(id, settings.attackDamageMultipliers(),
+                NeoForgePostureConfig.ATTACK_POSTURE_DAMAGE_MULTIPLIER.get().floatValue());
+    }
+
+    /** Server-only parry damage multiplier; an entity override replaces the global one. */
+    public static float parryPostureDamageMultiplier(ResourceLocation id) {
+        LocalSettings settings = localSettings();
+        return PostureConfigEntries.multiplierFor(id, settings.parryDamageMultipliers(),
+                NeoForgePostureConfig.PARRY_POSTURE_DAMAGE_MULTIPLIER.get().floatValue());
     }
 
     private static LocalSettings localSettings() {
@@ -82,17 +91,20 @@ public final class NeoForgeServerSettings {
                 if (result == null) {
                     boolean automatic = NeoForgePostureConfig.AUTOMATIC_COMPATIBILITY.get();
                     Snapshot snapshot = new Snapshot(
-                            NeoForgePostureConfig.MAXIMUM_POSTURE_MULTIPLIER.get(),
+                            1.0D, // Legacy network field; maximum Posture is fixed at multiplier 1.0.
                             1.0D, true, automatic, automatic, automatic,
                             PostureConfigEntries.entityBlacklist(NeoForgePostureConfig.ENTITY_BLACKLIST.get(),
                                     ResourceLocation::tryParse,
                                     raw -> LOGGER.warn("Ignoring invalid entity ID '{}' in entities.entity_blacklist", raw)),
                             parseNamespaces(NeoForgePostureConfig.MOD_ALLOWLIST.get(), "compatibility.mod_allowlist"),
                             parseNamespaces(NeoForgePostureConfig.MOD_DENYLIST.get(), "compatibility.mod_denylist"));
-                    Map<ResourceLocation, Float> overrides = PostureConfigEntries.entityMultipliers(
-                            NeoForgePostureConfig.POSTURE_MULTIPLIERS.get(), ResourceLocation::tryParse,
-                            raw -> LOGGER.warn("Ignoring invalid entity multiplier '{}' in entities.posture_multipliers", raw));
-                    result = new LocalSettings(snapshot, overrides);
+                    Map<ResourceLocation, Float> attackOverrides = PostureConfigEntries.entityMultipliers(
+                            NeoForgePostureConfig.ATTACK_POSTURE_DAMAGE_MULTIPLIERS.get(), ResourceLocation::tryParse,
+                            raw -> LOGGER.warn("Ignoring invalid entity multiplier '{}' in entities.attack_posture_damage_multipliers", raw));
+                    Map<ResourceLocation, Float> parryOverrides = PostureConfigEntries.entityMultipliers(
+                            NeoForgePostureConfig.PARRY_POSTURE_DAMAGE_MULTIPLIERS.get(), ResourceLocation::tryParse,
+                            raw -> LOGGER.warn("Ignoring invalid entity multiplier '{}' in entities.parry_posture_damage_multipliers", raw));
+                    result = new LocalSettings(snapshot, attackOverrides, parryOverrides);
                     local = result;
                 }
             }

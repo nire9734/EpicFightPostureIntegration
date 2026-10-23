@@ -2,13 +2,14 @@
 
 ## 3.0.2 (unreleased)
 
-Configuration usability update relative to **3.0.1**.
+Configuration and damage-scaling update relative to **3.0.1**.
 
 - Rewrote generated `server.toml` option descriptions in plain English, with practical examples for multipliers, parry damage, regeneration, repeated guard breaks, mob overrides and compatibility filters.
 - Removed EHP, mathematical limits and internal damage coefficients from user-facing configuration comments.
 - Ordinary regeneration now explicitly counts from the last **actual Posture reduction**, including parries without HP damage; zero-Posture-damage events no longer extend the delay.
-- No changes to damage balance, default values, configuration keys, networking or compatibility behavior.
-- Existing `server.toml` files may retain their old comments. Back up any custom values before regenerating the file to see the updated descriptions.
+- Removed configurable maximum-posture multipliers; maximum Posture is always calculated with multiplier 1.0.
+- Added independent attack/parry Posture damage multipliers, with global and per-entity options. Replaced the old `posture.posture_damage_multiplier` and `entities.posture_multipliers` keys; default balance is unchanged.
+- No automatic migration of old multiplier values. Back up custom values and regenerate `server.toml` to see the new keys and descriptions.
 
 ## 3.0.1
 

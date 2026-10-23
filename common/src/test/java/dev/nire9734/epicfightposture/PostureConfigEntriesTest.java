@@ -33,15 +33,34 @@ class PostureConfigEntriesTest {
     }
 
     @Test
-    void multiplierReplacesGlobalAndLastValidDuplicateWins() {
+    void zeroMultiplierIsValidAndLastDuplicateWins() {
         List<String> rejected = new ArrayList<>();
         Map<String, Float> overrides = PostureConfigEntries.entityMultipliers(
                 List.of(" cataclysm:ignis = 0.25 ", "minecraft:zombie=2.0",
                         "cataclysm:ignis=0.75", "cataclysm:ignis=0"), PostureConfigEntriesTest::id, rejected::add);
 
-        assertEquals(0.75F, overrides.get(id("cataclysm:ignis")).floatValue());
+        assertEquals(0.0F, overrides.get(id("cataclysm:ignis")).floatValue());
         assertEquals(2.0F, overrides.get(id("minecraft:zombie")).floatValue());
-        assertEquals(List.of("cataclysm:ignis=0"), rejected);
+        assertTrue(rejected.isEmpty());
+    }
+
+    @Test
+    void attackAndParryOverrideListsRemainIndependent() {
+        Map<String, Float> attack = PostureConfigEntries.entityMultipliers(
+                List.of("cataclysm:ignis=2.0"), PostureConfigEntriesTest::id,
+                raw -> fail("Unexpected invalid attack override: " + raw));
+        Map<String, Float> parry = PostureConfigEntries.entityMultipliers(
+                List.of("cataclysm:ignis=0.5"), PostureConfigEntriesTest::id,
+                raw -> fail("Unexpected invalid parry override: " + raw));
+
+        assertEquals(2.0F, attack.get(id("cataclysm:ignis")).floatValue());
+        assertEquals(0.5F, parry.get(id("cataclysm:ignis")).floatValue());
+        assertFalse(attack.containsKey(id("minecraft:zombie")));
+        assertFalse(parry.containsKey(id("minecraft:zombie")));
+        assertEquals(2.0F, PostureConfigEntries.multiplierFor(id("cataclysm:ignis"), attack, 1.5F));
+        assertEquals(0.5F, PostureConfigEntries.multiplierFor(id("cataclysm:ignis"), parry, 3.0F));
+        assertEquals(1.5F, PostureConfigEntries.multiplierFor(id("minecraft:zombie"), attack, 1.5F));
+        assertEquals(3.0F, PostureConfigEntries.multiplierFor(null, parry, 3.0F));
     }
 
     @Test
@@ -49,7 +68,7 @@ class PostureConfigEntriesTest {
         List<String> rejected = new ArrayList<>();
         Map<String, Float> overrides = PostureConfigEntries.entityMultipliers(
                 Arrays.asList("cataclysm:ignis=1.5", "cataclysm:ignis=NaN",
-                        "cataclysm:ignis=Infinity", "cataclysm:ignis=101", "cataclysm:ignis=0.001",
+                        "cataclysm:ignis=Infinity", "cataclysm:ignis=101", "cataclysm:ignis=-0.001",
                         "minecraft:zombie=", "Bad ID=2", "missing separator", null),
                 PostureConfigEntriesTest::id, rejected::add);
 

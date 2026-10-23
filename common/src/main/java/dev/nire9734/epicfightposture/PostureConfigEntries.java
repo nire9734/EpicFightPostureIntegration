@@ -50,13 +50,19 @@ public final class PostureConfigEntries {
                 multiplier = Float.NaN;
             }
             if (id == null || !Float.isFinite(multiplier)
-                    || multiplier < 0.01F || multiplier > 100.0F) {
+                    || multiplier < 0.0F || multiplier > 100.0F) {
                 invalidEntry.accept(raw);
                 continue;
             }
             parsed.put(id, multiplier);
         }
         return Map.copyOf(parsed);
+    }
+
+    /** A mob-specific damage multiplier replaces its corresponding global setting. */
+    public static <T> float multiplierFor(T entityId, Map<T, Float> overrides, float global) {
+        Float override = entityId == null ? null : overrides.get(entityId);
+        return override != null ? override : global;
     }
 
     private PostureConfigEntries() {}

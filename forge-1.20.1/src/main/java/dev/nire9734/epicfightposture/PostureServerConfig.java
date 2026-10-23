@@ -46,15 +46,16 @@ public final class PostureServerConfig {
         ALLOWLIST
     }
 
-    public static final ForgeConfigSpec.DoubleValue MAXIMUM_POSTURE_MULTIPLIER;
-    public static final ForgeConfigSpec.DoubleValue POSTURE_DAMAGE_MULTIPLIER;
+    public static final ForgeConfigSpec.DoubleValue ATTACK_POSTURE_DAMAGE_MULTIPLIER;
+    public static final ForgeConfigSpec.DoubleValue PARRY_POSTURE_DAMAGE_MULTIPLIER;
     public static final ForgeConfigSpec.DoubleValue PARRY_BASE_MAX_PERCENT;
     public static final ForgeConfigSpec.DoubleValue PARRY_BASE_MIN_PERCENT;
     public static final ForgeConfigSpec.DoubleValue POSTURE_BREAK_RESISTANCE_STEP;
     public static final ForgeConfigSpec.DoubleValue POSTURE_BREAK_RESISTANCE_MAX;
     public static final ForgeConfigSpec.DoubleValue REGEN_DELAY_SECONDS;
     public static final ForgeConfigSpec.DoubleValue REGEN_RATE_PERCENT;
-    public static final ForgeConfigSpec.ConfigValue<List<? extends String>> POSTURE_MULTIPLIERS;
+    public static final ForgeConfigSpec.ConfigValue<List<? extends String>> ATTACK_POSTURE_DAMAGE_MULTIPLIERS;
+    public static final ForgeConfigSpec.ConfigValue<List<? extends String>> PARRY_POSTURE_DAMAGE_MULTIPLIERS;
     public static final ForgeConfigSpec.ConfigValue<List<? extends String>> ENTITY_BLACKLIST;
     public static final ForgeConfigSpec.BooleanValue AUTOMATIC_COMPATIBILITY;
     public static final ForgeConfigSpec.ConfigValue<List<? extends String>> MOD_ALLOWLIST;
@@ -75,41 +76,42 @@ public final class PostureServerConfig {
     );
 
     private static volatile Set<ResourceLocation> blacklist = Set.of();
-    private static volatile Map<ResourceLocation, Float> entityMultipliers = Map.of();
+    private static volatile Map<ResourceLocation, Float> attackDamageMultipliers = Map.of();
+    private static volatile Map<ResourceLocation, Float> parryDamageMultipliers = Map.of();
     private static volatile Set<String> modAllowlist = Set.of();
     private static volatile Set<String> modDenylist = Set.of();
     private static volatile Snapshot remoteSnapshot;
 
     static {
         BUILDER.push("posture");
-        MAXIMUM_POSTURE_MULTIPLIER = BUILDER
-                .comment(
-                        "Changes how much maximum Posture mobs have.",
-                        "1.0 = normal, 0.5 = half, 2.0 = double. Higher values make attack-based guard breaks harder.",
-                        "Default: 1.0 | Range: 0.1-100.0"
-                )
-                .defineInRange("maximum_posture_multiplier", 1.0D, 0.1D, 100.0D);
-        POSTURE_DAMAGE_MULTIPLIER = BUILDER
+        ATTACK_POSTURE_DAMAGE_MULTIPLIER = BUILDER
                 .comment(
                         "Changes how much Posture damage attacks deal (not parries).",
                         "0.0 = no attack Posture damage, 0.5 = half, 1.0 = normal, 2.0 = double.",
-                        "Default: 1.0 | Range: 0.0-100.0"
+                        "Default: 1.0"
                 )
-                .defineInRange("posture_damage_multiplier", 1.0D, 0.0D, 100.0D);
+                .defineInRange("attack_posture_damage_multiplier", 1.0D, 0.0D, 100.0D);
+        PARRY_POSTURE_DAMAGE_MULTIPLIER = BUILDER
+                .comment(
+                        "Changes how much Posture damage parries deal (not attacks).",
+                        "0.0 = no parry Posture damage, 0.5 = half, 1.0 = normal, 2.0 = double.",
+                        "Default: 1.0"
+                )
+                .defineInRange("parry_posture_damage_multiplier", 1.0D, 0.0D, 100.0D);
         PARRY_BASE_MAX_PERCENT = BUILDER
                 .comment(
                         "Posture damage from parries against mobs with low base health and armor.",
-                        "22.0 = up to 22% of maximum Posture per parry, before repeated-break resistance.",
+                        "22.0 = up to 22% of maximum Posture before parry multipliers and repeated-break resistance.",
                         "The game uses each mob type's original stats, not its current HP or level bonuses.",
-                        "Default: 22.0 | Range: 0.0-100.0"
+                        "Default: 22.0"
                 )
                 .defineInRange("parry_base_max_percent", 22.0D, 0.0D, 100.0D);
         PARRY_BASE_MIN_PERCENT = BUILDER
                 .comment(
                         "Posture damage from parries against mobs with high base health and armor.",
-                        "8.0 = damage approaches 8% of maximum Posture per parry for very tough mobs.",
+                        "8.0 = damage approaches 8% of maximum Posture for very tough mobs.",
                         "Actual parry damage varies between these two settings, before repeated-break resistance.",
-                        "Default: 8.0 | Range: 0.0-100.0"
+                        "Default: 8.0"
                 )
                 .defineInRange("parry_base_min_percent", 8.0D, 0.0D, 100.0D);
         POSTURE_BREAK_RESISTANCE_STEP = BUILDER
@@ -117,7 +119,7 @@ public final class PostureServerConfig {
                         "How much harder it becomes to break a mob's Posture after each successful guard break.",
                         "0.5 = normal damage before the first break, then 1.5x and 2x resistance.",
                         "0.0 = no increase. Higher values make repeated guard breaks harder.",
-                        "Default: 0.5 | Range: 0.0-100.0"
+                        "Default: 0.5"
                 )
                 .defineInRange("posture_break_resistance_step", 0.5D, 0.0D, 100.0D);
         POSTURE_BREAK_RESISTANCE_MAX = BUILDER
@@ -125,7 +127,7 @@ public final class PostureServerConfig {
                         "Maximum resistance a mob can build up from repeated guard breaks.",
                         "2.0 = up to twice as much Posture damage is needed for another break.",
                         "This resistance reduces Posture damage from both attacks and parries.",
-                        "Default: 2.0 | Range: 1.0-100.0"
+                        "Default: 2.0"
                 )
                 .defineInRange("posture_break_resistance_max", 2.0D, 1.0D, 100.0D);
         BUILDER.pop();
@@ -137,27 +139,35 @@ public final class PostureServerConfig {
                         "Both direct attacks and parries restart this timer when they reduce Posture.",
                         "Health damage alone (without Posture loss) does not restart it.",
                         "Does not affect the separate 3-second recovery after a guard break.",
-                        "Default: 15.0 | Range: 0.0-60.0"
+                        "Default: 15.0"
                 )
                 .defineInRange("delay_seconds", 15.0D, 0.0D, 60.0D);
         REGEN_RATE_PERCENT = BUILDER
                 .comment(
                         "How much maximum Posture a mob regenerates each second after the delay.",
                         "2.0 = 2% per second. 0.0 disables normal regeneration (not guard-break recovery).",
-                        "Default: 2.0 | Range: 0.0-100.0"
+                        "Default: 2.0"
                 )
                 .defineInRange("percent_per_second", 2.0D, 0.0D, 100.0D);
         BUILDER.pop();
 
         BUILDER.push("entities");
-        POSTURE_MULTIPLIERS = BUILDER
+        ATTACK_POSTURE_DAMAGE_MULTIPLIERS = BUILDER
                 .comment(
-                        "Override maximum Posture for specific mob types.",
-                        "Format: [\"modid:mob_id=multiplier\"]. Replaces the global setting for that mob.",
-                        "Default: [] | Multiplier range: 0.01-100.0",
-                        "Example: [\"cataclysm:ignis=0.25\"] (Ignis has 25% of normal maximum Posture)"
+                        "Override attack Posture damage for specific mob types (not parries).",
+                        "Format: [\"modid:mob_id=multiplier\"]. Replaces the global attack multiplier.",
+                        "Default: [] | Multiplier range: 0.0-100.0",
+                        "Example: [\"cataclysm:ignis=0.25\"]"
                 )
-                .defineListAllowEmpty("posture_multipliers", List.of(), value -> value instanceof String);
+                .defineListAllowEmpty("attack_posture_damage_multipliers", List.of(), value -> value instanceof String);
+        PARRY_POSTURE_DAMAGE_MULTIPLIERS = BUILDER
+                .comment(
+                        "Override parry Posture damage for specific mob types (not attacks).",
+                        "Format: [\"modid:mob_id=multiplier\"]. Replaces the global parry multiplier.",
+                        "Default: [] | Multiplier range: 0.0-100.0",
+                        "Example: [\"cataclysm:ignis=0.5\"]"
+                )
+                .defineListAllowEmpty("parry_posture_damage_multipliers", List.of(), value -> value instanceof String);
         ENTITY_BLACKLIST = BUILDER
                 .comment(
                         "Mobs excluded from this mod's Posture system and Posture bar.",
@@ -199,21 +209,17 @@ public final class PostureServerConfig {
         SPEC = BUILDER.build();
     }
 
-    /** Alias retained for internal callers that only need the global maximum-posture multiplier. */
-    public static float globalMultiplier() {
-        Snapshot snapshot = effectiveClientSnapshot();
-        return (snapshot != null ? snapshot.globalMultiplier() : MAXIMUM_POSTURE_MULTIPLIER.get()).floatValue();
-    }
-
-    /** Server-side maximum-posture multiplier with an entity override replacing the global value. */
-    public static float maximumPostureMultiplier(ResourceLocation entityId) {
-        Float override = entityId == null ? null : entityMultipliers.get(entityId);
-        return override != null ? override : MAXIMUM_POSTURE_MULTIPLIER.get().floatValue();
-    }
-
     /** Linear observed-HP-loss coefficient with configurable attack scaling. */
-    public static float attackPostureCoefficient() {
-        return BASE_ATTACK_POSTURE_COEFFICIENT * POSTURE_DAMAGE_MULTIPLIER.get().floatValue();
+    public static float attackPostureCoefficient(ResourceLocation entityId) {
+        float multiplier = PostureConfigEntries.multiplierFor(entityId, attackDamageMultipliers,
+                ATTACK_POSTURE_DAMAGE_MULTIPLIER.get().floatValue());
+        return BASE_ATTACK_POSTURE_COEFFICIENT * multiplier;
+    }
+
+    /** Entity override replaces the global parry multiplier. */
+    public static float parryPostureDamageMultiplier(ResourceLocation entityId) {
+        return PostureConfigEntries.multiplierFor(entityId, parryDamageMultipliers,
+                PARRY_POSTURE_DAMAGE_MULTIPLIER.get().floatValue());
     }
 
     /** Maximum base parry fraction, for innate EHP <= 20 (independent of current HP). */
@@ -315,7 +321,7 @@ public final class PostureServerConfig {
     public static Snapshot localSnapshot() {
         boolean automatic = AUTOMATIC_COMPATIBILITY.get();
         return new Snapshot(
-                MAXIMUM_POSTURE_MULTIPLIER.get(),
+                1.0D, // Legacy wire-format field; maximum Posture is always unmultiplied.
                 (double) MINIMUM_POSTURE,
                 USE_ARMOR_SCALING,
                 blacklist,
@@ -359,7 +365,10 @@ public final class PostureServerConfig {
 
     private static void refreshCachedSettings() {
         blacklist = parseEntityBlacklist();
-        entityMultipliers = parseEntityMultipliers();
+        attackDamageMultipliers = parseEntityMultipliers(ATTACK_POSTURE_DAMAGE_MULTIPLIERS,
+                "entities.attack_posture_damage_multipliers");
+        parryDamageMultipliers = parseEntityMultipliers(PARRY_POSTURE_DAMAGE_MULTIPLIERS,
+                "entities.parry_posture_damage_multipliers");
         modAllowlist = parseModIds(MOD_ALLOWLIST.get(), "compatibility.mod_allowlist");
         modDenylist = parseModIds(MOD_DENYLIST.get(), "compatibility.mod_denylist");
     }
@@ -369,9 +378,10 @@ public final class PostureServerConfig {
                 raw -> LOGGER.warn("Ignoring invalid entity ID '{}' in entities.entity_blacklist", raw));
     }
 
-    private static Map<ResourceLocation, Float> parseEntityMultipliers() {
-        return PostureConfigEntries.entityMultipliers(POSTURE_MULTIPLIERS.get(), ResourceLocation::tryParse,
-                raw -> LOGGER.warn("Ignoring invalid entity multiplier '{}' in entities.posture_multipliers", raw));
+    private static Map<ResourceLocation, Float> parseEntityMultipliers(
+            ForgeConfigSpec.ConfigValue<List<? extends String>> entries, String configPath) {
+        return PostureConfigEntries.entityMultipliers(entries.get(), ResourceLocation::tryParse,
+                raw -> LOGGER.warn("Ignoring invalid entity multiplier '{}' in {}", raw, configPath));
     }
 
     private static Set<String> parseModIds(List<? extends String> rawIds, String configPath) {

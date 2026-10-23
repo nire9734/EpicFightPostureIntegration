@@ -17,7 +17,6 @@ final class PostureRuntimeState {
     float lastMaxHealth;
     float lastArmor;
     float lastToughness;
-    float lastMultiplier;
     float lastMinimum;
     boolean lastUseArmorScaling;
 

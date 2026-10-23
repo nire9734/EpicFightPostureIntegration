@@ -34,6 +34,7 @@ final class PostureBalance {
                 : maxBase;
     }
 
+    /** Parry damage is a percentage of maximum posture, classified by innate rather than live EHP. */
     static float parryDamage(
             float maxPosture,
             float maxBaseFraction,
@@ -76,7 +77,7 @@ final class PostureBalance {
      * Final observed HP loss drives direct-hit pressure linearly. The internal
      * default coefficient is 0.54: at Impact 3, removing the entire HP bar
      * removes 54% of unmultiplied base posture, before break resistance.
-     * A larger maximum-posture multiplier makes attacks relatively weaker.
+     * The attack multiplier is applied to the coefficient, without changing maximum posture.
      */
     static float attackPostureDamage(float baseMaxPosture, float maxHealth,
             float healthBefore, float finalDamage, float impact, float coefficient) {
