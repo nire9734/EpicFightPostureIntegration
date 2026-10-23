@@ -7,6 +7,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.mojang.logging.LogUtils;
+import dev.nire9734.epicfightposture.compat.humanoid.RendererDiscoveryShared;
 import net.minecraft.resources.ResourceLocation;
 import net.neoforged.fml.loading.FMLPaths;
 import org.slf4j.Logger;
@@ -30,7 +31,7 @@ public final class NeoForgeHumanoidDiscoveryStore {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final int SCHEMA_VERSION = 2;
     private static final String CACHE_DIRECTORY = "cache";
-    private static final String FILE_NAME = "neoforge-renderer-discovery.json";
+    private static final String FILE_NAME = RendererDiscoveryShared.CACHE_FILE_NAME;
     private static final int MAX_REPORT_ENVIRONMENTS = 64;
 
     private static State state = State.fresh("");
