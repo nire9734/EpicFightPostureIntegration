@@ -10,7 +10,6 @@ import net.minecraft.client.renderer.entity.EntityRenderer;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.LivingEntity;
 import org.joml.Matrix4f;
-import org.joml.Quaternionf;
 import org.slf4j.Logger;
 import software.bernie.geckolib.cache.object.BakedGeoModel;
 import software.bernie.geckolib.cache.object.GeoBone;
@@ -173,16 +172,8 @@ final class GeckoAttachmentBridge {
         RenderUtils.prepMatrixForBone(bindStack, bone);
         Matrix4f geoBind = new Matrix4f(bindStack.last().pose());
 
-        Matrix4f attachment = geoBind;
-        if (jointId >= 0 && jointId < poseMatrices.length && poseMatrices[jointId] != null) {
-            Joint joint = armature.searchJointById(jointId);
-            if (joint != null) {
-                OpenMatrix4f skin = new OpenMatrix4f(poseMatrices[jointId]);
-                skin.mulBack(joint.getToOrigin());
-                Matrix4f skinMatrix = OpenMatrix4f.exportToMojangMatrix(skin);
-                attachment = new Matrix4f(skinMatrix).mul(geoBind);
-            }
-        }
+        Matrix4f attachment = GeckoAttachmentMath.attachmentMatrix(
+                armature, poseMatrices, jointId, geoBind);
 
         poseStack.pushPose();
         poseStack.mulPoseMatrix(attachment);
@@ -263,7 +254,7 @@ final class GeckoAttachmentBridge {
         JointTransform transform = pose.orElseEmpty(joint.getName());
         Vec3f translation = transform.translation();
         Vec3f scale = transform.scale();
-        float[] rotation = quaternionToZyxEuler(transform.rotation());
+        float[] rotation = GeckoAttachmentMath.quaternionToZyxEuler(transform.rotation());
 
         bone.setPosX(snapshot.getOffsetX() - translation.x * 16.0F);
         bone.setPosY(snapshot.getOffsetY() + translation.y * 16.0F);
@@ -276,29 +267,6 @@ final class GeckoAttachmentBridge {
         bone.setScaleX(snapshot.getScaleX() * scale.x);
         bone.setScaleY(snapshot.getScaleY() * scale.y);
         bone.setScaleZ(snapshot.getScaleZ() * scale.z);
-    }
-
-    private static float[] quaternionToZyxEuler(Quaternionf source) {
-        Quaternionf q = new Quaternionf(source).normalize();
-        float x = q.x;
-        float y = q.y;
-        float z = q.z;
-        float w = q.w;
-
-        float sinXCosY = 2.0F * (w * x + y * z);
-        float cosXCosY = 1.0F - 2.0F * (x * x + y * y);
-        float rotX = (float)Math.atan2(sinXCosY, cosXCosY);
-
-        float sinY = 2.0F * (w * y - z * x);
-        float rotY = Math.abs(sinY) >= 1.0F
-                ? (float)Math.copySign(Math.PI / 2.0, sinY)
-                : (float)Math.asin(sinY);
-
-        float sinZCosY = 2.0F * (w * z + x * y);
-        float cosZCosY = 1.0F - 2.0F * (y * y + z * z);
-        float rotZ = (float)Math.atan2(sinZCosY, cosZCosY);
-
-        return new float[] {rotX, rotY, rotZ};
     }
 
     private static void resetTreeToInitial(GeoBone bone) {
