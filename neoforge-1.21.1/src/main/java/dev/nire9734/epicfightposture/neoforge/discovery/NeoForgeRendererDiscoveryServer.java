@@ -13,6 +13,7 @@ import net.minecraft.world.entity.EntityType;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.neoforge.event.entity.player.PermissionsChangedEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
 
@@ -38,6 +39,7 @@ public final class NeoForgeRendererDiscoveryServer {
         extended = approved.extendedHumanoid();
         spiders = approved.vanillaSpider();
         NeoForge.EVENT_BUS.addListener(NeoForgeRendererDiscoveryServer::onLogin);
+        NeoForge.EVENT_BUS.addListener(NeoForgeRendererDiscoveryServer::onPermissionsChanged);
         NeoForge.EVENT_BUS.addListener(NeoForgeRendererDiscoveryServer::onLogout);
     }
 
@@ -50,6 +52,18 @@ public final class NeoForgeRendererDiscoveryServer {
         if (FMLEnvironment.dist != Dist.DEDICATED_SERVER
                 || !(event.getEntity() instanceof ServerPlayer player)
                 || !player.hasPermissions(REQUIRED_PERMISSIONS)) return;
+        UUID nonce = UUID.randomUUID();
+        PENDING_NONCES.put(player.getUUID(), nonce);
+        PacketDistributor.sendToPlayer(player, new NeoForgeRendererScanRequest(nonce));
+    }
+
+    /** Trigger discovery for a player made OP after joining, without a reconnect. */
+    private static synchronized void onPermissionsChanged(PermissionsChangedEvent event) {
+        if (FMLEnvironment.dist != Dist.DEDICATED_SERVER
+                || event.isCanceled()
+                || event.getOldLevel() >= REQUIRED_PERMISSIONS
+                || event.getNewLevel() < REQUIRED_PERMISSIONS
+                || !(event.getEntity() instanceof ServerPlayer player)) return;
         UUID nonce = UUID.randomUUID();
         PENDING_NONCES.put(player.getUUID(), nonce);
         PacketDistributor.sendToPlayer(player, new NeoForgeRendererScanRequest(nonce));
