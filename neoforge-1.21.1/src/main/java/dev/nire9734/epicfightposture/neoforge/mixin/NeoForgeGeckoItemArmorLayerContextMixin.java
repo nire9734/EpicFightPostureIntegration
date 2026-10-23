@@ -2,7 +2,7 @@ package dev.nire9734.epicfightposture.neoforge.mixin;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
-import dev.nire9734.epicfightposture.neoforge.compat.models.NeoForgeGeckoArmorBakeTransformContext;
+import dev.nire9734.epicfightposture.compat.humanoid.client.GeckoArmorBakeTransformContext;
 import dev.nire9734.epicfightposture.neoforge.compat.models.NeoForgeGeckoArmorSkinnedMeshBridge;
 import dev.nire9734.epicfightposture.compat.humanoid.client.RuntimeMeshOwnership;
 import dev.nire9734.epicfightposture.neoforge.compat.models.NeoForgeSpecialRenderHooks;
@@ -145,8 +145,8 @@ public abstract class NeoForgeGeckoItemArmorLayerContextMixin {
 
         Vector3f fitScale = fitStack.last().pose().getScale(new Vector3f());
         boolean rendered;
-        try (NeoForgeGeckoArmorBakeTransformContext.Scope ignored =
-                     NeoForgeGeckoArmorBakeTransformContext.open(bone, fitScale)) {
+        try (GeckoArmorBakeTransformContext.Scope ignored =
+                     GeckoArmorBakeTransformContext.open(bone, fitScale)) {
             rendered = RuntimeMeshOwnership.callOwned(() ->
                     NeoForgeGeckoArmorSkinnedMeshBridge.renderIfSupported(
                             animatable,

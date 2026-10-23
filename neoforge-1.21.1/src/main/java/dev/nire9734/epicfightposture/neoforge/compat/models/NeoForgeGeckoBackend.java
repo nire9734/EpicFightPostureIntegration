@@ -19,7 +19,7 @@ import yesman.epicfight.api.asset.SelfAccessor;
 import com.mojang.blaze3d.vertex.PoseStack;
 import dev.nire9734.epicfightposture.neoforge.compat.NeoForgeLightweightHumanoidPatch;
 import net.minecraft.client.renderer.MultiBufferSource;
-import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.LivingEntity;
 
 /** GeckoLib 4.9.x optional backend: inspect static bind resources only. */
 public final class NeoForgeGeckoBackend {
@@ -64,8 +64,8 @@ public final class NeoForgeGeckoBackend {
      * A different GeoModel or unsupported layer fails inside the optional bridge.
      */
     @SuppressWarnings({"rawtypes", "unchecked"})
-    public static void renderAttachments(Mob entity, NeoForgeLightweightHumanoidPatch<Mob> patch,
-                                         EntityRenderer<Mob> renderer, MultiBufferSource buffers,
+    public static void renderAttachments(LivingEntity entity, NeoForgeLightweightHumanoidPatch<LivingEntity> patch,
+                                         EntityRenderer<LivingEntity> renderer, MultiBufferSource buffers,
                                          PoseStack stack, int light, int overlay, float partialTicks,
                                          HumanoidSkeletonDescriptor skeleton) {
         try (NeoForgeSpecialRenderHooks.GeckoArmorScope armorReplay =
@@ -84,9 +84,9 @@ public final class NeoForgeGeckoBackend {
         NeoForgeGeckoPostRenderMatrixOverride.clear();
     }
 
-    public static void armPostRenderTorso(Mob entity,
-                                         NeoForgeLightweightHumanoidPatch<Mob> patch,
-                                         EntityRenderer<Mob> renderer) {
+    public static void armPostRenderTorso(LivingEntity entity,
+                                         NeoForgeLightweightHumanoidPatch<LivingEntity> patch,
+                                         EntityRenderer<LivingEntity> renderer) {
         NeoForgeGeckoPostRenderMatrixOverride.armTorsoFromEpicFight(entity, patch, renderer);
     }
 

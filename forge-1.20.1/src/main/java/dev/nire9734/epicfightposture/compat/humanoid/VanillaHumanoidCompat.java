@@ -11,6 +11,7 @@ import net.minecraftforge.eventbus.api.EventPriority;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.loading.FMLEnvironment;
+import net.minecraftforge.fml.loading.FMLPaths;
 import net.minecraftforge.registries.ForgeRegistries;
 import org.slf4j.Logger;
 import yesman.epicfight.api.asset.AssetAccessor;
@@ -45,8 +46,9 @@ public final class VanillaHumanoidCompat {
 
     public static void bootstrap() {
         if (FMLEnvironment.dist == Dist.DEDICATED_SERVER) {
-            HumanoidServerDiscoveryStore.ActiveTargets active =
-                    HumanoidServerDiscoveryStore.bootstrap(HumanoidEnvironmentFingerprint.current());
+            RendererDiscoveryStore.ActiveTargets active =
+                    RendererDiscoveryStore.bootstrap(HumanoidEnvironmentFingerprint.current(),
+                            FMLPaths.CONFIGDIR.get());
             cachedDetected = buildKindMap(
                     active.vanillaHumanoid(),
                     active.extendedHumanoid(),

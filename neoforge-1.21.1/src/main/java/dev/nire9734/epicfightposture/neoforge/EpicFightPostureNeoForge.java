@@ -19,8 +19,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 /**
- * NeoForge 1.21.1 development port. Runtime rendering and gameplay are
- * implemented but cross-version, in-game compatibility is still under test.
+ * NeoForge 1.21.1 entry point for the shared EFPI runtime.
  */
 @Mod(EpicFightPostureNeoForge.MODID)
 public final class EpicFightPostureNeoForge {
@@ -41,7 +40,6 @@ public final class EpicFightPostureNeoForge {
         NeoForgeRendererDiscoveryServer.bootstrap();
         NeoForgeAutoCompatibility.register();
         NeoForgePostureServerEvents.register();
-        LOGGER.warn("EFPI NeoForge development port: HumanoidModel scanning and trusted dedicated-server discovery are experimental; validate all gameplay before release");
     }
 
     private static void prepareConfigDirectory() {

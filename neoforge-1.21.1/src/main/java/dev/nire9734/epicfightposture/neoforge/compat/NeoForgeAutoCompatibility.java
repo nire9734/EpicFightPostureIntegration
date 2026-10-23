@@ -6,6 +6,7 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.LivingEntity;
 import org.slf4j.Logger;
 import yesman.epicfight.api.event.EpicFightEventHooks;
 import yesman.epicfight.api.event.types.registry.EntityPatchRegistryEvent;
@@ -127,12 +128,12 @@ public final class NeoForgeAutoCompatibility {
             boolean spider = NeoForgeRendererDiscoveryServer.activeSpiders().contains(id);
             if (spider) {
                 Armatures.registerEntityTypeArmature(type, Armatures.SPIDER);
-                event.getTypeEntry().put(type, entity -> entity instanceof Mob mob
+                event.getTypeEntry().put(type, entity -> entity instanceof LivingEntity mob
                         ? new NeoForgeLightweightSpiderPatch<>(mob) : null);
                 SPIDER_OWNED.add(type);
             } else {
                 Armatures.registerEntityTypeArmature(type, Armatures.BIPED);
-                event.getTypeEntry().put(type, entity -> entity instanceof Mob mob
+                event.getTypeEntry().put(type, entity -> entity instanceof LivingEntity mob
                         ? new NeoForgeLightweightHumanoidPatch<>(mob) : null);
             }
             rememberFactory(type, event.getTypeEntry().get(type));
@@ -218,7 +219,7 @@ public final class NeoForgeAutoCompatibility {
             } else {
                 // A renderer reload is not guaranteed when the integrated
                 // server rebuilds Epic Fight's provider registry.
-                Function<Entity, EntityPatch<?>> factory = entity -> entity instanceof Mob mob
+                Function<Entity, EntityPatch<?>> factory = entity -> entity instanceof LivingEntity mob
                         ? new NeoForgeLightweightHumanoidPatch<>(mob) : null;
                 providers.put(type, factory);
                 rememberFactory(type, factory);
@@ -251,7 +252,7 @@ public final class NeoForgeAutoCompatibility {
                     return false;
                 }
             } else {
-                Function<Entity, EntityPatch<?>> factory = entity -> entity instanceof Mob mob
+                Function<Entity, EntityPatch<?>> factory = entity -> entity instanceof LivingEntity mob
                         ? new NeoForgeLightweightSpiderPatch<>(mob) : null;
                 providers.put(type, factory);
                 rememberFactory(type, factory);

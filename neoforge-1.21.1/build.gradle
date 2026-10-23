@@ -39,6 +39,7 @@ sourceSets {
         java {
             srcDir('../common/src/main/java')
             include 'dev/nire9734/epicfightposture/PostureBalance.java'
+            include 'dev/nire9734/epicfightposture/CompatibilityImpactPolicy.java'
             include 'dev/nire9734/epicfightposture/PostureConfigEntries.java'
             include 'dev/nire9734/epicfightposture/PostureConfigDescriptions.java'
             include 'dev/nire9734/epicfightposture/PostureConfigPolicy.java'
@@ -50,8 +51,11 @@ sourceSets {
             include 'dev/nire9734/epicfightposture/NeoForgeMissingHumanoidNeutralize.java'
             include 'dev/nire9734/epicfightposture/client/ClientPostureStore.java'
             include 'dev/nire9734/epicfightposture/client/PostureHudPolicy.java'
+            include 'dev/nire9734/epicfightposture/client/PostureHudGeometry.java'
             include 'dev/nire9734/epicfightposture/neoforge/**'
             include 'dev/nire9734/epicfightposture/compat/humanoid/RendererDiscoveryShared.java'
+            include 'dev/nire9734/epicfightposture/compat/humanoid/RendererDiscoveryStore.java'
+            include 'dev/nire9734/epicfightposture/compat/humanoid/ModSetFingerprint.java'
             include 'dev/nire9734/epicfightposture/compat/humanoid/rig/**'
             include 'dev/nire9734/epicfightposture/compat/humanoid/client/**'
             include 'dev/nire9734/epicfightposture/compat/humanoid/retarget/**'
@@ -70,7 +74,13 @@ sourceSets {
             include 'dev/nire9734/epicfightposture/PostureDeathSafetyTest.java'
             include 'dev/nire9734/epicfightposture/PostureRuntimeStateTest.java'
             include 'dev/nire9734/epicfightposture/client/PostureHudPolicyTest.java'
+            include 'dev/nire9734/epicfightposture/client/PostureHudGeometryTest.java'
             include 'dev/nire9734/epicfightposture/compat/humanoid/RendererDiscoverySharedTest.java'
+            include 'dev/nire9734/epicfightposture/compat/humanoid/RendererDiscoveryReportRulesTest.java'
+            // This Minecraft-type-dependent store test runs under Forge's
+            // deobfuscated test classpath; ModDevGradle does not expose
+            // net.minecraft classes to the plain JUnit test source set.
+            include 'dev/nire9734/epicfightposture/compat/humanoid/ModSetFingerprintTest.java'
             include 'dev/nire9734/epicfightposture/compat/humanoid/rig/**'
             include 'dev/nire9734/epicfightposture/compat/humanoid/retarget/**'
             include 'dev/nire9734/epicfightposture/compat/humanoid/skeleton/**'
@@ -80,7 +90,6 @@ sourceSets {
             include 'dev/nire9734/epicfightposture/neoforge/compat/AutoCompatibilityRulesTest.java'
             include 'dev/nire9734/epicfightposture/neoforge/NeoForgeServerSettingsTest.java'
             include 'dev/nire9734/epicfightposture/neoforge/compat/NeoForgeSpecialRenderPolicyTest.java'
-            include 'dev/nire9734/epicfightposture/neoforge/discovery/NeoForgeRendererReportRulesTest.java'
             include 'dev/nire9734/epicfightposture/neoforge/compat/models/NeoForgeLionfishAdmissionTest.java'
             include 'dev/nire9734/epicfightposture/neoforge/client/NeoForgeBackendSelectionTest.java'
             include 'dev/nire9734/epicfightposture/neoforge/compat/models/NeoForgeLayerUtilityTest.java'
@@ -112,9 +121,6 @@ dependencies {
     // Gradle 9 no longer supplies the JUnit Platform launcher implicitly.
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 
-    // Integration dependencies (planned; not enabled until the adapter exists):
-    // compileOnly "curse.maven:epic-fight-mod-${epic_fight_project}:${epic_fight_file}"
-    // compileOnly "curse.maven:combat-evolution-${combat_evolution_project}:${combat_evolution_file}"
 }
 
 tasks.named('test', Test).configure {

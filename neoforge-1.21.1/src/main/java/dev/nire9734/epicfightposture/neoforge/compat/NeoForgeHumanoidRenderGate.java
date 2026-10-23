@@ -5,7 +5,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiPredicate;
 import net.minecraft.world.entity.EntityType;
-import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.LivingEntity;
 
 /**
  * Client-installed renderer activation bridge. Contains no Minecraft client
@@ -27,7 +27,7 @@ public final class NeoForgeHumanoidRenderGate {
         if (type != null) VERIFIED.add(type);
     }
 
-    public static boolean shouldOverride(Mob mob) {
+    public static boolean shouldOverride(LivingEntity mob) {
         return mob != null && NeoForgeSpecialRenderPolicy.shouldOverride(
                 mob.level().isClientSide(),
                 NeoForgeAutoCompatibility.isEnabled(mob.getType()),

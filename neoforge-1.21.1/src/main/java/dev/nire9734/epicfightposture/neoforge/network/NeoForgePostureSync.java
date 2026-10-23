@@ -5,7 +5,7 @@ import java.util.WeakHashMap;
 import dev.nire9734.epicfightposture.NeoForgePostureServerEvents;
 import dev.nire9734.epicfightposture.client.ClientPostureStore;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.LivingEntity;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.entity.EntityLeaveLevelEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
@@ -22,7 +22,7 @@ public final class NeoForgePostureSync {
         }
     }
 
-    private static final Map<Mob, Snapshot> LAST = new WeakHashMap<>();
+    private static final Map<LivingEntity, Snapshot> LAST = new WeakHashMap<>();
     private static boolean registered;
 
     public static synchronized void register() {
@@ -32,11 +32,11 @@ public final class NeoForgePostureSync {
         NeoForge.EVENT_BUS.addListener(NeoForgePostureSync::onLeave);
     }
 
-    public static void syncPeriodic(Mob mob, NeoForgePostureServerEvents.SyncState state) {
+    public static void syncPeriodic(LivingEntity mob, NeoForgePostureServerEvents.SyncState state) {
         if (Math.floorMod(mob.tickCount + mob.getId(), 4) == 0) syncNow(mob, state);
     }
 
-    public static void syncNow(Mob mob, NeoForgePostureServerEvents.SyncState state) {
+    public static void syncNow(LivingEntity mob, NeoForgePostureServerEvents.SyncState state) {
         if (mob.level().isClientSide()) return;
         Snapshot next = new Snapshot(state.current(), state.max(), state.broken());
         if (next.same(LAST.get(mob))) return;
@@ -44,7 +44,7 @@ public final class NeoForgePostureSync {
         PacketDistributor.sendToPlayersTrackingEntity(mob, packet(mob, next, true));
     }
 
-    public static void removeNow(Mob mob) {
+    public static void removeNow(LivingEntity mob) {
         Snapshot old = LAST.remove(mob);
         if (old != null && !mob.level().isClientSide()) {
             PacketDistributor.sendToPlayersTrackingEntity(mob, packet(mob, old, false));
@@ -53,7 +53,7 @@ public final class NeoForgePostureSync {
 
     private static void onStartTracking(PlayerEvent.StartTracking event) {
         if (!(event.getEntity() instanceof ServerPlayer player) ||
-                !(event.getTarget() instanceof Mob mob)) return;
+                !(event.getTarget() instanceof LivingEntity mob)) return;
         NeoForgePostureServerEvents.SyncState state = NeoForgePostureServerEvents.stateForTracking(mob);
         if (state != null) {
             Snapshot snapshot = new Snapshot(state.current(), state.max(), state.broken());
@@ -62,7 +62,7 @@ public final class NeoForgePostureSync {
     }
 
     private static void onLeave(EntityLeaveLevelEvent event) {
-        if (!(event.getEntity() instanceof Mob mob)) return;
+        if (!(event.getEntity() instanceof LivingEntity mob)) return;
         if (event.getLevel().isClientSide()) {
             ClientPostureStore.remove(mob.getId(), mob.getUUID());
         } else {
@@ -71,7 +71,7 @@ public final class NeoForgePostureSync {
         }
     }
 
-    private static PostureStatePayload packet(Mob mob, Snapshot value, boolean present) {
+    private static PostureStatePayload packet(LivingEntity mob, Snapshot value, boolean present) {
         return new PostureStatePayload(mob.getId(), mob.getUUID(),
                 value.current(), value.max(), value.broken(), present);
     }

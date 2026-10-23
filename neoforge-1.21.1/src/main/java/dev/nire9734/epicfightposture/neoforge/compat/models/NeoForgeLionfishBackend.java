@@ -16,7 +16,6 @@ import net.minecraft.client.renderer.entity.EntityRenderer;
 import net.minecraft.client.renderer.entity.LivingEntityRenderer;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.entity.Mob;
 import yesman.epicfight.api.client.model.SkinnedMesh;
 import yesman.epicfight.api.model.Armature;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -29,14 +28,13 @@ public final class NeoForgeLionfishBackend {
     private static final Logger LOGGER = LogUtils.getLogger();
 
     @SuppressWarnings("unchecked")
-    public static void renderLayers(Mob mob, EntityRenderer<Mob> source,
+    public static void renderLayers(LivingEntity mob, EntityRenderer<LivingEntity> source,
                                     MultiBufferSource buffer, PoseStack pose, int light,
                                     float partialTicks, Armature armature, SkinnedMesh mesh,
                                     HumanoidSkeletonDescriptor skeleton) {
         if (!(source instanceof LivingEntityRenderer<?, ?> living)
                 || !(living.getModel() instanceof AdvancedEntityModel<?>)) return;
-        NeoForgeLivingRenderLayerBridge.replay(mob,
-                (EntityRenderer<LivingEntity>) (Object) source, buffer, pose, light,
+        NeoForgeLivingRenderLayerBridge.replay(mob, source, buffer, pose, light,
                 partialTicks, armature, mesh, skeleton);
     }
 

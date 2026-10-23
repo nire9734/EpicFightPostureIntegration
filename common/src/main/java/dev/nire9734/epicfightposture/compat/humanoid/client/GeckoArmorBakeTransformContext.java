@@ -4,7 +4,7 @@ import org.joml.Vector3f;
 import software.bernie.geckolib.cache.object.GeoBone;
 
 /**
- * Temporary bind-space context used while converting one Gecko armor callback
+ * Loader-neutral bind-space context used while converting one Gecko armor callback
  * into an Epic Fight skinned mesh.
  *
  * <p>{@code ItemArmorGeoLayer} renders armor from the source entity bone's

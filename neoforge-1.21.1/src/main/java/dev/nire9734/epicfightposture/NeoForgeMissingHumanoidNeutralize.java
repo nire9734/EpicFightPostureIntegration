@@ -1,7 +1,8 @@
 package dev.nire9734.epicfightposture;
 
 import com.mojang.logging.LogUtils;
-import dev.nire9734.epicfightposture.neoforge.NeoForgePostureConfig;
+import dev.nire9734.epicfightposture.neoforge.NeoForgeServerSettings;
+import dev.nire9734.epicfightposture.neoforge.compat.NeoForgeAutoCompatibility;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.LivingEntity;
@@ -50,7 +51,8 @@ public final class NeoForgeMissingHumanoidNeutralize {
         LivingEntity entity = patch.getOriginal();
         if (entity == null || entity.level().isClientSide()) return;
         ResourceLocation id = BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType());
-        if (id == null || NeoForgePostureConfig.ENTITY_BLACKLIST.get().contains(id.toString())) return;
+        if (id == null || NeoForgeServerSettings.localSnapshot().blocksPosture(
+                id, NeoForgeAutoCompatibility.isOwnedByEfpi(entity.getType()))) return;
 
         try {
             if (!(patch.getArmature() instanceof HumanoidArmature)) return;

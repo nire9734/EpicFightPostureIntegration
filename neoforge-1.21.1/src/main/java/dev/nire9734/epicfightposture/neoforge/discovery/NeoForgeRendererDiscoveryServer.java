@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import dev.nire9734.epicfightposture.compat.humanoid.RendererDiscoveryShared;
+import dev.nire9734.epicfightposture.compat.humanoid.RendererDiscoveryStore;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -13,6 +14,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.EntityType;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.fml.loading.FMLEnvironment;
+import net.neoforged.fml.loading.FMLPaths;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.entity.player.PermissionsChangedEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
@@ -34,8 +36,9 @@ public final class NeoForgeRendererDiscoveryServer {
         if (registered) return;
         registered = true;
         if (FMLEnvironment.dist != Dist.DEDICATED_SERVER) return;
-        NeoForgeHumanoidDiscoveryStore.ActiveTargets approved =
-                NeoForgeHumanoidDiscoveryStore.bootstrap(NeoForgeEnvironmentFingerprint.current());
+        RendererDiscoveryStore.ActiveTargets approved =
+                RendererDiscoveryStore.bootstrap(NeoForgeEnvironmentFingerprint.current(),
+                        FMLPaths.CONFIGDIR.get());
         active = approved.vanillaHumanoid();
         extended = approved.extendedHumanoid();
         spiders = approved.vanillaSpider();
@@ -79,10 +82,11 @@ public final class NeoForgeRendererDiscoveryServer {
                 || !player.hasPermissions(REQUIRED_PERMISSIONS)) return;
         UUID expected = PENDING_NONCES.remove(player.getUUID());
         if (expected == null || !expected.equals(report.nonce())) return;
-        if (!NeoForgeRendererReportRules.isConsistent(
+        RendererDiscoveryShared.ValidationError error = RendererDiscoveryShared.validateReport(
                 report.fingerprint(), report.inspected(), report.vanillaHumanoids(),
-                report.extendedHumanoids(), report.spiders())) {
-            player.sendSystemMessage(Component.literal("EFPI: rejected invalid renderer discovery report."));
+                report.extendedHumanoids(), report.spiders());
+        if (error != RendererDiscoveryShared.ValidationError.NONE) {
+            player.sendSystemMessage(Component.literal(RendererDiscoveryShared.rejectionMessage(error)));
             return;
         }
 
@@ -97,9 +101,13 @@ public final class NeoForgeRendererDiscoveryServer {
         vanilla.retainAll(inspected);
         extended.retainAll(inspected);
         spider.retainAll(inspected);
-        NeoForgeHumanoidDiscoveryStore.UpdateResult result =
-                NeoForgeHumanoidDiscoveryStore.acceptReport(
+        RendererDiscoveryStore.UpdateResult result =
+                RendererDiscoveryStore.acceptReport(
                         report.fingerprint(), inspected, vanilla, extended, spider);
+        if (!result.accepted()) {
+            player.sendSystemMessage(Component.literal(RendererDiscoveryShared.cacheFullMessage()));
+            return;
+        }
         if (result.restartRequired()) {
             String message = RendererDiscoveryShared.restartRequiredMessage(
                     result.pendingVanillaCount(),
