@@ -5,6 +5,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import dev.nire9734.epicfightposture.compat.humanoid.RendererDiscoveryShared;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -100,9 +101,11 @@ public final class NeoForgeRendererDiscoveryServer {
                 NeoForgeHumanoidDiscoveryStore.acceptReport(
                         report.fingerprint(), inspected, vanilla, extended, spider);
         if (result.restartRequired()) {
-            String message = "EFPI: " + result.pendingCount() + " renderer target(s), "
-                    + result.conflictCount() + " conflict(s)."
-                    + " Restart the server to activate pending targets.";
+            String message = RendererDiscoveryShared.restartRequiredMessage(
+                    result.pendingVanillaCount(),
+                    result.pendingExtendedCount(),
+                    result.pendingSpiderCount(),
+                    result.conflictCount());
             player.sendSystemMessage(Component.literal(message));
         }
     }
