@@ -31,7 +31,7 @@ public final class HumanoidServerDiscoveryStore {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final int SCHEMA_VERSION = 2;
     private static final String CACHE_DIRECTORY = "cache";
-    private static final String FILE_NAME = "renderer-discovery.json";
+    private static final String FILE_NAME = RendererDiscoveryShared.CACHE_FILE_NAME;
     private static final int MAX_REPORT_ENVIRONMENTS = 64;
 
     private static State state = State.fresh("");
