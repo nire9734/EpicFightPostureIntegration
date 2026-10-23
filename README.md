@@ -73,12 +73,12 @@ Both editions compile shared source files directly from `common/src/main/java`. 
 cd forge-1.20.1
 ./gradlew clean build
 
-# NeoForge: Java 21, Gradle 9.2.1
+# NeoForge: Java 21, pinned Gradle 9.2.1 bootstrap
 cd ../neoforge-1.21.1
-gradle clean build
+./gradlew clean build
 ```
 
-Both builds run their associated tests. JARs are generated in each edition's `build/libs/` directory. The integration branch is `dev/multiloader`; the older loader-specific branches are historical references.
+Both build scripts download and verify their pinned Gradle distributions on first use; no system Gradle installation is required. On Windows, run `gradlew.bat clean build` inside the corresponding loader directory. Both builds run their associated tests. JARs are generated in each edition's `build/libs/` directory. The integration branch is `dev/multiloader`; the older loader-specific branches are historical references.
 
 ## License
 
