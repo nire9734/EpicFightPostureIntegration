@@ -1,13 +1,13 @@
 package dev.nire9734.epicfightposture.neoforge.client;
 
 import com.mojang.logging.LogUtils;
+import dev.nire9734.epicfightposture.compat.humanoid.client.RendererCoverageFormatter;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.Map;
-import java.util.TreeMap;
 import net.minecraft.resources.ResourceLocation;
 import net.neoforged.fml.loading.FMLPaths;
 import org.slf4j.Logger;
@@ -28,16 +28,8 @@ public final class NeoForgeRendererCoverage {
             Files.createDirectories(dir);
             Path output = dir.resolve("neoforge-renderer-coverage.tsv");
             temporary = Files.createTempFile(dir, "coverage-", ".tmp");
-            StringBuilder text = new StringBuilder("# EFPI NeoForge renderer coverage v1\n");
-            text.append("entity_id\tresult\n");
-            Map<String, String> rows = new TreeMap<>();
-            for (var row : results.entrySet()) {
-                if (row.getKey() != null && row.getValue() != null)
-                    rows.put(row.getKey().toString(), row.getValue());
-            }
-            rows.forEach((id, result) -> text.append(id).append('\t')
-                    .append(result.replace('\t', '_').replace('\n', '_')).append('\n'));
-            Files.writeString(temporary, text.toString(), StandardCharsets.UTF_8);
+            Files.writeString(temporary, RendererCoverageFormatter.format("neoforge", results),
+                    StandardCharsets.UTF_8);
             try {
                 Files.move(temporary, output, StandardCopyOption.ATOMIC_MOVE,
                         StandardCopyOption.REPLACE_EXISTING);
@@ -45,7 +37,7 @@ public final class NeoForgeRendererCoverage {
                 Files.move(temporary, output, StandardCopyOption.REPLACE_EXISTING);
             }
             temporary = null;
-            LOGGER.info("EFPI renderer coverage: {} entities, {}", rows.size(), output.toAbsolutePath());
+            LOGGER.info("EFPI renderer coverage: {} entities, {}", results.size(), output.toAbsolutePath());
         } catch (IOException | RuntimeException exception) {
             LOGGER.warn("EFPI could not write renderer coverage report", exception);
         } finally {

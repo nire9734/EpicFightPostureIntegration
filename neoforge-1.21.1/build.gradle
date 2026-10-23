@@ -72,6 +72,7 @@ sourceSets {
             include 'dev/nire9734/epicfightposture/compat/humanoid/rig/**'
             include 'dev/nire9734/epicfightposture/compat/humanoid/retarget/**'
             include 'dev/nire9734/epicfightposture/compat/humanoid/skeleton/**'
+            include 'dev/nire9734/epicfightposture/compat/humanoid/client/RendererCoverageFormatterTest.java'
             include 'dev/nire9734/epicfightposture/NeoForgeAssassinationStateTest.java'
             include 'dev/nire9734/epicfightposture/NeoForgeCompatibilityDamageTest.java'
             include 'dev/nire9734/epicfightposture/neoforge/compat/AutoCompatibilityRulesTest.java'

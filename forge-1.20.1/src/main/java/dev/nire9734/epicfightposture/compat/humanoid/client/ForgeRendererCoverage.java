@@ -11,9 +11,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.time.Instant;
 import java.util.Map;
-import java.util.TreeMap;
 
 /**
  * Per-entity renderer diagnostics, separate from latest.log/debug.log.
@@ -31,18 +29,8 @@ public final class ForgeRendererCoverage {
         try {
             Files.createDirectories(directory);
             temporary = Files.createTempFile(directory, "forge-coverage-", ".tmp");
-            StringBuilder report = new StringBuilder("# EFPI Forge renderer coverage v1\n");
-            report.append("# generated_at ").append(Instant.now()).append('\n');
-            report.append("entity_id\tresult\n");
-            Map<String, String> ordered = new TreeMap<>();
-            for (var entry : results.entrySet()) {
-                if (entry.getKey() != null && entry.getValue() != null) {
-                    ordered.put(entry.getKey().toString(), entry.getValue());
-                }
-            }
-            ordered.forEach((id, result) -> report.append(id).append('\t')
-                    .append(result.replace('\t', '_').replace('\n', '_')).append('\n'));
-            Files.writeString(temporary, report.toString(), StandardCharsets.UTF_8);
+            Files.writeString(temporary, RendererCoverageFormatter.format("forge", results),
+                    StandardCharsets.UTF_8);
             Path output = directory.resolve("forge-renderer-coverage.tsv");
             try {
                 Files.move(temporary, output, StandardCopyOption.ATOMIC_MOVE,
