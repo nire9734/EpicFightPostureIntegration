@@ -7,7 +7,6 @@ import net.minecraft.client.model.geom.ModelPart;
 import net.minecraft.client.model.geom.PartPose;
 import net.minecraft.client.renderer.entity.EntityRenderer;
 import net.minecraft.client.renderer.entity.LivingEntityRenderer;
-import net.minecraft.util.Mth;
 import net.minecraft.world.entity.LivingEntity;
 
 import java.util.ArrayList;
@@ -69,46 +68,7 @@ public final class SourceModelPreparation {
             hierarchical.root().getAllParts().forEach(ModelPart::resetPose);
         }
 
-        boolean shouldSit = entity.isPassenger()
-                && entity.getVehicle() != null
-                && entity.getVehicle().shouldRiderSit();
-        model.riding = shouldSit;
-        model.young = entity.isBaby();
-
-        float bodyYaw = Mth.rotLerp(partialTicks, entity.yBodyRotO, entity.yBodyRot);
-        float headYaw = Mth.rotLerp(partialTicks, entity.yHeadRotO, entity.yHeadRot);
-        float netHeadYaw = headYaw - bodyYaw;
-        if (shouldSit && entity.getVehicle() instanceof LivingEntity vehicle) {
-            bodyYaw = Mth.rotLerp(partialTicks, vehicle.yBodyRotO, vehicle.yBodyRot);
-            netHeadYaw = headYaw - bodyYaw;
-            float wrapped = Mth.clamp(Mth.wrapDegrees(netHeadYaw), -85.0F, 85.0F);
-            bodyYaw = headYaw - wrapped;
-            if (wrapped * wrapped > 2500.0F) {
-                bodyYaw += wrapped * 0.2F;
-            }
-            netHeadYaw = headYaw - bodyYaw;
-        }
-
-        float headPitch = Mth.lerp(partialTicks, entity.xRotO, entity.getXRot());
-        if (LivingEntityRenderer.isEntityUpsideDown(entity)) {
-            headPitch *= -1.0F;
-            netHeadYaw *= -1.0F;
-        }
-
-        float limbSwingAmount = 0.0F;
-        float limbSwing = 0.0F;
-        if (!shouldSit && entity.isAlive()) {
-            limbSwingAmount = Math.min(1.0F, entity.walkAnimation.speed(partialTicks));
-            limbSwing = entity.walkAnimation.position() - entity.walkAnimation.speed() * (1.0F - partialTicks);
-            if (entity.isBaby()) {
-                limbSwing *= 3.0F;
-            }
-        }
-
-        float ageInTicks = entity.tickCount + partialTicks;
-        model.attackTime = entity.getAttackAnim(partialTicks);
-        model.prepareMobModel(entity, limbSwing, limbSwingAmount, partialTicks);
-        model.setupAnim(entity, limbSwing, limbSwingAmount, ageInTicks, netHeadYaw, headPitch);
+        SourceModelAnimationPose.apply(entity, model, partialTicks);
     }
 
     static Scope snapshot(EntityModel<?> model) {

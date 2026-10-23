@@ -3,13 +3,13 @@ package dev.nire9734.epicfightposture.neoforge.compat.models;
 import java.util.ArrayList;
 import java.util.List;
 import java.lang.reflect.Method;
+import dev.nire9734.epicfightposture.compat.humanoid.client.SourceModelAnimationPose;
 import net.minecraft.client.model.EntityModel;
 import net.minecraft.client.model.HierarchicalModel;
 import net.minecraft.client.model.geom.ModelPart;
 import net.minecraft.client.model.geom.PartPose;
 import net.minecraft.client.renderer.entity.EntityRenderer;
 import net.minecraft.client.renderer.entity.LivingEntityRenderer;
-import net.minecraft.util.Mth;
 import net.minecraft.world.entity.LivingEntity;
 
 /**
@@ -36,42 +36,7 @@ public final class NeoForgeSourceModelPreparation {
             if (source instanceof HierarchicalModel<?> hierarchical) {
                 hierarchical.root().getAllParts().forEach(ModelPart::resetPose);
             }
-            boolean riding = entity.isPassenger() && entity.getVehicle() != null
-                    && entity.getVehicle().shouldRiderSit();
-            source.riding = riding;
-            source.young = entity.isBaby();
-            source.attackTime = entity.getAttackAnim(partialTicks);
-
-            float bodyYaw = Mth.rotLerp(partialTicks, entity.yBodyRotO, entity.yBodyRot);
-            float headYaw = Mth.rotLerp(partialTicks, entity.yHeadRotO, entity.yHeadRot);
-            float netHeadYaw = headYaw - bodyYaw;
-            // Match Forge's LivingEntityRenderer pose preparation when the
-            // source mob is riding another living entity: its body faces the
-            // mount and its head turn is clamped around that new body yaw.
-            if (riding && entity.getVehicle() instanceof LivingEntity vehicle) {
-                bodyYaw = Mth.rotLerp(partialTicks, vehicle.yBodyRotO, vehicle.yBodyRot);
-                netHeadYaw = headYaw - bodyYaw;
-                float wrapped = Mth.clamp(Mth.wrapDegrees(netHeadYaw), -85.0F, 85.0F);
-                bodyYaw = headYaw - wrapped;
-                if (wrapped * wrapped > 2500.0F) {
-                    bodyYaw += wrapped * 0.2F;
-                }
-                netHeadYaw = headYaw - bodyYaw;
-            }
-            float headPitch = Mth.lerp(partialTicks, entity.xRotO, entity.getXRot());
-            if (LivingEntityRenderer.isEntityUpsideDown(entity)) {
-                headPitch *= -1.0F;
-                netHeadYaw *= -1.0F;
-            }
-            float limbAmount = !riding && entity.isAlive()
-                    ? Math.min(1.0F, entity.walkAnimation.speed(partialTicks)) : 0.0F;
-            float limb = !riding && entity.isAlive()
-                    ? entity.walkAnimation.position() - entity.walkAnimation.speed() * (1.0F - partialTicks)
-                    : 0.0F;
-            if (entity.isBaby()) limb *= 3.0F;
-            source.prepareMobModel(entity, limb, limbAmount, partialTicks);
-            source.setupAnim(entity, limb, limbAmount, entity.tickCount + partialTicks,
-                    netHeadYaw, headPitch);
+            SourceModelAnimationPose.apply(entity, source, partialTicks);
             return scope;
         } catch (RuntimeException | Error failure) {
             try { scope.close(); } catch (RuntimeException | Error restoreError) {
