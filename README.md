@@ -34,7 +34,7 @@ Server settings are generated at `config/epicfight_posture_integration/server.to
 attack_posture_damage_multiplier = 1.0
 parry_posture_damage_multiplier = 1.0
 parry_base_max_percent = 22.0
-parry_base_min_percent = 8.0
+parry_base_min_percent = 10.0
 posture_break_resistance_step = 0.5
 posture_break_resistance_max = 2.0
 

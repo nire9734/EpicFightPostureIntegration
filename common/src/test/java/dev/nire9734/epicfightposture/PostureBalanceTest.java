@@ -57,7 +57,7 @@ class PostureBalanceTest {
     void independentAttackAndParryMultipliersDoNotAlterMaximumPosture() {
         float maximumPosture = 100.0F;
         float attackBase = attack(maximumPosture, 100, 100, 50, 3);
-        float parryBase = PostureBalance.parryDamage(maximumPosture, .22F, .08F, 20, 20, .7F);
+        float parryBase = PostureBalance.parryDamage(maximumPosture, .22F, .10F, 20, 20, .7F);
 
         assertEquals(37.5F, attackBase, EPS);
         assertEquals(22.0F, parryBase, EPS);
@@ -104,13 +104,13 @@ class PostureBalanceTest {
         assertEquals(190764.0F, leveledBossEhp, 0.1F);
         float zombieParry = parryFraction(innateZombieEhp);
         float bossParry = parryFraction(innateBossEhp);
-        assertEquals(.218428F, zombieParry, EPS);
-        assertEquals(.093713F, bossParry, EPS);
+        assertEquals(.218653F, zombieParry, EPS);
+        assertEquals(.111754F, bossParry, EPS);
         assertEquals(bossParry * 100.0F, PostureBalance.parryDamage(
-                100, .22F, .08F, innateBossEhp, 20, .7F), EPS);
+                100, .22F, .10F, innateBossEhp, 20, .7F), EPS);
         // Break thresholds with no regeneration/attack pressure:
-        assertEquals(11, (int) Math.ceil(1.0D / bossParry));
-        assertEquals(17, (int) Math.ceil(1.5D / bossParry));
+        assertEquals(9, (int) Math.ceil(1.0D / bossParry));
+        assertEquals(14, (int) Math.ceil(1.5D / bossParry));
         assertEquals(5, (int) Math.ceil(1.0D / zombieParry));
         assertEquals(7, (int) Math.ceil(1.5D / zombieParry));
     }
@@ -119,8 +119,8 @@ class PostureBalanceTest {
     void parryEndpointsAndExponentRemainUnchanged() {
         assertEquals(.22F, parryFraction(20), EPS);
         assertEquals(.22F, parryFraction(10), EPS);
-        assertEquals(.107934F, parryFraction(200), EPS);
-        assertEquals(.08F, parryFraction(Float.MAX_VALUE), EPS);
+        assertEquals(.123943F, parryFraction(200), EPS);
+        assertEquals(.10F, parryFraction(Float.MAX_VALUE), EPS);
         assertEquals(.24F, PostureBalance.parryPostureFraction(.24F, .06F, 20, 20, .7F), EPS);
         assertEquals(.03F, PostureBalance.parryPostureFraction(.18F, .03F, Float.MAX_VALUE, 20, .7F), EPS);
         assertEquals(1.0F, PostureBalance.parryPostureFraction(2, -.5F, 10, 20, .7F), EPS);
@@ -161,7 +161,7 @@ class PostureBalanceTest {
     }
 
     private static float parryFraction(float ehp) {
-        return PostureBalance.parryPostureFraction(.22F, .08F, ehp, 20, .7F);
+        return PostureBalance.parryPostureFraction(.22F, .10F, ehp, 20, .7F);
     }
 
     private static float attack(float basePosture, float maxHp, float hpBefore,

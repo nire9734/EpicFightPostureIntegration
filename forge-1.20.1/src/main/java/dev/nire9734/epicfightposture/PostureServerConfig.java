@@ -95,7 +95,7 @@ public final class PostureServerConfig {
                 .defineInRange("parry_base_max_percent", 22.0D, 0.0D, 100.0D);
         PARRY_BASE_MIN_PERCENT = BUILDER
                 .comment(PostureConfigDescriptions.PARRY_BASE_MIN)
-                .defineInRange("parry_base_min_percent", 8.0D, 0.0D, 100.0D);
+                .defineInRange("parry_base_min_percent", 10.0D, 0.0D, 100.0D);
         POSTURE_BREAK_RESISTANCE_STEP = BUILDER
                 .comment(PostureConfigDescriptions.BREAK_RESISTANCE_STEP)
                 .defineInRange("posture_break_resistance_step", 0.5D, 0.0D, 100.0D);
