@@ -1,6 +1,7 @@
 package dev.nire9734.epicfightposture.compat.humanoid.client;
 
 import com.mojang.blaze3d.vertex.PoseStack;
+import software.bernie.geckolib.cache.object.BakedGeoModel;
 import software.bernie.geckolib.cache.object.GeoBone;
 import software.bernie.geckolib.cache.object.GeoCube;
 import software.bernie.geckolib.core.state.BoneSnapshot;
@@ -30,6 +31,10 @@ final class GeckoBindPoseTransforms {
                     RenderUtils.translateAwayFromPivotPoint(stack, cube);
                 }
             }).operations();
+
+    static void resetToInitial(BakedGeoModel model) {
+        OPERATIONS.resetToInitial(model);
+    }
 
     private GeckoBindPoseTransforms() { }
 }

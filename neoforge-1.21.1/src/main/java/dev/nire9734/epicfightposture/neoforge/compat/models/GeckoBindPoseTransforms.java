@@ -3,6 +3,7 @@ package dev.nire9734.epicfightposture.neoforge.compat.models;
 import com.mojang.blaze3d.vertex.PoseStack;
 import dev.nire9734.epicfightposture.compat.humanoid.client.GeckoBindPoseCore;
 import dev.nire9734.epicfightposture.compat.humanoid.client.GeckoBindPoseOperations;
+import software.bernie.geckolib.cache.object.BakedGeoModel;
 import software.bernie.geckolib.cache.object.GeoBone;
 import software.bernie.geckolib.cache.object.GeoCube;
 import software.bernie.geckolib.animation.state.BoneSnapshot;
@@ -32,6 +33,10 @@ final class GeckoBindPoseTransforms {
                     RenderUtil.translateAwayFromPivotPoint(stack, cube);
                 }
             }).operations();
+
+    static void resetToInitial(BakedGeoModel model) {
+        OPERATIONS.resetToInitial(model);
+    }
 
     private GeckoBindPoseTransforms() { }
 }

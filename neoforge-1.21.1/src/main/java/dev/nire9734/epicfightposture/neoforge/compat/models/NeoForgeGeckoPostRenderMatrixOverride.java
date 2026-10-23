@@ -3,7 +3,7 @@ package dev.nire9734.epicfightposture.neoforge.compat.models;
 import dev.nire9734.epicfightposture.compat.humanoid.client.GeckoResolvedHumanoidRig;
 
 import com.mojang.blaze3d.vertex.PoseStack;
-import dev.nire9734.epicfightposture.compat.humanoid.retarget.HumanoidSkinWeightResolver;
+import dev.nire9734.epicfightposture.compat.humanoid.client.GeckoPostRenderSkinMatrix;
 import dev.nire9734.epicfightposture.compat.humanoid.skeleton.HumanoidJoint;
 import net.minecraft.client.renderer.entity.EntityRenderer;
 import net.minecraft.resources.ResourceLocation;
@@ -16,9 +16,6 @@ import software.bernie.geckolib.cache.object.GeoBone;
 import software.bernie.geckolib.model.GeoModel;
 import software.bernie.geckolib.renderer.GeoEntityRenderer;
 import software.bernie.geckolib.util.RenderUtil;
-import yesman.epicfight.api.animation.Joint;
-import yesman.epicfight.api.model.Armature;
-import yesman.epicfight.api.utils.math.OpenMatrix4f;
 import yesman.epicfight.world.capabilities.entitypatch.LivingEntityPatch;
 
 /**
@@ -78,17 +75,8 @@ public final class NeoForgeGeckoPostRenderMatrixOverride {
             RenderUtil.prepMatrixForBone(bindStack, chestSource);
             Matrix4f localBind = new Matrix4f(bindStack.last().pose());
 
-            Armature armature = patch.getArmature();
-            OpenMatrix4f[] poses = armature.getPoseMatrices();
-            int chestId = HumanoidSkinWeightResolver.CHEST;
-            if (poses == null || chestId >= poses.length || poses[chestId] == null) return;
-            Joint chest = armature.searchJointById(chestId);
-            if (chest == null) return;
-
-            OpenMatrix4f skin = new OpenMatrix4f(poses[chestId]);
-            skin.mulBack(chest.getToOrigin());
-            Matrix4f skinMatrix = OpenMatrix4f.exportToMojangMatrix(skin);
-            NEXT.set(new Entry(chestSource, new Matrix4f(skinMatrix).mul(localBind)));
+            Matrix4f finalMatrix = GeckoPostRenderSkinMatrix.compose(patch.getArmature(), localBind);
+            if (finalMatrix != null) NEXT.set(new Entry(chestSource, finalMatrix));
         } catch (RuntimeException | LinkageError ignored) {
             // Optional addon model. A model change must never break rendering.
             clear();

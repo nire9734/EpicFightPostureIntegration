@@ -1,7 +1,6 @@
 package dev.nire9734.epicfightposture.compat.humanoid.client;
 
 import com.mojang.blaze3d.vertex.PoseStack;
-import dev.nire9734.epicfightposture.compat.humanoid.retarget.HumanoidSkinWeightResolver;
 import dev.nire9734.epicfightposture.compat.humanoid.skeleton.HumanoidJoint;
 import net.minecraft.client.renderer.entity.EntityRenderer;
 import net.minecraft.resources.ResourceLocation;
@@ -15,9 +14,6 @@ import software.bernie.geckolib.core.state.BoneSnapshot;
 import software.bernie.geckolib.model.GeoModel;
 import software.bernie.geckolib.renderer.GeoEntityRenderer;
 import software.bernie.geckolib.util.RenderUtils;
-import yesman.epicfight.api.animation.Joint;
-import yesman.epicfight.api.model.Armature;
-import yesman.epicfight.api.utils.math.OpenMatrix4f;
 import yesman.epicfight.world.capabilities.entitypatch.LivingEntityPatch;
 
 /**
@@ -88,27 +84,9 @@ public final class GeckoPostRenderMatrixOverride {
             RenderUtils.prepMatrixForBone(localBindStack, chestSource);
             Matrix4f localBind = new Matrix4f(localBindStack.last().pose());
 
-            Armature armature = entityPatch.getArmature();
-            OpenMatrix4f[] poseMatrices = armature.getPoseMatrices();
-            int chestJointId = HumanoidSkinWeightResolver.CHEST;
-            if (poseMatrices == null
-                    || chestJointId < 0
-                    || chestJointId >= poseMatrices.length
-                    || poseMatrices[chestJointId] == null) {
-                return;
-            }
-
-            Joint chest = armature.searchJointById(chestJointId);
-            if (chest == null) {
-                return;
-            }
-
-            // Mirror SkinnedMesh.drawPosed exactly: pose * inverse bind.
-            OpenMatrix4f skin = new OpenMatrix4f(poseMatrices[chestJointId]);
-            skin.mulBack(chest.getToOrigin());
-            Matrix4f skinMatrix = OpenMatrix4f.exportToMojangMatrix(skin);
-
-            arm(chestSource, new Matrix4f(skinMatrix).mul(localBind));
+            Matrix4f finalMatrix = GeckoPostRenderSkinMatrix.compose(
+                    entityPatch.getArmature(), localBind);
+            if (finalMatrix != null) arm(chestSource, finalMatrix);
         } catch (Throwable ignored) {
             // Optional compatibility path. If a renderer/model differs from the
             // expected Gecko humanoid layout, leave its normal call untouched.
