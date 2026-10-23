@@ -1,4 +1,4 @@
-package dev.nire9734.epicfightposture.neoforge.compat.models;
+package dev.nire9734.epicfightposture.compat.humanoid.client;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import dev.nire9734.epicfightposture.compat.humanoid.retarget.HumanoidSkinWeightResolver;
@@ -36,16 +36,18 @@ import java.util.function.Supplier;
 public final class GeckoHumanoidMeshAdapter {
     private static final MeshPartDefinition PART = new RuntimeGeoPart("gecko_humanoid");
 
-    public static Result analyseAndBake(BakedGeoModel model, SkeletonKey key) {
+    public static Result analyseAndBake(
+            BakedGeoModel model, SkeletonKey key, GeckoBindPoseOperations operations) {
         Objects.requireNonNull(model, "model");
         Objects.requireNonNull(key, "key");
+        Objects.requireNonNull(operations, "operations");
 
         try {
-            GeckoResolvedHumanoidRig resolved = GeckoResolvedHumanoidRig.resolve(model, key);
+            GeckoResolvedHumanoidRig resolved = GeckoResolvedHumanoidRig.resolve(model, key, operations);
             HumanoidSkeletonDescriptor descriptor = resolved.descriptor();
             HumanoidSkinWeightResolver weights = resolved.weights();
 
-            GeckoBindPoseTransforms.resetToInitial(model);
+            operations.resetToInitial(model);
 
             List<SingleGroupVertexBuilder> vertices = new ArrayList<>();
             Map<MeshPartDefinition, IntList> indices = new LinkedHashMap<>();
@@ -61,7 +63,8 @@ public final class GeckoHumanoidMeshAdapter {
                         weights,
                         vertices,
                         indices,
-                        false
+                        false,
+                        operations
                 );
                 rootIndex++;
             }
@@ -89,14 +92,15 @@ public final class GeckoHumanoidMeshAdapter {
             HumanoidSkinWeightResolver weights,
             List<SingleGroupVertexBuilder> vertices,
             Map<MeshPartDefinition, IntList> indices,
-            boolean inheritedAttachment) {
+            boolean inheritedAttachment,
+            GeckoBindPoseOperations operations) {
         if (bone == null) {
             return;
         }
 
         boolean attachment = inheritedAttachment || SourceNodeHeuristics.pathHasAttachment(path);
 
-        GeckoBindPoseTransforms.pushBone(stack, bone);
+        operations.pushBone(stack, bone);
 
         if (!bone.isHidden() && !attachment && bone.getCubes() != null) {
             for (GeoCube cube : bone.getCubes()) {
@@ -107,7 +111,7 @@ public final class GeckoHumanoidMeshAdapter {
                 if (GeckoGeometryHeuristics.isLayoutReferenceCube(bone, cube)) {
                     continue;
                 }
-                bakeCube(nodeId, cube, stack, weights, vertices, indices);
+                bakeCube(nodeId, cube, stack, weights, vertices, indices, operations);
             }
         }
 
@@ -124,7 +128,8 @@ public final class GeckoHumanoidMeshAdapter {
                         weights,
                         vertices,
                         indices,
-                        attachment
+                        attachment,
+                        operations
                 );
                 childIndex++;
             }
@@ -139,23 +144,24 @@ public final class GeckoHumanoidMeshAdapter {
             PoseStack stack,
             HumanoidSkinWeightResolver weights,
             List<SingleGroupVertexBuilder> vertices,
-            Map<MeshPartDefinition, IntList> indices) {
+            Map<MeshPartDefinition, IntList> indices,
+            GeckoBindPoseOperations operations) {
         if (cube == null || cube.quads() == null) {
             return;
         }
 
-        GeckoBindPoseTransforms.pushCube(stack, cube);
+        operations.pushCube(stack, cube);
 
         for (GeoQuad quad : cube.quads()) {
             if (!isRenderableQuad(quad)) {
                 continue;
             }
 
-            Vector3f normal = GeckoBindPoseTransforms.transformNormal(stack, quad.normal());
+            Vector3f normal = operations.transformNormal(stack, quad.normal());
 
             int first = vertices.size();
             for (GeoVertex vertex : quad.vertices()) {
-                SkeletonVec3 position = GeckoBindPoseTransforms.transformPosition(
+                SkeletonVec3 position = operations.transformPosition(
                         stack,
                         new Vector3f(vertex.position())
                 );

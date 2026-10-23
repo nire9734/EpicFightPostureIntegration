@@ -78,7 +78,8 @@ final class GeckoAttachmentBridge {
 
             GeckoResolvedHumanoidRig semanticRig = GeckoResolvedHumanoidRig.resolve(
                     bakedModel,
-                    GeckoResolvedHumanoidRig.keyFor(entity, geoModel, modelLocation)
+                    GeckoResolvedHumanoidRig.keyFor(entity, geoModel, modelLocation),
+                    GeckoBindPoseTransforms.OPERATIONS
             );
 
             for (GeoBone top : bakedModel.topLevelBones()) {

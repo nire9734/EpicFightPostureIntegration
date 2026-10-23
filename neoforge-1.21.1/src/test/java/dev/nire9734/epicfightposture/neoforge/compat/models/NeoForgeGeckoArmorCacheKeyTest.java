@@ -1,4 +1,5 @@
 package dev.nire9734.epicfightposture.neoforge.compat.models;
+import dev.nire9734.epicfightposture.compat.humanoid.client.GeckoArmorCacheKey;
 
 import org.junit.jupiter.api.Test;
 
@@ -13,20 +14,20 @@ class NeoForgeGeckoArmorCacheKeyTest {
         Object first = new String("arm");
         Object second = new String("arm");
 
-        assertEquals(NeoForgeGeckoArmorCacheKey.sourceIdentity(first), NeoForgeGeckoArmorCacheKey.sourceIdentity(first));
-        assertNotEquals(NeoForgeGeckoArmorCacheKey.sourceIdentity(first), NeoForgeGeckoArmorCacheKey.sourceIdentity(second));
+        assertEquals(GeckoArmorCacheKey.sourceIdentity(first), GeckoArmorCacheKey.sourceIdentity(first));
+        assertNotEquals(GeckoArmorCacheKey.sourceIdentity(first), GeckoArmorCacheKey.sourceIdentity(second));
     }
 
     @Test
     void visibilityChangesProduceDifferentModelVariants() {
-        NeoForgeGeckoArmorCacheKey.BoneState visible = NeoForgeGeckoArmorCacheKey.boneState(
+        GeckoArmorCacheKey.BoneState visible = GeckoArmorCacheKey.boneState(
                 false, false,
                 0.0F, 0.0F, 0.0F,
                 0.0F, 0.0F, 0.0F,
                 1.0F, 1.0F, 1.0F,
                 0.0F, 0.0F, 0.0F
         );
-        NeoForgeGeckoArmorCacheKey.BoneState hidden = NeoForgeGeckoArmorCacheKey.boneState(
+        GeckoArmorCacheKey.BoneState hidden = GeckoArmorCacheKey.boneState(
                 true, false,
                 0.0F, 0.0F, 0.0F,
                 0.0F, 0.0F, 0.0F,
@@ -35,21 +36,21 @@ class NeoForgeGeckoArmorCacheKeyTest {
         );
 
         assertNotEquals(
-                NeoForgeGeckoArmorCacheKey.modelState(List.of(visible)),
-                NeoForgeGeckoArmorCacheKey.modelState(List.of(hidden))
+                GeckoArmorCacheKey.modelState(List.of(visible)),
+                GeckoArmorCacheKey.modelState(List.of(hidden))
         );
     }
 
     @Test
     void transformChangesProduceDifferentModelVariants() {
-        NeoForgeGeckoArmorCacheKey.BoneState first = NeoForgeGeckoArmorCacheKey.boneState(
+        GeckoArmorCacheKey.BoneState first = GeckoArmorCacheKey.boneState(
                 false, false,
                 0.0F, 0.0F, 0.0F,
                 0.0F, 0.0F, 0.0F,
                 1.0F, 1.0F, 1.0F,
                 0.0F, 0.0F, 0.0F
         );
-        NeoForgeGeckoArmorCacheKey.BoneState moved = NeoForgeGeckoArmorCacheKey.boneState(
+        GeckoArmorCacheKey.BoneState moved = GeckoArmorCacheKey.boneState(
                 false, false,
                 0.25F, 0.0F, 0.0F,
                 0.0F, 0.0F, 0.0F,
@@ -58,8 +59,8 @@ class NeoForgeGeckoArmorCacheKeyTest {
         );
 
         assertNotEquals(
-                NeoForgeGeckoArmorCacheKey.modelState(List.of(first)),
-                NeoForgeGeckoArmorCacheKey.modelState(List.of(moved))
+                GeckoArmorCacheKey.modelState(List.of(first)),
+                GeckoArmorCacheKey.modelState(List.of(moved))
         );
     }
 }

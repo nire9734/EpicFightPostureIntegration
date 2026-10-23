@@ -1,4 +1,4 @@
-package dev.nire9734.epicfightposture.neoforge.compat.models;
+package dev.nire9734.epicfightposture.compat.humanoid.client;
 
 import com.github.L_Ender.lionfishapi.client.model.tools.AdvancedEntityModel;
 import com.github.L_Ender.lionfishapi.client.model.tools.AdvancedModelBox;
@@ -71,7 +71,7 @@ public final class LionfishHumanoidMeshAdapter {
      * LayerPoseOverrideContext path remains in charge. Only models containing at
      * least one safely classified deformable primitive are substituted.</p>
      */
-    static SecondaryResult analyseAndBakeSecondary(
+    public static SecondaryResult analyseAndBakeSecondary(
             AdvancedEntityModel<?> model,
             SkeletonKey key,
             HumanoidSkeletonDescriptor primaryDescriptor) {
@@ -448,7 +448,7 @@ public final class LionfishHumanoidMeshAdapter {
         }
     }
 
-    record SecondaryResult(boolean supported, SkinnedMesh mesh, String reason) {
+    public record SecondaryResult(boolean supported, SkinnedMesh mesh, String reason) {
         static SecondaryResult supported(SkinnedMesh mesh) {
             return new SecondaryResult(true, mesh, "ok");
         }

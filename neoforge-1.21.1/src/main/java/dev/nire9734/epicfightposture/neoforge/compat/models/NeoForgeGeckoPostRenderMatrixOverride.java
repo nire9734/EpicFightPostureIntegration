@@ -1,5 +1,7 @@
 package dev.nire9734.epicfightposture.neoforge.compat.models;
 
+import dev.nire9734.epicfightposture.compat.humanoid.client.GeckoResolvedHumanoidRig;
+
 import com.mojang.blaze3d.vertex.PoseStack;
 import dev.nire9734.epicfightposture.compat.humanoid.retarget.HumanoidSkinWeightResolver;
 import dev.nire9734.epicfightposture.compat.humanoid.skeleton.HumanoidJoint;
@@ -55,7 +57,8 @@ public final class NeoForgeGeckoPostRenderMatrixOverride {
             if (baked == null || baked.topLevelBones() == null) return;
 
             GeckoResolvedHumanoidRig rig = GeckoResolvedHumanoidRig.resolve(
-                    baked, GeckoResolvedHumanoidRig.keyFor(entity, model, modelLocation));
+                    baked, GeckoResolvedHumanoidRig.keyFor(entity, model, modelLocation),
+                    GeckoBindPoseTransforms.OPERATIONS);
             GeoBone chestSource = rig.sourceBone(HumanoidJoint.CHEST).orElse(null);
             if (chestSource == null) return;
 

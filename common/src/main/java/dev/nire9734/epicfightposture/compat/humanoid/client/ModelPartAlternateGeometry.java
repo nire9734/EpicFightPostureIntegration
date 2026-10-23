@@ -1,4 +1,4 @@
-package dev.nire9734.epicfightposture.neoforge.compat.models;
+package dev.nire9734.epicfightposture.compat.humanoid.client;
 
 import dev.nire9734.epicfightposture.compat.humanoid.rig.HumanoidSemanticAnalysis;
 import dev.nire9734.epicfightposture.compat.humanoid.rig.SourceNodeSnapshot;
@@ -24,7 +24,7 @@ import java.util.Set;
  * branch is excluded only when independent semantic left and right arms already
  * exist and the aggregate branch is outside both of those deformation branches.</p>
  */
-final class ModelPartAlternateGeometry {
+public final class ModelPartAlternateGeometry {
     private static final Set<String> COMBINED_ARM_NAMES = Set.of(
             "arms",
             "crossedarms",
@@ -34,7 +34,7 @@ final class ModelPartAlternateGeometry {
             "alternatearms"
     );
 
-    static Set<String> excludedGeometryNodes(
+    public static Set<String> excludedGeometryNodes(
             SourceRigSnapshot snapshot,
             HumanoidSemanticAnalysis analysis) {
         String leftArm = directSourceNode(analysis, HumanoidJoint.SHOULDER_LEFT);

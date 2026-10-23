@@ -1,5 +1,8 @@
 package dev.nire9734.epicfightposture.neoforge.compat.models;
 
+import dev.nire9734.epicfightposture.compat.humanoid.client.RuntimeMeshOwnership;
+import dev.nire9734.epicfightposture.compat.humanoid.client.BoundedLruCache;
+
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;

@@ -21,7 +21,7 @@ import java.util.Locale;
  * helper only when both the bone name is reference-like and all of its UVs are
  * degenerate.</p>
  */
-final class GeckoGeometryHeuristics {
+public final class GeckoGeometryHeuristics {
     private static final float UV_EPSILON = 1.0E-6F;
 
     static boolean isLayoutReferenceCube(GeoBone bone, GeoCube cube) {

@@ -1,5 +1,7 @@
 package dev.nire9734.epicfightposture.neoforge.compat.models;
 
+import dev.nire9734.epicfightposture.compat.humanoid.client.GeckoBindPoseOperations;
+
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
 import dev.nire9734.epicfightposture.compat.humanoid.skeleton.SkeletonQuat;
@@ -24,6 +26,15 @@ import java.util.List;
  */
 final class GeckoBindPoseTransforms {
     private static final float NORMAL_EPSILON = 1.0E-8F;
+    static final GeckoBindPoseOperations OPERATIONS = new GeckoBindPoseOperations(
+            GeckoBindPoseTransforms::resetToInitial,
+            GeckoBindPoseTransforms::pushBone,
+            GeckoBindPoseTransforms::bonePivot,
+            GeckoBindPoseTransforms::boneRotation,
+            GeckoBindPoseTransforms::pushCube,
+            GeckoBindPoseTransforms::transformPosition,
+            GeckoBindPoseTransforms::transformNormal
+    );
 
     static void resetToInitial(BakedGeoModel model) {
         if (model == null || model.topLevelBones() == null) {

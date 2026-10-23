@@ -5,6 +5,9 @@ package dev.nire9734.epicfightposture;
  * NeoForge server events adapter. Loader-specific entity access stays outside.
  */
 final class PostureRuntimeState {
+    // Combat Evolution may start its execution task a few ticks after the start event.
+    static final int EXECUTION_START_GRACE_TICKS = 5;
+
     float max;
     float current;
     int brokenTicks;
@@ -68,6 +71,10 @@ final class PostureRuntimeState {
         enterExecution();
         regenDelay = 0;
         recoveryTicksRemaining = 0;
+    }
+
+    static boolean waitingForExecutionTask(int currentTick, Integer activationDeadline) {
+        return activationDeadline != null && currentTick <= activationDeadline;
     }
 
     void beginRecovery(int totalTicks) {

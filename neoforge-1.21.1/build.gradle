@@ -40,6 +40,7 @@ sourceSets {
             srcDir('../common/src/main/java')
             include 'dev/nire9734/epicfightposture/PostureBalance.java'
             include 'dev/nire9734/epicfightposture/PostureConfigEntries.java'
+            include 'dev/nire9734/epicfightposture/PostureConfigDescriptions.java'
             include 'dev/nire9734/epicfightposture/PostureConfigPolicy.java'
             include 'dev/nire9734/epicfightposture/PostureDeathSafety.java'
             include 'dev/nire9734/epicfightposture/PostureRuntimeState.java'
@@ -51,6 +52,7 @@ sourceSets {
             include 'dev/nire9734/epicfightposture/client/PostureHudPolicy.java'
             include 'dev/nire9734/epicfightposture/neoforge/**'
             include 'dev/nire9734/epicfightposture/compat/humanoid/rig/**'
+            include 'dev/nire9734/epicfightposture/compat/humanoid/client/**'
             include 'dev/nire9734/epicfightposture/compat/humanoid/retarget/**'
             include 'dev/nire9734/epicfightposture/compat/humanoid/skeleton/**'
             include 'dev/nire9734/epicfightposture/compat/humanoid/runtime/epicfight/HumanoidArmatureFactory.java'

@@ -1,5 +1,6 @@
 package dev.nire9734.epicfightposture.neoforge;
 
+import dev.nire9734.epicfightposture.PostureConfigDescriptions;
 import java.util.List;
 import net.neoforged.neoforge.common.ModConfigSpec;
 
@@ -31,59 +32,58 @@ public final class NeoForgePostureConfig {
 
         builder.push("posture");
         ATTACK_POSTURE_DAMAGE_MULTIPLIER = builder
-                .comment("Multiplier for Posture damage from attacks, not parries.")
+                .comment(PostureConfigDescriptions.ATTACK_MULTIPLIER)
                 .defineInRange("attack_posture_damage_multiplier", 1.0D, 0.0D, 100.0D);
         PARRY_POSTURE_DAMAGE_MULTIPLIER = builder
-                .comment("Multiplier for Posture damage from parries, not attacks.")
+                .comment(PostureConfigDescriptions.PARRY_MULTIPLIER)
                 .defineInRange("parry_posture_damage_multiplier", 1.0D, 0.0D, 100.0D);
         PARRY_BASE_MAX_PERCENT = builder
-                .comment("Maximum parry percentage before parry damage multipliers, for mobs with low base health and armor.")
+                .comment(PostureConfigDescriptions.PARRY_BASE_MAX)
                 .defineInRange("parry_base_max_percent", 22.0D, 0.0D, 100.0D);
         PARRY_BASE_MIN_PERCENT = builder
-                .comment("Parry percentage before parry damage multipliers, approached for mobs with high base health and armor.")
+                .comment(PostureConfigDescriptions.PARRY_BASE_MIN)
                 .defineInRange("parry_base_min_percent", 8.0D, 0.0D, 100.0D);
         POSTURE_BREAK_RESISTANCE_STEP = builder
-                .comment("Increase in resistance for each confirmed guard break.")
+                .comment(PostureConfigDescriptions.BREAK_RESISTANCE_STEP)
                 .defineInRange("posture_break_resistance_step", 0.5D, 0.0D, 100.0D);
         POSTURE_BREAK_RESISTANCE_MAX = builder
-                .comment("Maximum resistance multiplier after repeated guard breaks.")
+                .comment(PostureConfigDescriptions.BREAK_RESISTANCE_MAX)
                 .defineInRange("posture_break_resistance_max", 2.0D, 1.0D, 100.0D);
         builder.pop();
 
         builder.push("regeneration");
         REGEN_DELAY_SECONDS = builder
-                .comment("Seconds since the last actual Posture reduction before ordinary regeneration starts.",
-                        "Both direct attacks and parries restart the delay when they reduce Posture.",
-                        "HP damage without Posture loss does not restart it; guard-break recovery is separate.")
+                .comment(PostureConfigDescriptions.REGEN_DELAY)
                 .defineInRange("delay_seconds", 15.0D, 0.0D, 60.0D);
         REGEN_PERCENT_PER_SECOND = builder
-                .comment("Percentage of maximum Posture restored each second after the delay.")
+                .comment(PostureConfigDescriptions.REGEN_RATE)
                 .defineInRange("percent_per_second", 2.0D, 0.0D, 100.0D);
         builder.pop();
 
         builder.push("entities");
         ATTACK_POSTURE_DAMAGE_MULTIPLIERS = builder
-                .comment("Override a mob type's attack Posture damage multiplier (not parries).",
-                        "Replaces the global attack multiplier. Range: 0.0-100.0. Example: [\"cataclysm:ignis=0.25\"]")
+                .comment(PostureConfigDescriptions.ATTACK_ENTITY_MULTIPLIERS,
+                        PostureConfigDescriptions.ATTACK_ENTITY_EXAMPLE)
                 .defineListAllowEmpty("attack_posture_damage_multipliers", List.of(), () -> "", value -> value instanceof String);
         PARRY_POSTURE_DAMAGE_MULTIPLIERS = builder
-                .comment("Override a mob type's parry Posture damage multiplier (not attacks).",
-                        "Replaces the global parry multiplier. Range: 0.0-100.0. Example: [\"cataclysm:ignis=0.5\"]")
+                .comment(PostureConfigDescriptions.PARRY_ENTITY_MULTIPLIERS,
+                        PostureConfigDescriptions.PARRY_ENTITY_EXAMPLE)
                 .defineListAllowEmpty("parry_posture_damage_multipliers", List.of(), () -> "", value -> value instanceof String);
         ENTITY_BLACKLIST = builder
-                .comment("Mob types excluded from Posture. Example: [\"minecraft:zombie\"]")
+                .comment(PostureConfigDescriptions.ENTITY_BLACKLIST,
+                        PostureConfigDescriptions.ENTITY_BLACKLIST_EXAMPLE)
                 .defineListAllowEmpty("entity_blacklist", List.of(), () -> "", value -> value instanceof String);
         builder.pop();
 
         builder.push("compatibility");
         AUTOMATIC_COMPATIBILITY = builder
-                .comment("Automatically add Posture support to compatible mobs without Epic Fight patches.")
+                .comment(PostureConfigDescriptions.AUTOMATIC_COMPATIBILITY)
                 .define("automatic_compatibility", true);
         MOD_ALLOWLIST = builder
-                .comment("Only automatically add support to these mod IDs. [] allows all mods.")
+                .comment(PostureConfigDescriptions.MOD_ALLOWLIST)
                 .defineListAllowEmpty("mod_allowlist", List.of(), () -> "", value -> value instanceof String);
         MOD_DENYLIST = builder
-                .comment("Do not automatically add support to these mod IDs. Overrides the allowlist.")
+                .comment(PostureConfigDescriptions.MOD_DENYLIST)
                 .defineListAllowEmpty("mod_denylist", List.of(), () -> "", value -> value instanceof String);
         builder.pop();
 

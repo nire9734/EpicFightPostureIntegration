@@ -1,5 +1,10 @@
 package dev.nire9734.epicfightposture.neoforge.compat.models;
 
+import dev.nire9734.epicfightposture.compat.humanoid.client.LionfishLayerRenderTargetCapture;
+import dev.nire9734.epicfightposture.compat.humanoid.client.LionfishPrimaryModelLayerBridge;
+import dev.nire9734.epicfightposture.compat.humanoid.client.LionfishSecondaryModelLayerBridge;
+import dev.nire9734.epicfightposture.compat.humanoid.client.LayerPoseOverrideContext;
+
 import com.mojang.blaze3d.vertex.PoseStack;
 import dev.nire9734.epicfightposture.compat.humanoid.skeleton.HumanoidSkeletonDescriptor;
 import dev.nire9734.epicfightposture.neoforge.mixin.NeoForgeLivingEntityRendererLayersAccessor;

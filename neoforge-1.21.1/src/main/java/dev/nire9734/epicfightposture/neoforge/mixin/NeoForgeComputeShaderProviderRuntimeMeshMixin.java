@@ -1,6 +1,6 @@
 package dev.nire9734.epicfightposture.neoforge.mixin;
 
-import dev.nire9734.epicfightposture.neoforge.compat.models.RuntimeMeshOwnership;
+import dev.nire9734.epicfightposture.compat.humanoid.client.RuntimeMeshOwnership;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;

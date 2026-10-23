@@ -4,7 +4,7 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import dev.nire9734.epicfightposture.neoforge.compat.models.NeoForgeGeckoArmorBakeTransformContext;
 import dev.nire9734.epicfightposture.neoforge.compat.models.NeoForgeGeckoArmorSkinnedMeshBridge;
-import dev.nire9734.epicfightposture.neoforge.compat.models.RuntimeMeshOwnership;
+import dev.nire9734.epicfightposture.compat.humanoid.client.RuntimeMeshOwnership;
 import dev.nire9734.epicfightposture.neoforge.compat.models.NeoForgeSpecialRenderHooks;
 import net.minecraft.client.model.HumanoidModel;
 import net.minecraft.client.model.geom.ModelPart;

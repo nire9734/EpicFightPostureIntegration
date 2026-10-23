@@ -1,4 +1,4 @@
-package dev.nire9734.epicfightposture.neoforge.compat.models;
+package dev.nire9734.epicfightposture.compat.humanoid.client;
 
 import com.github.L_Ender.lionfishapi.client.model.tools.AdvancedEntityModel;
 import com.github.L_Ender.lionfishapi.client.model.tools.AdvancedModelBox;
@@ -15,8 +15,8 @@ import java.util.Set;
  * Optional Lionfish model snapshot. Kept separate from SourceModelPreparation
  * so clients without Lionfish never resolve these classes during normal renders.
  */
-final class LionfishSourceModelState {
-    static List<Runnable> capture(EntityModel<?> source) {
+public final class LionfishSourceModelState {
+    public static List<Runnable> capture(EntityModel<?> source) {
         AdvancedEntityModel<?> model = (AdvancedEntityModel<?>) source;
         List<Runnable> states = new ArrayList<>();
         Set<BasicModelPart> visited = Collections.newSetFromMap(new IdentityHashMap<>());

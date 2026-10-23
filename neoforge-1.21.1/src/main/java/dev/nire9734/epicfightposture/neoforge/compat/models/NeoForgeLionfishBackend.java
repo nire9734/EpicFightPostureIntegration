@@ -1,5 +1,10 @@
 package dev.nire9734.epicfightposture.neoforge.compat.models;
 
+import dev.nire9734.epicfightposture.compat.humanoid.client.LionfishSecondaryModelLayerBridge;
+import dev.nire9734.epicfightposture.compat.humanoid.client.LayerPoseOverrideContext;
+import dev.nire9734.epicfightposture.compat.humanoid.client.LionfishHumanoidMeshAdapter;
+import dev.nire9734.epicfightposture.compat.humanoid.client.RuntimeMeshOwnership;
+
 import com.github.L_Ender.lionfishapi.client.model.tools.AdvancedEntityModel;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.logging.LogUtils;

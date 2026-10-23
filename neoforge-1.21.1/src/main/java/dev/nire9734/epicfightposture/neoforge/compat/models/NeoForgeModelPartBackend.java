@@ -1,5 +1,8 @@
 package dev.nire9734.epicfightposture.neoforge.compat.models;
 
+import dev.nire9734.epicfightposture.compat.humanoid.client.RuntimeMeshOwnership;
+import dev.nire9734.epicfightposture.compat.humanoid.client.ModelPartHumanoidMeshAdapter;
+
 import com.mojang.logging.LogUtils;
 import dev.nire9734.epicfightposture.compat.humanoid.skeleton.SkeletonKey;
 import dev.nire9734.epicfightposture.neoforge.client.NeoForgePreparedRig;

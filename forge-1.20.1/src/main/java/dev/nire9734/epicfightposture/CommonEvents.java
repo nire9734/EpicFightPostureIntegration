@@ -36,9 +36,12 @@ public final class CommonEvents {
 
     @SubscribeEvent
     public static void onExecutionStart(OnExecutionStartEvent event) {
+        if (event.isCanceled()) {
+            return;
+        }
         Object original = event.getTarget().getOriginal();
         if (original instanceof LivingEntity target) {
-            PostureManager.onExecutionStart(target);
+            PostureManager.onExecutionStart(target, event.getTarget());
         }
     }
 

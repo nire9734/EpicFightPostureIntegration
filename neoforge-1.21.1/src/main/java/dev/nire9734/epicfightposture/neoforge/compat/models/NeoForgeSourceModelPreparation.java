@@ -110,7 +110,7 @@ public final class NeoForgeSourceModelPreparation {
     private static List<Runnable> captureLionfishState(EntityModel<?> model) {
         try {
             Class<?> helper = Class.forName(
-                    "dev.nire9734.epicfightposture.neoforge.compat.models.LionfishSourceModelState");
+                    "dev.nire9734.epicfightposture.compat.humanoid.client.LionfishSourceModelState");
             Method capture = helper.getDeclaredMethod("capture", EntityModel.class);
             capture.setAccessible(true);
             Object result = capture.invoke(null, model);

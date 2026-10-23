@@ -27,14 +27,15 @@ public final class GeckoSourceRigAdapter {
     private static final float SCALE_EPSILON = 1.0E-5F;
     private static final float GEOMETRY_EPSILON = 1.0E-5F;
 
-    public static Capture capture(BakedGeoModel model, SkeletonKey key) {
+    public static Capture capture(BakedGeoModel model, SkeletonKey key, GeckoBindPoseOperations operations) {
         Objects.requireNonNull(model, "model");
         Objects.requireNonNull(key, "key");
+        Objects.requireNonNull(operations, "operations");
         if (model.topLevelBones() == null || model.topLevelBones().isEmpty()) {
             throw new IllegalArgumentException("Gecko model has no top-level bones");
         }
 
-        GeckoBindPoseTransforms.resetToInitial(model);
+        operations.resetToInitial(model);
 
         LinkedHashMap<String, SourceNodeSnapshot> nodes = new LinkedHashMap<>();
         LinkedHashMap<String, GeoBone> sourceNodes = new LinkedHashMap<>();
@@ -56,7 +57,8 @@ public final class GeckoSourceRigAdapter {
                     sourceNodes,
                     geometryBounds,
                     pivotBounds,
-                    nonUniformScale
+                    nonUniformScale,
+                    operations
             );
             rootIndex++;
         }
@@ -82,7 +84,8 @@ public final class GeckoSourceRigAdapter {
             Map<String, GeoBone> sourceNodes,
             BoundsAccumulator globalGeometryBounds,
             BoundsAccumulator globalPivotBounds,
-            boolean[] nonUniformScale) {
+            boolean[] nonUniformScale,
+            GeckoBindPoseOperations operations) {
         if (bone == null) {
             return;
         }
@@ -98,15 +101,15 @@ public final class GeckoSourceRigAdapter {
             nonUniformScale[0] = true;
         }
 
-        GeckoBindPoseTransforms.pushBone(stack, bone);
-        SkeletonVec3 pivot = GeckoBindPoseTransforms.bonePivot(stack, bone);
+        operations.pushBone(stack, bone);
+        SkeletonVec3 pivot = operations.bonePivot(stack, bone);
         if (!attachment) {
             globalPivotBounds.include(pivot);
         }
 
         RigidTransform bindTransform = new RigidTransform(
                 pivot,
-                GeckoBindPoseTransforms.boneRotation(stack)
+                operations.boneRotation(stack)
         );
 
         BoundsAccumulator ownGeometry = new BoundsAccumulator();
@@ -120,7 +123,7 @@ public final class GeckoSourceRigAdapter {
                 if (GeckoGeometryHeuristics.isLayoutReferenceCube(bone, cube)) {
                     continue;
                 }
-                CubeCapture cubeCapture = captureCube(stack, cube);
+                CubeCapture cubeCapture = captureCube(stack, cube, operations);
                 cubeCapture.bounds().ifPresent(bounds -> {
                     ownGeometry.include(bounds);
                     globalGeometryBounds.include(bounds);
@@ -156,7 +159,8 @@ public final class GeckoSourceRigAdapter {
                         sourceNodes,
                         globalGeometryBounds,
                         globalPivotBounds,
-                        nonUniformScale
+                        nonUniformScale,
+                        operations
                 );
                 childIndex++;
             }
@@ -165,12 +169,13 @@ public final class GeckoSourceRigAdapter {
         stack.popPose();
     }
 
-    private static CubeCapture captureCube(PoseStack boneStack, GeoCube cube) {
+    private static CubeCapture captureCube(
+            PoseStack boneStack, GeoCube cube, GeckoBindPoseOperations operations) {
         if (cube == null || cube.quads() == null || cube.quads().length == 0) {
             return CubeCapture.empty();
         }
 
-        GeckoBindPoseTransforms.pushCube(boneStack, cube);
+        operations.pushCube(boneStack, cube);
 
         BoundsAccumulator bounds = new BoundsAccumulator();
         for (GeoQuad quad : cube.quads()) {
@@ -181,7 +186,7 @@ public final class GeckoSourceRigAdapter {
                 if (vertex == null || vertex.position() == null) {
                     continue;
                 }
-                SkeletonVec3 position = GeckoBindPoseTransforms.transformPosition(
+                SkeletonVec3 position = operations.transformPosition(
                         boneStack,
                         new Vector3f(vertex.position())
                 );

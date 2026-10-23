@@ -1,8 +1,7 @@
-package dev.nire9734.epicfightposture.neoforge.compat.models;
+package dev.nire9734.epicfightposture.compat.humanoid.client;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
-import org.joml.Matrix3f;
 import org.joml.Matrix4f;
 import yesman.epicfight.api.client.model.SkinnedMesh;
 import yesman.epicfight.api.model.Armature;
@@ -37,10 +36,9 @@ import java.util.Map;
  * source-model replay path.</p>
  */
 public final class LionfishPrimaryModelLayerBridge {
-    private static final float MATRIX_EPSILON = 1.0E-8F;
     private static final ThreadLocal<Frame> ACTIVE = new ThreadLocal<>();
 
-    static Scope open(Object primaryModel, SkinnedMesh primaryMesh, Armature armature) {
+    public static Scope open(Object primaryModel, SkinnedMesh primaryMesh, Armature armature) {
         Frame previous = ACTIVE.get();
         if (primaryModel == null || primaryMesh == null || armature == null) {
             return new Scope(previous, false);
@@ -130,16 +128,7 @@ public final class LionfishPrimaryModelLayerBridge {
     }
 
     private static void mulPoseAndNormal(PoseStack poseStack, Matrix4f transform) {
-        poseStack.mulPose(new Matrix4f(transform));
-
-        // Minecraft 1.21.1 PoseStack.mulPose updates only the position
-        // matrix. Keep normals equivalent to multiplying the full inverse basis.
-        Matrix3f normalTransform = new Matrix3f(transform);
-        float determinant = normalTransform.determinant();
-        if (Float.isFinite(determinant) && Math.abs(determinant) > MATRIX_EPSILON) {
-            normalTransform.invert().transpose();
-            poseStack.last().normal().mul(normalTransform);
-        }
+        PoseStackMatrixTransform.multiplyPositionAndNormal(poseStack, transform);
     }
 
     static VisibilitySnapshot captureVisibility(Object model) {
@@ -312,7 +301,7 @@ public final class LionfishPrimaryModelLayerBridge {
     private record PartVisibility(boolean showModel, boolean hidden) {
     }
 
-    static final class Scope implements AutoCloseable {
+    public static final class Scope implements AutoCloseable {
         private final Frame previous;
         private final boolean installed;
         private boolean closed;

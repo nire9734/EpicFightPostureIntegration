@@ -1,7 +1,7 @@
 package dev.nire9734.epicfightposture.neoforge.mixin;
 
 import com.mojang.blaze3d.vertex.VertexConsumer;
-import dev.nire9734.epicfightposture.neoforge.compat.models.LionfishLayerRenderTargetCapture;
+import dev.nire9734.epicfightposture.compat.humanoid.client.LionfishLayerRenderTargetCapture;
 import dev.nire9734.epicfightposture.neoforge.compat.models.NeoForgeSpecialRenderHooks;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;

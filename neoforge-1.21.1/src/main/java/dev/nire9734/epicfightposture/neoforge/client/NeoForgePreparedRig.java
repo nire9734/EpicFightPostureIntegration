@@ -3,7 +3,7 @@ import dev.nire9734.epicfightposture.compat.humanoid.skeleton.HumanoidSkeletonDe
 import yesman.epicfight.api.asset.AssetAccessor;
 import yesman.epicfight.api.client.model.SkinnedMesh;
 import java.util.Objects;
-import dev.nire9734.epicfightposture.neoforge.compat.models.ModelPartAttachmentPlan;
+import dev.nire9734.epicfightposture.compat.humanoid.client.ModelPartAttachmentPlan;
 
 /** Result of a high-confidence GeckoLib/Lionfish bind-pose model conversion. */
 public record NeoForgePreparedRig(AssetAccessor<SkinnedMesh> mesh,

@@ -19,7 +19,7 @@ import java.util.IdentityHashMap;
 public final class LionfishLayerRenderTargetCapture {
     private static final ThreadLocal<Frame> ACTIVE = new ThreadLocal<>();
 
-    static Scope open(MultiBufferSource bufferSource) {
+    public static Scope open(MultiBufferSource bufferSource) {
         Frame previous = ACTIVE.get();
         if (bufferSource == null) {
             return new Scope(previous, false);
@@ -43,7 +43,7 @@ public final class LionfishLayerRenderTargetCapture {
         frame.renderTypes.put(vertexConsumer, renderType);
     }
 
-    static Target resolve(VertexConsumer vertexConsumer) {
+    public static Target resolve(VertexConsumer vertexConsumer) {
         Frame frame = ACTIVE.get();
         if (frame == null || vertexConsumer == null) {
             return null;
@@ -52,10 +52,10 @@ public final class LionfishLayerRenderTargetCapture {
         return renderType == null ? null : new Target(frame.bufferSource, renderType);
     }
 
-    record Target(MultiBufferSource bufferSource, RenderType renderType) {
+    public record Target(MultiBufferSource bufferSource, RenderType renderType) {
     }
 
-    static final class Scope implements AutoCloseable {
+    public static final class Scope implements AutoCloseable {
         private final Frame previous;
         private final boolean installed;
         private boolean closed;

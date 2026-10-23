@@ -18,9 +18,8 @@ import net.minecraft.client.model.HierarchicalModel;
 import net.minecraft.client.model.geom.ModelPart;
 import net.minecraft.client.model.geom.PartPose;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.world.entity.EntityType;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.entity.LivingEntity;
-import org.joml.Matrix3f;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 import yesman.epicfight.api.animation.Joint;
@@ -57,7 +56,6 @@ import java.util.WeakHashMap;
  * different elbow, knee or spine location from the body it covers.</p>
  */
 public final class LayerPoseOverrideContext {
-    private static final float MATRIX_EPSILON = 1.0E-8F;
     private static final String LIONFISH_MODEL_CLASS =
             "com.github.L_Ender.lionfishapi.client.model.tools.AdvancedEntityModel";
     private static final String LIONFISH_ADAPTER_CLASS =
@@ -69,7 +67,7 @@ public final class LayerPoseOverrideContext {
             Collections.synchronizedMap(new WeakHashMap<>());
 
     /** Renderer/armature reload invalidates source-layer retargeting plans. */
-    static void clearCache() {
+    public static void clearCache() {
         synchronized (MODEL_PLANS) {
             MODEL_PLANS.clear();
         }
@@ -131,14 +129,7 @@ public final class LayerPoseOverrideContext {
             return false;
         }
 
-        poseStack.mulPoseMatrix(new Matrix4f(local));
-
-        Matrix3f normalTransform = new Matrix3f(local);
-        float determinant = normalTransform.determinant();
-        if (Float.isFinite(determinant) && Math.abs(determinant) > MATRIX_EPSILON) {
-            normalTransform.invert().transpose();
-            poseStack.last().normal().mul(normalTransform);
-        }
+        PoseStackMatrixTransform.multiplyPositionAndNormal(poseStack, local);
         return true;
     }
 
@@ -377,7 +368,7 @@ public final class LayerPoseOverrideContext {
         }
 
         private SkeletonKey keyFor(Object model) {
-            ResourceLocation entityId = EntityType.getKey(entity.getType());
+            ResourceLocation entityId = BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType());
             return new SkeletonKey(entityId.toString(), model.getClass().getName() + "#render_layer");
         }
     }

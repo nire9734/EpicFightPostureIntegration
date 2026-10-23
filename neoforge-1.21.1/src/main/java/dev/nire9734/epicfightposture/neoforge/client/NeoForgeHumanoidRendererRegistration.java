@@ -13,7 +13,7 @@ import dev.nire9734.epicfightposture.client.ClientPostureStore;
 import dev.nire9734.epicfightposture.neoforge.mixin.NeoForgeEntityRenderDispatcherAccessor;
 import dev.nire9734.epicfightposture.neoforge.compat.NeoForgeAutoCompatibility;
 import dev.nire9734.epicfightposture.neoforge.compat.NeoForgeHumanoidRenderGate;
-import dev.nire9734.epicfightposture.neoforge.compat.models.RuntimeMeshOwnership;
+import dev.nire9734.epicfightposture.compat.humanoid.client.RuntimeMeshOwnership;
 import dev.nire9734.epicfightposture.neoforge.client.NeoForgeRendererDiscoveryClient;
 import net.minecraft.client.model.HumanoidModel;
 import net.minecraft.client.model.SpiderModel;

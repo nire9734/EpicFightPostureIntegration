@@ -70,7 +70,8 @@ public final class GeckoPostRenderMatrixOverride {
 
             GeckoResolvedHumanoidRig resolved = GeckoResolvedHumanoidRig.resolve(
                     bakedModel,
-                    GeckoResolvedHumanoidRig.keyFor(entity, geoModel, modelLocation)
+                    GeckoResolvedHumanoidRig.keyFor(entity, geoModel, modelLocation),
+                    GeckoBindPoseTransforms.OPERATIONS
             );
             GeoBone chestSource = resolved.sourceBone(HumanoidJoint.CHEST).orElse(null);
             if (chestSource == null) {

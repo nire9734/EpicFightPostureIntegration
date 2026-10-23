@@ -1,4 +1,4 @@
-package dev.nire9734.epicfightposture.neoforge.compat.models;
+package dev.nire9734.epicfightposture.compat.humanoid.client;
 
 import dev.nire9734.epicfightposture.compat.humanoid.retarget.HumanoidSkinWeightResolver;
 import dev.nire9734.epicfightposture.compat.humanoid.rig.ConservativeHumanoidSemanticAnalyzer;
@@ -10,8 +10,8 @@ import dev.nire9734.epicfightposture.compat.humanoid.skeleton.HumanoidJoint;
 import dev.nire9734.epicfightposture.compat.humanoid.skeleton.HumanoidSkeletonDescriptor;
 import dev.nire9734.epicfightposture.compat.humanoid.skeleton.JointOrigin;
 import dev.nire9734.epicfightposture.compat.humanoid.skeleton.SkeletonKey;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import software.bernie.geckolib.cache.object.BakedGeoModel;
 import software.bernie.geckolib.cache.object.GeoBone;
@@ -31,7 +31,7 @@ import java.util.WeakHashMap;
  * body conversion. Resource reloads replace BakedGeoModel instances, allowing the weak
  * outer key to invalidate the old resolution naturally.</p>
  */
-final class GeckoResolvedHumanoidRig {
+public final class GeckoResolvedHumanoidRig {
     private static final Map<BakedGeoModel, Map<SkeletonKey, GeckoResolvedHumanoidRig>> CACHE =
             Collections.synchronizedMap(new WeakHashMap<>());
 
@@ -42,7 +42,8 @@ final class GeckoResolvedHumanoidRig {
     private final Map<String, GeoBone> sourceNodes;
     private final IdentityHashMap<GeoBone, Integer> deformationJointIds;
 
-    static GeckoResolvedHumanoidRig resolve(BakedGeoModel model, SkeletonKey key) {
+    public static GeckoResolvedHumanoidRig resolve(
+            BakedGeoModel model, SkeletonKey key, GeckoBindPoseOperations operations) {
         if (model == null) {
             throw new IllegalArgumentException("Gecko model cannot be null");
         }
@@ -58,7 +59,7 @@ final class GeckoResolvedHumanoidRig {
                 return cached;
             }
 
-            GeckoSourceRigAdapter.Capture capture = GeckoSourceRigAdapter.capture(model, key);
+            GeckoSourceRigAdapter.Capture capture = GeckoSourceRigAdapter.capture(model, key, operations);
             HumanoidSemanticAnalysis analysis =
                     ConservativeHumanoidSemanticAnalyzer.INSTANCE.analyze(capture.snapshot());
             HumanoidSkeletonDescriptor descriptor =
@@ -78,11 +79,11 @@ final class GeckoResolvedHumanoidRig {
         }
     }
 
-    static SkeletonKey keyFor(
+    public static SkeletonKey keyFor(
             LivingEntity entity,
             GeoModel<?> geoModel,
             ResourceLocation modelLocation) {
-        ResourceLocation entityId = entity == null ? null : net.minecraft.core.registries.BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType());
+        ResourceLocation entityId = entity == null ? null : BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType());
         if (entityId == null) {
             throw new IllegalArgumentException("Gecko humanoid entity has no registry id");
         }
@@ -148,21 +149,21 @@ final class GeckoResolvedHumanoidRig {
         });
     }
 
-    HumanoidSkeletonDescriptor descriptor() {
+    public HumanoidSkeletonDescriptor descriptor() {
         return descriptor;
     }
 
-    HumanoidSkinWeightResolver weights() {
+    public HumanoidSkinWeightResolver weights() {
         return weights;
     }
 
-    Optional<GeoBone> sourceBone(HumanoidJoint joint) {
+    public Optional<GeoBone> sourceBone(HumanoidJoint joint) {
         return analysis.candidate(joint)
                 .flatMap(SemanticJointCandidate::sourceNodeId)
                 .map(sourceNodes::get);
     }
 
-    int deformationJointId(GeoBone bone) {
+    public int deformationJointId(GeoBone bone) {
         return deformationJointIds.getOrDefault(bone, HumanoidSkinWeightResolver.ROOT);
     }
 }

@@ -1,14 +1,14 @@
-package dev.nire9734.epicfightposture.neoforge.compat.models;
+package dev.nire9734.epicfightposture.compat.humanoid.client;
 
 import dev.nire9734.epicfightposture.compat.humanoid.retarget.HumanoidSkinWeightResolver;
 
 /** Small pure helper for adaptive tessellation of deforming source quads. */
-final class SkinningSubdivision {
+public final class SkinningSubdivision {
     private static final float WEIGHT_EPSILON = 1.0E-4F;
     private static final float SAMPLE_SPACING_PIXELS = 1.0F;
     private static final int MAX_SEGMENTS = 32;
 
-    static boolean weightsDiffer(
+    public static boolean weightsDiffer(
             HumanoidSkinWeightResolver.SkinWeights first,
             HumanoidSkinWeightResolver.SkinWeights second) {
         if (first == null || second == null) {
@@ -21,7 +21,7 @@ final class SkinningSubdivision {
                 || Math.abs(first.secondWeight() - second.secondWeight()) > WEIGHT_EPSILON;
     }
 
-    static int segmentCount(float edgeLengthPixels, boolean varyingSkin) {
+    public static int segmentCount(float edgeLengthPixels, boolean varyingSkin) {
         if (!varyingSkin || !Float.isFinite(edgeLengthPixels) || edgeLengthPixels <= SAMPLE_SPACING_PIXELS) {
             return 1;
         }

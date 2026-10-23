@@ -41,6 +41,7 @@ public final class PostureManager {
     private static final float MAX_SAFE_POSTURE = 1_000_000.0F;
 
     private static final Map<LivingEntity, PostureRuntimeState> STATES = new WeakHashMap<>();
+    private static final Map<LivingEntity, Integer> PENDING_EXECUTION_START = new WeakHashMap<>();
     /** One in-flight LivingDamageEvent per target, resolved after vanilla actually changes HP. */
     private static final Map<LivingEntity, PendingAttack> PENDING_ATTACKS = new WeakHashMap<>();
 
@@ -184,6 +185,7 @@ public final class PostureManager {
         if (state.postureState == PostureState.BROKEN || state.postureState == PostureState.EXECUTING) {
             boolean executing = isExecuting(entity);
             if (executing) {
+                PENDING_EXECUTION_START.remove(entity);
                 if (state.postureState != PostureState.EXECUTING) {
                     state.enterExecution();
                     PostureSyncEvents.syncNow(entity);
@@ -194,6 +196,11 @@ public final class PostureManager {
             }
 
             if (state.postureState == PostureState.EXECUTING) {
+                if (PostureRuntimeState.waitingForExecutionTask(
+                        entity.tickCount, PENDING_EXECUTION_START.get(entity))) {
+                    return true;
+                }
+                PENDING_EXECUTION_START.remove(entity);
                 startRecovering(state);
                 PostureSyncEvents.syncNow(entity);
                 return true;
@@ -221,16 +228,17 @@ public final class PostureManager {
     }
 
     /** Called from Combat Evolution's execution-start event. */
-    public static void onExecutionStart(LivingEntity target) {
-        if (target == null || !RuntimeAccess.isServerEntity(target)) {
+    public static void onExecutionStart(LivingEntity target, LivingEntityPatch<?> patch) {
+        if (target == null || !RuntimeAccess.isServerEntity(target)
+                || !isEligiblePostureEntity(target, patch)) {
             return;
         }
-        PostureRuntimeState state = STATES.get(target);
-        if (state == null) {
-            return;
-        }
+        // A rear assassination can begin before the target has ever taken Posture damage.
+        PostureRuntimeState state = state(target);
         stopUsingItem(target);
         state.startExecution();
+        PENDING_EXECUTION_START.put(target,
+                target.tickCount + PostureRuntimeState.EXECUTION_START_GRACE_TICKS);
         PostureSyncEvents.syncNow(target);
     }
 
@@ -264,6 +272,7 @@ public final class PostureManager {
             return;
         }
         PENDING_ATTACKS.remove(entity);
+        PENDING_EXECUTION_START.remove(entity);
         PostureRuntimeState removed = STATES.remove(entity);
         if (removed != null && notifyClients && RuntimeAccess.isServerEntity(entity)) {
             PostureSyncEvents.removeNow(entity);

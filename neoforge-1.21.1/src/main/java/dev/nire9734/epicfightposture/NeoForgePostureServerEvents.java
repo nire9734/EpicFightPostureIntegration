@@ -39,9 +39,6 @@ import yesman.epicfight.skill.guard.GuardSkill;
 public final class NeoForgePostureServerEvents {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final int RECOVERY_TICKS = 60;
-    // Combat Evolution schedules its ExecutionTask after OnExecutionStartEvent.
-    // Allow the task to become active before deciding an assassination ended.
-    private static final int EXECUTION_START_GRACE_TICKS = 5;
     private static final Map<Mob, PostureRuntimeState> STATES = new WeakHashMap<>();
     private static final Map<Mob, Integer> PENDING_EXECUTION_START = new WeakHashMap<>();
     private static boolean registered;
@@ -134,7 +131,7 @@ public final class NeoForgePostureServerEvents {
             }
             if (state.postureState == PostureState.EXECUTING) {
                 Integer activationDeadline = PENDING_EXECUTION_START.get(mob);
-                if (activationDeadline != null && mob.tickCount <= activationDeadline) {
+                if (PostureRuntimeState.waitingForExecutionTask(mob.tickCount, activationDeadline)) {
                     // OnExecutionStartEvent precedes ExecutionTask.onStart().
                     // Do not return to the vanilla renderer during this gap.
                     return;
@@ -237,7 +234,8 @@ public final class NeoForgePostureServerEvents {
                 target -> new PostureRuntimeState(maximumPosture(target)));
         mob.stopUsingItem();
         state.startExecution();
-        PENDING_EXECUTION_START.put(mob, mob.tickCount + EXECUTION_START_GRACE_TICKS);
+        PENDING_EXECUTION_START.put(mob,
+                mob.tickCount + PostureRuntimeState.EXECUTION_START_GRACE_TICKS);
         dev.nire9734.epicfightposture.neoforge.network.NeoForgePostureSync.syncNow(mob, stateForSync(mob));
     }
 

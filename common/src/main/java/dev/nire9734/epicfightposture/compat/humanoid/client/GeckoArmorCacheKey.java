@@ -4,16 +4,16 @@ import java.util.List;
 import java.util.Objects;
 
 /** Pure cache-key values used by Gecko armor conversion. */
-final class GeckoArmorCacheKey {
-    static SourceIdentity sourceIdentity(Object source) {
+public final class GeckoArmorCacheKey {
+    public static SourceIdentity sourceIdentity(Object source) {
         return new SourceIdentity(source);
     }
 
-    static ModelState modelState(List<BoneState> bones) {
+    public static ModelState modelState(List<BoneState> bones) {
         return new ModelState(bones);
     }
 
-    static BoneState boneState(
+    public static BoneState boneState(
             boolean hidden,
             boolean hidingChildren,
             float posX,
@@ -46,7 +46,7 @@ final class GeckoArmorCacheKey {
         );
     }
 
-    static final class SourceIdentity {
+    public static final class SourceIdentity {
         private final Object source;
         private final int hash;
 
@@ -67,7 +67,7 @@ final class GeckoArmorCacheKey {
         }
     }
 
-    record BoneState(
+    public record BoneState(
             boolean hidden,
             boolean hidingChildren,
             int posX,
@@ -84,8 +84,8 @@ final class GeckoArmorCacheKey {
             int pivotZ) {
     }
 
-    record ModelState(List<BoneState> bones) {
-        ModelState {
+    public record ModelState(List<BoneState> bones) {
+        public ModelState {
             bones = bones == null ? List.of() : List.copyOf(bones);
         }
     }

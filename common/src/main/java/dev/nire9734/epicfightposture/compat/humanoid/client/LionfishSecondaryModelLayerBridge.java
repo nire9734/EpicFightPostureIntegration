@@ -8,7 +8,6 @@ import dev.nire9734.epicfightposture.compat.humanoid.skeleton.HumanoidJoint;
 import dev.nire9734.epicfightposture.compat.humanoid.skeleton.HumanoidSkeletonDescriptor;
 import dev.nire9734.epicfightposture.compat.humanoid.skeleton.SkeletonKey;
 import dev.nire9734.epicfightposture.compat.humanoid.skeleton.SkeletonVec3;
-import org.joml.Matrix3f;
 import org.joml.Matrix4f;
 import yesman.epicfight.api.client.model.SkinnedMesh;
 import yesman.epicfight.api.model.Armature;
@@ -35,7 +34,6 @@ import java.util.WeakHashMap;
  * equivalent TRIANGLES RenderType without changing its shader/texture/state.</p>
  */
 public final class LionfishSecondaryModelLayerBridge {
-    private static final float MATRIX_EPSILON = 1.0E-8F;
     private static final int MAX_SECONDARY_VARIANTS_PER_MODEL = 64;
     private static final ThreadLocal<Frame> ACTIVE = new ThreadLocal<>();
 
@@ -44,13 +42,13 @@ public final class LionfishSecondaryModelLayerBridge {
             Collections.synchronizedMap(new WeakHashMap<>());
 
     /** Renderer reload invalidates baked secondary meshes and their descriptors. */
-    static void clearCache() {
+    public static void clearCache() {
         synchronized (CACHE) {
             CACHE.clear();
         }
     }
 
-    static Scope open(
+    public static Scope open(
             Object primaryModel,
             HumanoidSkeletonDescriptor primaryDescriptor,
             Armature armature) {
@@ -200,13 +198,7 @@ public final class LionfishSecondaryModelLayerBridge {
     }
 
     private static void mulPoseAndNormal(PoseStack poseStack, Matrix4f transform) {
-        poseStack.mulPoseMatrix(new Matrix4f(transform));
-        Matrix3f normalTransform = new Matrix3f(transform);
-        float determinant = normalTransform.determinant();
-        if (Float.isFinite(determinant) && Math.abs(determinant) > MATRIX_EPSILON) {
-            normalTransform.invert().transpose();
-            poseStack.last().normal().mul(normalTransform);
-        }
+        PoseStackMatrixTransform.multiplyPositionAndNormal(poseStack, transform);
     }
 
     private static VisibilityKey visibilityKey(AdvancedEntityModel<?> model) {
@@ -238,7 +230,7 @@ public final class LionfishSecondaryModelLayerBridge {
         return hash;
     }
 
-    static final class Scope implements AutoCloseable {
+    public static final class Scope implements AutoCloseable {
         private final Frame previous;
         private final boolean installed;
         private boolean closed;

@@ -79,6 +79,15 @@ class PostureRuntimeStateTest {
         assertTrue(state.isLocked());
     }
 
+    @Test void executionStartWaitsForScheduledTaskOnBothLoaders() {
+        int startTick = 100;
+        int deadline = startTick + PostureRuntimeState.EXECUTION_START_GRACE_TICKS;
+        assertTrue(PostureRuntimeState.waitingForExecutionTask(startTick, deadline));
+        assertTrue(PostureRuntimeState.waitingForExecutionTask(deadline, deadline));
+        assertFalse(PostureRuntimeState.waitingForExecutionTask(deadline + 1, deadline));
+        assertFalse(PostureRuntimeState.waitingForExecutionTask(startTick, null));
+    }
+
     @Test void recoveryFinishesAfterExactlySixtyTicks() {
         PostureRuntimeState state = new PostureRuntimeState(100.0F);
         state.beginRecovery(60);

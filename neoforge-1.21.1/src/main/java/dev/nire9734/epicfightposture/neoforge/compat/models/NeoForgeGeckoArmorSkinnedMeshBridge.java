@@ -1,4 +1,7 @@
 package dev.nire9734.epicfightposture.neoforge.compat.models;
+import dev.nire9734.epicfightposture.compat.humanoid.client.GeckoArmorCacheKey;
+
+import dev.nire9734.epicfightposture.compat.humanoid.client.BoundedLruCache;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import dev.nire9734.epicfightposture.compat.humanoid.retarget.HumanoidSkinWeightResolver;
@@ -184,7 +187,7 @@ public final class NeoForgeGeckoArmorSkinnedMeshBridge {
                 actualSlot,
                 reportedSlot,
                 armorRenderer.getClass(),
-                NeoForgeGeckoArmorCacheKey.sourceIdentity(sourceBone),
+                GeckoArmorCacheKey.sourceIdentity(sourceBone),
                 selectedRegion,
                 partTransform,
                 prepared.modelState
@@ -314,23 +317,23 @@ public final class NeoForgeGeckoArmorSkinnedMeshBridge {
         }
     }
 
-    private static NeoForgeGeckoArmorCacheKey.ModelState armorModelState(BakedGeoModel model) {
-        List<NeoForgeGeckoArmorCacheKey.BoneState> states = new ArrayList<>();
+    private static GeckoArmorCacheKey.ModelState armorModelState(BakedGeoModel model) {
+        List<GeckoArmorCacheKey.BoneState> states = new ArrayList<>();
         if (model != null && model.topLevelBones() != null) {
             for (GeoBone root : model.topLevelBones()) {
                 collectArmorModelState(root, states);
             }
         }
-        return NeoForgeGeckoArmorCacheKey.modelState(states);
+        return GeckoArmorCacheKey.modelState(states);
     }
 
     private static void collectArmorModelState(
             GeoBone bone,
-            List<NeoForgeGeckoArmorCacheKey.BoneState> states) {
+            List<GeckoArmorCacheKey.BoneState> states) {
         if (bone == null) {
             return;
         }
-        states.add(NeoForgeGeckoArmorCacheKey.boneState(
+        states.add(GeckoArmorCacheKey.boneState(
                 bone.isHidden(),
                 bone.isHidingChildren(),
                 bone.getPosX(),
@@ -771,7 +774,7 @@ public final class NeoForgeGeckoArmorSkinnedMeshBridge {
             BakedGeoModel bakedModel,
             ResourceLocation texture,
             RenderType renderType,
-            NeoForgeGeckoArmorCacheKey.ModelState modelState) {
+            GeckoArmorCacheKey.ModelState modelState) {
     }
 
     private record MeshCacheKey(
@@ -779,10 +782,10 @@ public final class NeoForgeGeckoArmorSkinnedMeshBridge {
             EquipmentSlot actualSlot,
             EquipmentSlot reportedSlot,
             Class<?> rendererClass,
-            NeoForgeGeckoArmorCacheKey.SourceIdentity sourceBone,
+            GeckoArmorCacheKey.SourceIdentity sourceBone,
             ArmorRegion region,
             PartTransformKey partTransform,
-            NeoForgeGeckoArmorCacheKey.ModelState modelState) {
+            GeckoArmorCacheKey.ModelState modelState) {
     }
 
     private record PartTransformKey(

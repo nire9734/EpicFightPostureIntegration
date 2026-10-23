@@ -3,7 +3,7 @@ package dev.nire9734.epicfightposture.neoforge.client;
 import com.mojang.blaze3d.vertex.PoseStack;
 import dev.nire9734.epicfightposture.neoforge.compat.NeoForgeLightweightHumanoidPatch;
 import dev.nire9734.epicfightposture.neoforge.mixin.NeoForgeLivingRendererScaleInvoker;
-import dev.nire9734.epicfightposture.neoforge.compat.models.ModelPartAttachmentPlan;
+import dev.nire9734.epicfightposture.compat.humanoid.client.ModelPartAttachmentPlan;
 import dev.nire9734.epicfightposture.neoforge.compat.models.ModelPartDynamicAttachmentRenderer;
 import dev.nire9734.epicfightposture.neoforge.compat.models.NeoForgeModelPartLayerBridge;
 import dev.nire9734.epicfightposture.compat.humanoid.skeleton.HumanoidSkeletonDescriptor;

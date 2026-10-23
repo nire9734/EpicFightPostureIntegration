@@ -1,5 +1,8 @@
 package dev.nire9734.epicfightposture.neoforge.compat.models;
 
+import dev.nire9734.epicfightposture.compat.humanoid.client.GeckoHumanoidMeshAdapter;
+import dev.nire9734.epicfightposture.compat.humanoid.client.RuntimeMeshOwnership;
+
 import dev.nire9734.epicfightposture.compat.humanoid.skeleton.SkeletonKey;
 import dev.nire9734.epicfightposture.compat.humanoid.skeleton.HumanoidSkeletonDescriptor;
 import com.mojang.logging.LogUtils;
@@ -36,7 +39,8 @@ public final class NeoForgeGeckoBackend {
             if (baked == null || baked.topLevelBones() == null || baked.topLevelBones().isEmpty()) return null;
             GeckoHumanoidMeshAdapter.Result result = RuntimeMeshOwnership.callOwned(() ->
                     GeckoHumanoidMeshAdapter.analyseAndBake(
-                            baked, new SkeletonKey(id.toString(), model.getClass().getName() + "|" + location)));
+                            baked, new SkeletonKey(id.toString(), model.getClass().getName() + "|" + location),
+                            GeckoBindPoseTransforms.OPERATIONS));
             // Forge 3.0.2 delegates acceptance to the semantic resolver and
             // mesh baker. Do not add a NeoForge-only confidence threshold.
             if (!result.supported() || result.descriptor() == null || result.mesh() == null) {

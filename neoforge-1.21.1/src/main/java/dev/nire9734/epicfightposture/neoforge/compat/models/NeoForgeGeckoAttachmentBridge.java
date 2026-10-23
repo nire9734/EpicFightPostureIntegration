@@ -1,5 +1,7 @@
 package dev.nire9734.epicfightposture.neoforge.compat.models;
 
+import dev.nire9734.epicfightposture.compat.humanoid.client.GeckoResolvedHumanoidRig;
+
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.logging.LogUtils;
@@ -78,7 +80,8 @@ final class NeoForgeGeckoAttachmentBridge {
 
             GeckoResolvedHumanoidRig semanticRig = GeckoResolvedHumanoidRig.resolve(
                     bakedModel,
-                    GeckoResolvedHumanoidRig.keyFor(entity, geoModel, modelLocation)
+                    GeckoResolvedHumanoidRig.keyFor(entity, geoModel, modelLocation),
+                    GeckoBindPoseTransforms.OPERATIONS
             );
 
             for (GeoBone top : bakedModel.topLevelBones()) {

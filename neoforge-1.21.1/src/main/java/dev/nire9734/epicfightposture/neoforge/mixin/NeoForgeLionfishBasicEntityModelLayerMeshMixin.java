@@ -2,8 +2,8 @@ package dev.nire9734.epicfightposture.neoforge.mixin;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
-import dev.nire9734.epicfightposture.neoforge.compat.models.LionfishPrimaryModelLayerBridge;
-import dev.nire9734.epicfightposture.neoforge.compat.models.LionfishSecondaryModelLayerBridge;
+import dev.nire9734.epicfightposture.compat.humanoid.client.LionfishPrimaryModelLayerBridge;
+import dev.nire9734.epicfightposture.compat.humanoid.client.LionfishSecondaryModelLayerBridge;
 import dev.nire9734.epicfightposture.neoforge.compat.models.NeoForgeSpecialRenderHooks;
 import dev.nire9734.epicfightposture.neoforge.compat.models.NeoForgeLayerColor;
 import org.spongepowered.asm.mixin.Mixin;
