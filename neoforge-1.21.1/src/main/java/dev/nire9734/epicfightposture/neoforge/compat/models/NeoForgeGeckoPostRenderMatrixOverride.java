@@ -30,8 +30,6 @@ import yesman.epicfight.world.capabilities.entitypatch.LivingEntityPatch;
  */
 @SuppressWarnings({"rawtypes", "unchecked"})
 public final class NeoForgeGeckoPostRenderMatrixOverride {
-    private static final String IRONS_HUMANOID_RENDERER =
-            "io.redspace.ironsspellbooks.entity.mobs.HumanoidRenderer";
     private static final ThreadLocal<Entry> NEXT = new ThreadLocal<>();
 
     public static void clear() {
@@ -42,10 +40,9 @@ public final class NeoForgeGeckoPostRenderMatrixOverride {
                                              LivingEntityPatch<?> patch,
                                              EntityRenderer<?> sourceRenderer) {
         clear();
-        // This path is deliberately specific: other Gecko renderers do not
-        // consume the one-shot matrix and must not retain a stale bone.
-        if (!inheritsIronHumanoidRenderer(sourceRenderer)
-                || !(sourceRenderer instanceof GeoEntityRenderer geoRenderer)
+        // Mirror Forge's generic post-super bridge. The override itself is
+        // one-shot and consumed only for the exact verified source chest bone.
+        if (!(sourceRenderer instanceof GeoEntityRenderer geoRenderer)
                 || !(entity instanceof GeoAnimatable animatable)) {
             return;
         }
@@ -104,14 +101,6 @@ public final class NeoForgeGeckoPostRenderMatrixOverride {
         NEXT.remove();
         poseStack.mulPose(pending.matrix());
         return true;
-    }
-
-    private static boolean inheritsIronHumanoidRenderer(EntityRenderer<?> renderer) {
-        if (renderer == null) return false;
-        for (Class<?> type = renderer.getClass(); type != null; type = type.getSuperclass()) {
-            if (IRONS_HUMANOID_RENDERER.equals(type.getName())) return true;
-        }
-        return false;
     }
 
     private record Entry(GeoBone bone, Matrix4f matrix) {
