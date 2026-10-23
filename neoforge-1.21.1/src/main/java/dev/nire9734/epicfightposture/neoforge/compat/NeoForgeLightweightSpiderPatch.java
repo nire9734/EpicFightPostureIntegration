@@ -2,7 +2,7 @@ package dev.nire9734.epicfightposture.neoforge.compat;
 
 import net.shelmarow.combat_evolution.ai.iml.CustomExecuteEntity;
 import net.shelmarow.combat_evolution.execution.ExecutionTypeManager;
-import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.LivingEntity;
 import yesman.epicfight.api.animation.Animator;
 import yesman.epicfight.api.animation.LivingMotions;
 import yesman.epicfight.api.animation.types.StaticAnimation;
@@ -13,7 +13,7 @@ import yesman.epicfight.world.capabilities.entitypatch.Factions;
 import yesman.epicfight.world.capabilities.entitypatch.LivingEntityPatch;
 import yesman.epicfight.world.damagesource.StunType;
 /** Minimal spider bridge: leave ordinary Mob AI/renderer unmodified. */
-public final class NeoForgeLightweightSpiderPatch<T extends Mob> extends LivingEntityPatch<T>
+public final class NeoForgeLightweightSpiderPatch<T extends LivingEntity> extends LivingEntityPatch<T>
         implements CustomExecuteEntity {
     public NeoForgeLightweightSpiderPatch(T mob) { super(mob); }
     @Override protected void initAnimator(Animator animator) {

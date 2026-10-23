@@ -7,9 +7,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.mojang.logging.LogUtils;
-import dev.nire9734.epicfightposture.EpicFightPostureIntegration;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraftforge.fml.loading.FMLPaths;
 import org.slf4j.Logger;
 
 import java.io.IOException;
@@ -26,7 +24,7 @@ import java.util.Map;
 import java.util.Set;
 
 /** Dedicated-server persistence for trusted client renderer observations. */
-public final class HumanoidServerDiscoveryStore {
+public final class RendererDiscoveryStore {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final int SCHEMA_VERSION = 2;
@@ -35,9 +33,12 @@ public final class HumanoidServerDiscoveryStore {
     private static final int MAX_REPORT_ENVIRONMENTS = 64;
 
     private static State state = State.fresh("");
+    private static Path cacheFile;
 
     /** Promotes the previous process's pending lists before Epic Fight patch registration. */
-    public static synchronized ActiveTargets bootstrap(String serverFingerprint) {
+    public static synchronized ActiveTargets bootstrap(String serverFingerprint, Path configDirectory) {
+        cacheFile = configDirectory.resolve("epicfight_posture_integration")
+                .resolve(CACHE_DIRECTORY).resolve(FILE_NAME);
         State loaded = load();
         if (!serverFingerprint.equals(loaded.serverFingerprint)) {
             if (!loaded.serverFingerprint.isEmpty()) {
@@ -348,10 +349,10 @@ public final class HumanoidServerDiscoveryStore {
     }
 
     private static Path path() {
-        return FMLPaths.CONFIGDIR.get()
-                .resolve(EpicFightPostureIntegration.MODID)
-                .resolve(CACHE_DIRECTORY)
-                .resolve(FILE_NAME);
+        if (cacheFile == null) {
+            throw new IllegalStateException("Renderer discovery store has not been bootstrapped");
+        }
+        return cacheFile;
     }
 
     public record ActiveTargets(
@@ -426,6 +427,6 @@ public final class HumanoidServerDiscoveryStore {
         }
     }
 
-    private HumanoidServerDiscoveryStore() {
+    private RendererDiscoveryStore() {
     }
 }

@@ -85,20 +85,10 @@ public final class HumanoidDiscoveryServer {
             return;
         }
 
-        if (environmentFingerprint == null || !environmentFingerprint.matches("[0-9a-f]{64}")) {
-            sender.sendSystemMessage(Component.literal("EFPI: rejected invalid renderer discovery fingerprint."));
-            return;
-        }
-        if (!inspected.containsAll(vanillaHumanoid)
-                || !inspected.containsAll(extendedHumanoid)
-                || !inspected.containsAll(vanillaSpider)) {
-            sender.sendSystemMessage(Component.literal("EFPI: rejected inconsistent renderer discovery report."));
-            return;
-        }
-        if (hasOverlap(vanillaHumanoid, extendedHumanoid)
-                || hasOverlap(vanillaHumanoid, vanillaSpider)
-                || hasOverlap(extendedHumanoid, vanillaSpider)) {
-            sender.sendSystemMessage(Component.literal("EFPI: rejected ambiguous renderer discovery report."));
+        RendererDiscoveryShared.ValidationError error = RendererDiscoveryShared.validateReport(
+                environmentFingerprint, inspected, vanillaHumanoid, extendedHumanoid, vanillaSpider);
+        if (error != RendererDiscoveryShared.ValidationError.NONE) {
+            sender.sendSystemMessage(Component.literal(RendererDiscoveryShared.rejectionMessage(error)));
             return;
         }
 
@@ -117,7 +107,7 @@ public final class HumanoidDiscoveryServer {
         Set<ResourceLocation> validSpider = new HashSet<>(vanillaSpider);
         validSpider.retainAll(validInspected);
 
-        HumanoidServerDiscoveryStore.UpdateResult result = HumanoidServerDiscoveryStore.acceptReport(
+        RendererDiscoveryStore.UpdateResult result = RendererDiscoveryStore.acceptReport(
                 environmentFingerprint,
                 validInspected,
                 validVanilla,
@@ -126,7 +116,7 @@ public final class HumanoidDiscoveryServer {
         );
 
         if (!result.accepted()) {
-            sender.sendSystemMessage(Component.literal("EFPI: renderer discovery report cache is full; report ignored."));
+            sender.sendSystemMessage(Component.literal(RendererDiscoveryShared.cacheFullMessage()));
             return;
         }
 
@@ -138,12 +128,6 @@ public final class HumanoidDiscoveryServer {
                     result.conflictCount());
             sender.sendSystemMessage(Component.literal(summary));
         }
-    }
-
-    private static boolean hasOverlap(Set<ResourceLocation> first, Set<ResourceLocation> second) {
-        Set<ResourceLocation> overlap = new HashSet<>(first);
-        overlap.retainAll(second);
-        return !overlap.isEmpty();
     }
 
     private HumanoidDiscoveryServer() {

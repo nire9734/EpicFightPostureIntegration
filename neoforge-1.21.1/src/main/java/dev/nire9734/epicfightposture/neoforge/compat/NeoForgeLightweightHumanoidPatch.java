@@ -1,6 +1,6 @@
 package dev.nire9734.epicfightposture.neoforge.compat;
 
-import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.LivingEntity;
 import yesman.epicfight.api.animation.Animator;
 import yesman.epicfight.api.animation.LivingMotions;
 import yesman.epicfight.api.animation.types.StaticAnimation;
@@ -17,9 +17,9 @@ import yesman.epicfight.world.damagesource.StunType;
  * Special animated rendering is deliberately deferred until the renderer
  * has passed an explicit geometry/armature compatibility test.
  */
-public final class NeoForgeLightweightHumanoidPatch<T extends Mob> extends LivingEntityPatch<T> {
-    public NeoForgeLightweightHumanoidPatch(T mob) {
-        super(mob);
+public final class NeoForgeLightweightHumanoidPatch<T extends LivingEntity> extends LivingEntityPatch<T> {
+    public NeoForgeLightweightHumanoidPatch(T entity) {
+        super(entity);
     }
 
     @Override

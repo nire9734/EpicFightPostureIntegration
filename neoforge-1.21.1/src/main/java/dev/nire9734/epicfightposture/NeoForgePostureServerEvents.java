@@ -12,7 +12,6 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.ai.attributes.Attribute;
 import net.minecraft.world.entity.ai.attributes.AttributeInstance;
@@ -39,8 +38,8 @@ import yesman.epicfight.skill.guard.GuardSkill;
 public final class NeoForgePostureServerEvents {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final int RECOVERY_TICKS = 60;
-    private static final Map<Mob, PostureRuntimeState> STATES = new WeakHashMap<>();
-    private static final Map<Mob, Integer> PENDING_EXECUTION_START = new WeakHashMap<>();
+    private static final Map<LivingEntity, PostureRuntimeState> STATES = new WeakHashMap<>();
+    private static final Map<LivingEntity, Integer> PENDING_EXECUTION_START = new WeakHashMap<>();
     private static boolean registered;
 
     public static synchronized void register() {
@@ -54,7 +53,9 @@ public final class NeoForgePostureServerEvents {
 
     // NeoForge fires Post only after applying health loss.
     private static void onDamage(LivingDamageEvent.Post event) {
-        if (!(event.getEntity() instanceof Mob mob) || !(mob.level() instanceof ServerLevel)
+        if (!(event.getEntity().level() instanceof ServerLevel)) return;
+        LivingEntity mob = event.getEntity();
+        if (mob == null
                 || !canReceive(mob) || isBlacklisted(mob)) return;
         Entity offender = GuardSkill.getOffender(event.getSource());
         if (!(offender instanceof Player) || offender == mob) return;
@@ -92,7 +93,7 @@ public final class NeoForgePostureServerEvents {
     }
 
     private static void onTick(EntityTickEvent.Post event) {
-        if (!(event.getEntity() instanceof Mob mob) || !(mob.level() instanceof ServerLevel)) return;
+        if (!(event.getEntity() instanceof LivingEntity mob) || !(mob.level() instanceof ServerLevel)) return;
         if (!canReceive(mob)) {
             // As in Forge 3.0.2, retain an active CE execution during death,
             // but do not keep an orphaned posture HUD state after ordinary death.
@@ -163,8 +164,10 @@ public final class NeoForgePostureServerEvents {
 
     /** Called exactly once by the Epic Fight parry event's setParried(true) hook. */
     public static void onParried(LivingEntity attacker) {
-        if (!(attacker instanceof Mob mob) || !(mob.level() instanceof ServerLevel)
-                || !canReceive(mob) || isBlacklisted(mob)) return;
+        if (!(attacker.level() instanceof ServerLevel)
+                || attacker instanceof Player
+                || !canReceive(attacker) || isBlacklisted(attacker)) return;
+        LivingEntity mob = attacker;
         LivingEntityPatch<?> patch = EpicFightCapabilities.getEntityPatch(mob, LivingEntityPatch.class);
         if (!isEligiblePostureEntity(mob, patch)) return;
 
@@ -196,7 +199,7 @@ public final class NeoForgePostureServerEvents {
      * Keep the guard-break transition aligned with Forge 3.0.2.
      * An interrupted attack must release its currently used item before EF's stun.
      */
-    private static void breakPosture(Mob mob, LivingEntityPatch<?> patch,
+    private static void breakPosture(LivingEntity mob, LivingEntityPatch<?> patch,
                                      PostureRuntimeState state, int regenDelayTicks) {
         if (!canReceive(mob) || !state.acceptsPostureDamage()) return;
 
@@ -221,7 +224,7 @@ public final class NeoForgePostureServerEvents {
 
     private static void onExecutionStart(OnExecutionStartEvent event) {
         Object original = event.getTarget().getOriginal();
-        if (!(original instanceof Mob mob) || !(mob.level() instanceof ServerLevel)
+        if (!(original instanceof LivingEntity mob) || !(mob.level() instanceof ServerLevel)
                 || event.isCanceled() || !canReceive(mob) || isBlacklisted(mob)) return;
 
         LivingEntityPatch<?> patch = event.getTarget();
@@ -240,7 +243,7 @@ public final class NeoForgePostureServerEvents {
     }
 
     @SuppressWarnings("unchecked")
-    private static float innateEhp(Mob mob) {
+    private static float innateEhp(LivingEntity mob) {
         AttributeSupplier defaults = null;
         try {
             EntityType<? extends LivingEntity> type = (EntityType<? extends LivingEntity>) mob.getType();
@@ -254,7 +257,7 @@ public final class NeoForgePostureServerEvents {
         return PostureBalance.effectiveHealth(hp > 0.0F ? hp : 20.0F, armor, toughness, 8.0F);
     }
 
-    private static float baseline(Mob mob, AttributeSupplier defaults,
+    private static float baseline(LivingEntity mob, AttributeSupplier defaults,
                                   net.minecraft.core.Holder<Attribute> attribute, float fallback) {
         AttributeInstance current = mob.getAttribute(attribute);
         float originalBase = current == null ? Float.NaN : (float) current.getBaseValue();
@@ -266,7 +269,7 @@ public final class NeoForgePostureServerEvents {
     /** Used by StartTracking to send the authoritative state to new viewers. */
     public record SyncState(float current, float max, boolean broken) {}
 
-    public static SyncState stateForSync(Mob mob) {
+    public static SyncState stateForSync(LivingEntity mob) {
         if (isBlacklisted(mob)) return null;
         PostureRuntimeState state = STATES.get(mob);
         return state == null ? null : new SyncState(state.current, state.max, state.isBrokenForHud());
@@ -277,7 +280,7 @@ public final class NeoForgePostureServerEvents {
      * Do not add the pristine mob to STATES: passive mobs should not acquire
      * per-tick posture updates merely because their HUD is visible.
      */
-    public static SyncState stateForTracking(Mob mob) {
+    public static SyncState stateForTracking(LivingEntity mob) {
         if (!(mob.level() instanceof ServerLevel) || !canReceive(mob)) {
             return null;
         }
@@ -293,7 +296,7 @@ public final class NeoForgePostureServerEvents {
     }
 
     /** Clear per-mob posture state when the entity leaves the server level. */
-    public static void forget(Mob mob) {
+    public static void forget(LivingEntity mob) {
         STATES.remove(mob);
         PENDING_EXECUTION_START.remove(mob);
     }
@@ -303,8 +306,8 @@ public final class NeoForgePostureServerEvents {
     }
 
     /** Forge 3.0.2 allows humanoid armatures, plus explicit CE execution targets. */
-    private static boolean isEligiblePostureEntity(Mob mob, LivingEntityPatch<?> patch) {
-        if (!canReceive(mob) || isBlacklisted(mob) || patch == null
+    private static boolean isEligiblePostureEntity(LivingEntity mob, LivingEntityPatch<?> patch) {
+        if (!canReceive(mob) || mob instanceof Player || isBlacklisted(mob) || patch == null
                 || patch instanceof CEHumanoidPatch || !hasDistinctNeutralize(patch)) return false;
         if (patch instanceof CustomExecuteEntity) return true;
         try {
@@ -314,7 +317,7 @@ public final class NeoForgePostureServerEvents {
         }
     }
 
-    private static boolean isExecuting(Mob mob) {
+    private static boolean isExecuting(LivingEntity mob) {
         try {
             return ExecutionHandler.isExecutingTarget(mob, mob);
         } catch (Throwable ignored) {
@@ -322,20 +325,20 @@ public final class NeoForgePostureServerEvents {
         }
     }
 
-    private static boolean isBlacklisted(Mob mob) {
+    private static boolean isBlacklisted(LivingEntity mob) {
         ResourceLocation id = BuiltInRegistries.ENTITY_TYPE.getKey(mob.getType());
         return NeoForgeServerSettings.localSnapshot().blocksPosture(
                 id, NeoForgeAutoCompatibility.isOwnedByEfpi(mob.getType()));
     }
 
-    private static float basePosture(Mob mob) {
+    private static float basePosture(LivingEntity mob) {
         float ehp = NeoForgeEntityAttributeAdapter.liveEffectiveHealth(mob);
         float ratio = Math.max(.01F, ehp / 20.0F);
         return Math.max(.1F, Math.min(1_000_000.0F,
                 3.2F * (float) Math.pow(ratio, .7D)));
     }
 
-    private static float maximumPosture(Mob mob) {
+    private static float maximumPosture(LivingEntity mob) {
         return Math.max(1.0F, basePosture(mob));
     }
 
