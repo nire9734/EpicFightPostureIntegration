@@ -131,13 +131,11 @@ public final class HumanoidDiscoveryServer {
         }
 
         if (result.restartRequired()) {
-            String summary = "EFPI: renderer discovery: "
-                    + result.pendingCount() + " confirmed ("
-                    + result.pendingVanillaCount() + " vanilla humanoid, "
-                    + result.pendingExtendedCount() + " extended humanoid, "
-                    + result.pendingSpiderCount() + " vanilla SpiderModel), "
-                    + result.conflictCount() + " conflict(s)."
-                    + " Restart the server to apply the pending compatibility list.";
+            String summary = RendererDiscoveryShared.restartRequiredMessage(
+                    result.pendingVanillaCount(),
+                    result.pendingExtendedCount(),
+                    result.pendingSpiderCount(),
+                    result.conflictCount());
             sender.sendSystemMessage(Component.literal(summary));
         }
     }
