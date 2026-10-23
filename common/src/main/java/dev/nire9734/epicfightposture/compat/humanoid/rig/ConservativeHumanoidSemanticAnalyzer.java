@@ -85,7 +85,8 @@ public final class ConservativeHumanoidSemanticAnalyzer implements HumanoidSeman
     public HumanoidSemanticAnalysis analyze(SourceRigSnapshot snapshot) {
         List<NodeCandidate> nodes = candidates(snapshot);
 
-        SourceNodeSnapshot head = findBest(nodes, HEAD);
+        SourceNodeSnapshot declaredHead = findBest(nodes, HEAD);
+        SourceNodeSnapshot head = visibleHeadCarrier(snapshot, declaredHead);
         SourceNodeSnapshot rightArm = findBest(nodes, RIGHT_ARM);
         SourceNodeSnapshot leftArm = findBest(nodes, LEFT_ARM);
         SourceNodeSnapshot rightLeg = findBest(nodes, RIGHT_LEG);
@@ -122,7 +123,10 @@ public final class ConservativeHumanoidSemanticAnalyzer implements HumanoidSeman
 
         EnumMap<HumanoidJoint, SemanticJointCandidate> result = new EnumMap<>(HumanoidJoint.class);
         putSource(result, snapshot, HumanoidJoint.CHEST, body, confidence(body, BODY, true));
-        putSource(result, snapshot, HumanoidJoint.HEAD, head, confidence(head, HEAD, false));
+        // The visible head carrier remains a direct SOURCE owner so its mesh
+        // receives head skin weights; only the semantic confidence is inferred.
+        putSource(result, snapshot, HumanoidJoint.HEAD, head,
+                head == declaredHead ? confidence(head, HEAD, false) : GEOMETRY_CONFIDENCE);
         putSource(result, snapshot, HumanoidJoint.SHOULDER_RIGHT, rightShoulderSource,
                 confidence(rightShoulderSource, rightShoulderNames, false));
         putSource(result, snapshot, HumanoidJoint.SHOULDER_LEFT, leftShoulderSource,
@@ -325,6 +329,36 @@ public final class ConservativeHumanoidSemanticAnalyzer implements HumanoidSeman
             return -20;
         }
         return distance <= MAX_LEG_DISTANCE_FROM_BODY ? 4 : -12;
+    }
+
+    /**
+     * Some authored models retain an empty `head` animation marker while the
+     * actual head mesh is a sibling named `helmet` (e.g. Cataclysm's Coral Golem).
+     * Only recover a unique, directly adjacent, geometric carrier; a real
+     * renderable head always takes precedence, and ambiguous rigs still fail.
+     */
+    private static SourceNodeSnapshot visibleHeadCarrier(
+            SourceRigSnapshot snapshot,
+            SourceNodeSnapshot declaredHead) {
+        if (declaredHead == null
+                || declaredHead.parentId().isEmpty()
+                || hasRenderableGeometry(snapshot, declaredHead.id())) {
+            return declaredHead;
+        }
+
+        SourceNodeSnapshot carrier = null;
+        for (SourceNodeSnapshot sibling : snapshot.childrenOf(declaredHead.parentId().orElseThrow())) {
+            if (!"helmet".equals(normalize(sibling.name()))
+                    || sibling.geometryBounds().isEmpty()
+                    || !hasRenderableGeometry(snapshot, sibling.id())) {
+                continue;
+            }
+            if (carrier != null) {
+                return declaredHead;
+            }
+            carrier = sibling;
+        }
+        return carrier != null ? carrier : declaredHead;
     }
 
     private static SourceNodeSnapshot findBest(List<NodeCandidate> nodes, Set<String> names) {
