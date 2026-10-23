@@ -14,7 +14,7 @@ import net.minecraft.client.renderer.entity.EntityRenderer;
 import net.minecraft.client.renderer.entity.LivingEntityRenderer;
 import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.LivingEntity;
 import yesman.epicfight.api.asset.AssetAccessor;
 import yesman.epicfight.api.client.model.SkinnedMesh;
 import yesman.epicfight.api.model.Armature;
@@ -26,7 +26,7 @@ import yesman.epicfight.client.renderer.patched.entity.PatchedEntityRenderer;
  * over Epic Fight's final pose while the original renderer is suppressed.
  */
 public final class NeoForgeRiggedSpecialRenderer extends PatchedEntityRenderer<
-        Mob, NeoForgeLightweightHumanoidPatch<Mob>, EntityRenderer<Mob>, SkinnedMesh> {
+        LivingEntity, NeoForgeLightweightHumanoidPatch<LivingEntity>, EntityRenderer<LivingEntity>, SkinnedMesh> {
     private final AssetAccessor<SkinnedMesh> runtimeMesh;
     private final ModelPartAttachmentPlan attachments;
     private final HumanoidSkeletonDescriptor skeleton;
@@ -40,8 +40,8 @@ public final class NeoForgeRiggedSpecialRenderer extends PatchedEntityRenderer<
     }
 
     @Override
-    public void render(Mob entity, NeoForgeLightweightHumanoidPatch<Mob> patch,
-                       EntityRenderer<Mob> source, MultiBufferSource buffers,
+    public void render(LivingEntity entity, NeoForgeLightweightHumanoidPatch<LivingEntity> patch,
+                       EntityRenderer<LivingEntity> source, MultiBufferSource buffers,
                        PoseStack stack, int packedLight, float partialTicks) {
         super.render(entity, patch, source, buffers, stack, packedLight, partialTicks);
         Minecraft minecraft = Minecraft.getInstance();
@@ -63,16 +63,10 @@ public final class NeoForgeRiggedSpecialRenderer extends PatchedEntityRenderer<
             mesh.draw(stack, buffers, RenderType.entityCutoutNoCull(texture),
                     packedLight, 1, 1, 1, alpha, overlay, armature, armature.getPoseMatrices());
             if ("modelpart".equals(sourceBackend)) {
-                @SuppressWarnings("unchecked")
-                EntityRenderer<net.minecraft.world.entity.LivingEntity> original =
-                        (EntityRenderer<net.minecraft.world.entity.LivingEntity>) (Object) source;
-                NeoForgeModelPartLayerBridge.render(entity, original, buffers, stack,
+                NeoForgeModelPartLayerBridge.render(entity, source, buffers, stack,
                         packedLight, overlay, partialTicks, texture, armature, skeleton, attachments);
             } else if (attachments != null && !attachments.isEmpty()) {
-                @SuppressWarnings("unchecked")
-                EntityRenderer<net.minecraft.world.entity.LivingEntity> original =
-                        (EntityRenderer<net.minecraft.world.entity.LivingEntity>) (Object) source;
-                ModelPartDynamicAttachmentRenderer.render(attachments, entity, original,
+                ModelPartDynamicAttachmentRenderer.render(attachments, entity, source,
                         buffers, stack, packedLight, overlay, partialTicks, texture, armature);
             }
             if ("geckolib".equals(sourceBackend)) {

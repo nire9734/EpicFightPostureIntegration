@@ -7,7 +7,7 @@ import dev.nire9734.epicfightposture.compat.humanoid.skeleton.HumanoidSkeletonDe
 import yesman.epicfight.api.client.model.SkinnedMesh;
 import yesman.epicfight.api.model.Armature;
 import net.minecraft.client.renderer.MultiBufferSource;
-import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.LivingEntity;
 import java.lang.reflect.Method;
 import java.lang.reflect.InvocationTargetException;
 import java.util.HashMap;
@@ -69,8 +69,8 @@ public final class NeoForgeOptionalBackendBridge {
     }
 
     /** Replay GeckoLib held items / per-bone layers only for a verified Gecko renderer. */
-    public static void renderGeckoAttachments(Mob entity, NeoForgeLightweightHumanoidPatch<Mob> patch,
-                                               EntityRenderer<Mob> renderer, MultiBufferSource buffers,
+    public static void renderGeckoAttachments(LivingEntity entity, NeoForgeLightweightHumanoidPatch<LivingEntity> patch,
+                                               EntityRenderer<LivingEntity> renderer, MultiBufferSource buffers,
                                                PoseStack stack, int light, int overlay, float partialTicks,
                                                HumanoidSkeletonDescriptor skeleton) {
         if (geckoLayerUnavailable || !ModList.get().isLoaded("geckolib")) return;
@@ -78,7 +78,7 @@ public final class NeoForgeOptionalBackendBridge {
             Method method = geckoLayerMethod;
             if (method == null) {
                 method = Class.forName(GECKO).getMethod("renderAttachments",
-                        Mob.class, NeoForgeLightweightHumanoidPatch.class, EntityRenderer.class,
+                        LivingEntity.class, NeoForgeLightweightHumanoidPatch.class, EntityRenderer.class,
                         MultiBufferSource.class, PoseStack.class, int.class, int.class, float.class,
                         HumanoidSkeletonDescriptor.class);
                 geckoLayerMethod = method;
@@ -95,14 +95,14 @@ public final class NeoForgeOptionalBackendBridge {
     }
 
     /** Queue the exact EF chest matrix for optional post-super Gecko capes. */
-    public static void armGeckoPostRenderTorso(Mob entity, NeoForgeLightweightHumanoidPatch<Mob> patch,
-                                               EntityRenderer<Mob> renderer) {
+    public static void armGeckoPostRenderTorso(LivingEntity entity, NeoForgeLightweightHumanoidPatch<LivingEntity> patch,
+                                               EntityRenderer<LivingEntity> renderer) {
         if (geckoPostRenderUnavailable || !ModList.get().isLoaded("geckolib")) return;
         try {
             Method method = geckoPostRenderMethod;
             if (method == null) {
                 method = Class.forName(GECKO).getMethod("armPostRenderTorso",
-                        Mob.class, NeoForgeLightweightHumanoidPatch.class, EntityRenderer.class);
+                        LivingEntity.class, NeoForgeLightweightHumanoidPatch.class, EntityRenderer.class);
                 geckoPostRenderMethod = method;
             }
             method.invoke(null, entity, patch, renderer);
@@ -115,7 +115,7 @@ public final class NeoForgeOptionalBackendBridge {
     }
 
     /** Keep all optional Lionfish types out of the base renderer classpath. */
-    public static void renderLionfishLayers(Mob entity, EntityRenderer<Mob> renderer,
+    public static void renderLionfishLayers(LivingEntity entity, EntityRenderer<LivingEntity> renderer,
                                             MultiBufferSource buffers, PoseStack stack,
                                             int light, float partialTicks, Armature armature,
                                             SkinnedMesh mesh, HumanoidSkeletonDescriptor skeleton) {
@@ -123,7 +123,7 @@ public final class NeoForgeOptionalBackendBridge {
         try {
             Method method = lionfishLayerMethod;
             if (method == null) {
-                method = Class.forName(LIONFISH).getMethod("renderLayers", Mob.class,
+                method = Class.forName(LIONFISH).getMethod("renderLayers", LivingEntity.class,
                         EntityRenderer.class, MultiBufferSource.class, PoseStack.class,
                         int.class, float.class, Armature.class, SkinnedMesh.class,
                         HumanoidSkeletonDescriptor.class);

@@ -3,6 +3,7 @@ package dev.nire9734.epicfightposture.neoforge.mixin;
 import com.mojang.blaze3d.vertex.PoseStack;
 import dev.nire9734.epicfightposture.client.ClientPostureStore;
 import dev.nire9734.epicfightposture.client.PostureHudPolicy;
+import dev.nire9734.epicfightposture.client.PostureHudGeometry;
 import dev.nire9734.epicfightposture.neoforge.NeoForgePostureClientConfig;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.MultiBufferSource;
@@ -97,68 +98,24 @@ public abstract class NeoForgeHealthBarMixin {
                     0.0F, entity.getBbHeight() + 0.25F, 0.0F, true, partialTicks);
             efpi$drawEffects(entity, playerPatch, poseStack, buffers);
 
-            float healthPercent = efpi$clamp(entity.getHealth() / Math.max(entity.getMaxHealth(), 1.0E-4F));
-            float posturePercent = posture.percent();
-            float scale = 1.0F;
-
-            int textureLeft = 3;
-            int textureRight = 83;
-            int textureWidth = textureRight - textureLeft;
-            int healthLeft = 6;
-            int healthRight = 80;
-            int healthWidthPx = healthRight - healthLeft;
-
-            float healthBarHeight = scale * 20.0F / textureWidth;
-            float healthBarX = -scale / 2.0F;
-            float healthFillWidth = scale * (float) healthWidthPx / textureWidth * healthPercent;
-            float healthFillOffset = scale * (float) (healthLeft - textureLeft) / textureWidth;
-            float healthFillX = healthBarX + healthFillOffset;
-            int healthFillEndU = (int) (healthLeft + healthWidthPx * healthPercent);
-
-            EntityUI.drawUIAsLevelModel(poseStack.last(), EFPI$HEALTH_BAR, buffers,
-                    healthBarX, -healthBarHeight / 2.0F,
-                    healthBarX + scale, healthBarHeight / 2.0F,
-                    textureLeft, 0, textureRight, 20, 256);
-            EntityUI.drawUIAsLevelModel(poseStack.last(), EFPI$HEALTH_BAR, buffers,
-                    healthFillX, -healthBarHeight / 2.0F,
-                    healthFillX + healthFillWidth, healthBarHeight / 2.0F,
-                    healthLeft, 21, healthFillEndU, 41, 256);
-
-            int postureBgLeft = 6;
-            int postureBgRight = 80;
-            int postureBgWidthPx = postureBgRight - postureBgLeft;
-            int postureFillLeft = 9;
-            int postureFillRight = 77;
-            int postureFillWidthPx = postureFillRight - postureFillLeft;
-
-            float postureBarWidth = scale * (float) postureBgWidthPx / textureWidth;
-            float postureBarHeight = postureBarWidth * 20.0F / postureBgWidthPx;
-            float postureBarX = -postureBarWidth / 2.0F;
-            float postureFillWidth = postureBarWidth * (float) postureFillWidthPx / postureBgWidthPx * posturePercent;
-            float postureFillOffset = postureBarWidth * (float) (postureFillLeft - postureBgLeft) / postureBgWidthPx;
-            float postureFillX = postureBarX + postureFillOffset;
-            int postureFillEndU = (int) (postureFillLeft + postureFillWidthPx * posturePercent);
-
-            EntityUI.drawUIAsLevelModel(poseStack.last(), EFPI$HEALTH_BAR, buffers,
-                    postureBarX, -postureBarHeight / 2.0F,
-                    postureBarX + postureBarWidth, postureBarHeight / 2.0F,
-                    postureBgLeft, 42, postureBgRight, 62, 256);
-
-            if (!posture.broken) {
-                EntityUI.drawUIAsLevelModel(poseStack.last(), EFPI$HEALTH_BAR, buffers,
-                        postureFillX, -postureBarHeight / 2.0F,
-                        postureFillX + postureFillWidth, postureBarHeight / 2.0F,
-                        postureFillLeft, 63, postureFillEndU, 83, 256);
-            } else {
-                float fullBrokenWidth = postureBarWidth * (float) postureFillWidthPx / postureBgWidthPx;
-                EntityUI.drawUIAsLevelModel(poseStack.last(), EFPI$HEALTH_BAR, buffers,
-                        postureFillX, -postureBarHeight / 2.0F,
-                        postureFillX + fullBrokenWidth, postureBarHeight / 2.0F,
-                        postureFillLeft, 84, postureFillRight, 104, 256);
-            }
+            PostureHudGeometry.Layout hud = PostureHudGeometry.layout(
+                    entity.getHealth() / Math.max(entity.getMaxHealth(), 1.0E-4F),
+                    posture.percent(), posture.broken);
+            efpi$drawQuad(poseStack, buffers, hud.healthBackground());
+            efpi$drawQuad(poseStack, buffers, hud.healthFill());
+            efpi$drawQuad(poseStack, buffers, hud.postureBackground());
+            efpi$drawQuad(poseStack, buffers, hud.postureFill());
         } finally {
             poseStack.popPose();
         }
+    }
+
+    @Unique
+    private static void efpi$drawQuad(PoseStack poseStack, MultiBufferSource buffer,
+                                      PostureHudGeometry.Quad quad) {
+        EntityUI.drawUIAsLevelModel(poseStack.last(), EFPI$HEALTH_BAR, buffer,
+                quad.left(), quad.top(), quad.right(), quad.bottom(),
+                quad.u1(), quad.v1(), quad.u2(), quad.v2(), 256);
     }
 
     @Unique
@@ -209,8 +166,4 @@ public abstract class NeoForgeHealthBarMixin {
         }
     }
 
-    @Unique
-    private static float efpi$clamp(float value) {
-        return Math.max(0.0F, Math.min(1.0F, value));
-    }
 }
