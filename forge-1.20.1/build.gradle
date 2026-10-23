@@ -10,7 +10,7 @@ version = mod_version
 group = mod_group_id
 
 base {
-    archivesName = "epicfight-posture-integration"
+    archivesName = "epicfight-posture-integration-forge-${minecraft_version}"
 }
 
 java {

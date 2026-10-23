@@ -8,12 +8,10 @@ config="epicfight_posture_integration_neoforge.mixins.json"
 [[mods]]
 modId="${mod_id}"
 version="${mod_version}"
-displayName="${mod_name} (NeoForge port preview)"
+displayName="${mod_name}"
 authors="nire9734"
 description='''
-Development-only NeoForge 1.21.1 port bootstrap.
-Gameplay posture, guard breaks, executions, HUD and mob compatibility are NOT yet implemented.
-Do not publish or use as a replacement for the Forge 1.20.1 release.
+Adds server-authoritative posture, guard breaks, and Combat Evolution execution support to compatible Epic Fight entities. Includes automatic humanoid compatibility, HUD integration, configurable posture damage, and multiplayer synchronization.
 '''
 
 [[dependencies.${mod_id}]]

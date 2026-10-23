@@ -50,5 +50,5 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.8'
-      - name: Build Forge 3.0.2 and run shared core tests
+      - name: Build Forge and run shared core tests
         run: gradle -p forge-1.20.1 --no-daemon clean build --stacktrace

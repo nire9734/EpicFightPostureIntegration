@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare Forge 3.0.2 renderer IDs with NeoForge's renderer inventory.
+"""Compare Forge renderer IDs with NeoForge's renderer inventory.
 
 Forge's DEBUG 'accepted' indicates successful model preparation, NOT
 necessarily final patch/renderer registration. This script never interprets
@@ -103,7 +103,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     forge_source = parser.add_mutually_exclusive_group(required=True)
     forge_source.add_argument("--forge-log", type=Path,
-                              help="Forge 3.0.2 latest.log/debug.log, optionally .log.gz")
+                              help="Forge latest.log/debug.log, optionally .log.gz")
     forge_source.add_argument("--forge-tsv", type=Path,
                               help="Forge config/.../cache/forge-renderer-coverage.tsv (preferred)")
     parser.add_argument("--neoforge-tsv", type=Path, required=True,
