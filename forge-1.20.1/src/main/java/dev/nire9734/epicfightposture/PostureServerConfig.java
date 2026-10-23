@@ -30,10 +30,10 @@ public final class PostureServerConfig {
     private static final ForgeConfigSpec.Builder BUILDER = new ForgeConfigSpec.Builder();
 
     /*
-     * 3.0.1 uses observed HP depletion with an internal 0.54
+     * Normal attacks use observed HP depletion with an internal 0.75
      * attack coefficient and public multiplier defaulting to 1.0.
      */
-    private static final float BASE_ATTACK_POSTURE_COEFFICIENT = 0.54F;
+    private static final float BASE_ATTACK_POSTURE_COEFFICIENT = 0.75F;
     private static final float MINIMUM_POSTURE = 1.0F;
     private static final boolean USE_ARMOR_SCALING = true;
 

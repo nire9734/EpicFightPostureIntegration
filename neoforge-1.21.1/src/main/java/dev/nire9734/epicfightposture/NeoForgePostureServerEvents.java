@@ -74,7 +74,7 @@ public final class NeoForgePostureServerEvents {
         float before = Math.min(maxHealth, mob.getHealth() + loss);
         float pressure = PostureBalance.attackPostureDamage(
                 basePosture(mob), maxHealth, before, loss, impact,
-                .54F * NeoForgeServerSettings.attackPostureDamageMultiplier(
+                .75F * NeoForgeServerSettings.attackPostureDamageMultiplier(
                         BuiltInRegistries.ENTITY_TYPE.getKey(mob.getType())));
         if (!Float.isFinite(pressure) || pressure <= 0.0F) return;
 

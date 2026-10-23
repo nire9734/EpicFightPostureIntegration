@@ -7,7 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PostureBalanceTest {
     private static final float EPS = 0.0001F;
-    private static final float ATTACK_COEFFICIENT = 0.54F;
+    private static final float ATTACK_COEFFICIENT = 0.75F;
 
     @Test
     void impactEfficiencyIsBounded() {
@@ -20,10 +20,10 @@ class PostureBalanceTest {
     }
 
     @Test
-    void fullHealthBarProducesFiftyFourPercentPostureAtImpactThree() {
-        assertEquals(5.4F, attack(10, 100, 100, 100, 3), EPS);
-        assertEquals(2.7F, attack(10, 100, 100, 50, 3), EPS);
-        assertEquals(2.7F, attack(10, 100, 50, 50, 3), EPS);
+    void fullHealthBarProducesSeventyFivePercentPostureAtImpactThree() {
+        assertEquals(7.5F, attack(10, 100, 100, 100, 3), EPS);
+        assertEquals(3.75F, attack(10, 100, 100, 50, 3), EPS);
+        assertEquals(3.75F, attack(10, 100, 50, 50, 3), EPS);
         assertTrue(attack(10, 100, 100, 100, 3) < 10.0F);
     }
 
@@ -48,9 +48,9 @@ class PostureBalanceTest {
     void levelScaledHpRetainsNormalizedAttackPosture() {
         float zombie = attack(3.2F, 20, 20, 4, 3) / 3.2F;
         float leveled = attack(60.8F, 1214, 1214, 242.8F, 3) / 60.8F;
-        assertEquals(.108F, zombie, EPS);
+        assertEquals(.15F, zombie, EPS);
         assertEquals(zombie, leveled, EPS);
-        assertEquals(.27F, attack(10, 100, 100, 50, 3) / 10, EPS);
+        assertEquals(.375F, attack(10, 100, 100, 50, 3) / 10, EPS);
     }
 
     @Test
@@ -59,9 +59,9 @@ class PostureBalanceTest {
         float attackBase = attack(maximumPosture, 100, 100, 50, 3);
         float parryBase = PostureBalance.parryDamage(maximumPosture, .22F, .08F, 20, 20, .7F);
 
-        assertEquals(27.0F, attackBase, EPS);
+        assertEquals(37.5F, attackBase, EPS);
         assertEquals(22.0F, parryBase, EPS);
-        assertEquals(54.0F, attackBase * 2.0F, EPS);
+        assertEquals(75.0F, attackBase * 2.0F, EPS);
         assertEquals(11.0F, parryBase * 0.5F, EPS);
         assertEquals(100.0F, maximumPosture, EPS);
     }
