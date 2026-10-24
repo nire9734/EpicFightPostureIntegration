@@ -9,6 +9,7 @@ import dev.nire9734.epicfightposture.compat.humanoid.RendererDiscoveryShared;
 import dev.nire9734.epicfightposture.compat.humanoid.RendererDiscoveryStore;
 import dev.nire9734.epicfightposture.compat.humanoid.RendererDiscoveryRuntime;
 import dev.nire9734.epicfightposture.neoforge.compat.NeoForgeAutoCompatibility;
+import dev.nire9734.epicfightposture.neoforge.compat.NeoForgeExistingPatchRefresh;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -23,8 +24,8 @@ import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
 
 /**
- * Trusted operator report ingestion and live activation for future mob spawns.
- * Existing patch attachments are never mutated in place.
+ * Trusted operator report ingestion and live activation for future spawns
+ * and for compatible entities already loaded in the current server process.
  */
 public final class NeoForgeRendererDiscoveryServer {
     private static final int REQUIRED_PERMISSIONS = 2;
@@ -112,9 +113,10 @@ public final class NeoForgeRendererDiscoveryServer {
         }
         RendererDiscoveryRuntime.Result activation = RendererDiscoveryRuntime.activate(
                 RendererDiscoveryStore.pendingTargets(), NeoForgeAutoCompatibility::registerTrustedDedicatedTarget);
+        RendererDiscoveryRuntime.LiveRefresh refresh = NeoForgeExistingPatchRefresh.refresh(player.getServer());
         player.sendSystemMessage(Component.literal(RendererDiscoveryShared.runtimeAppliedMessage(
                 result.pendingVanillaCount(), result.pendingExtendedCount(),
-                result.pendingSpiderCount(), result.conflictCount(), activation)));
+                result.pendingSpiderCount(), result.conflictCount(), activation, refresh)));
     }
 
     private NeoForgeRendererDiscoveryServer() {}

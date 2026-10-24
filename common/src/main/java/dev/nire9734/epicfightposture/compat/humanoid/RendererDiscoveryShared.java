@@ -63,7 +63,8 @@ public final class RendererDiscoveryShared {
             int extendedHumanoids,
             int vanillaSpiders,
             int conflicts,
-            RendererDiscoveryRuntime.Result activation) {
+            RendererDiscoveryRuntime.Result activation,
+            RendererDiscoveryRuntime.LiveRefresh refresh) {
         int confirmed = vanillaHumanoids + extendedHumanoids + vanillaSpiders;
         return "EFPI: renderer discovery: "
                 + confirmed + " confirmed ("
@@ -73,7 +74,10 @@ public final class RendererDiscoveryShared {
                 + conflicts + " conflict(s). "
                 + activation.ready() + " ready for newly spawned mobs, "
                 + activation.skipped() + " skipped. "
-                + "No server restart is needed for new spawns; existing mobs may need to respawn.";
+                + refresh.updated() + " already-loaded mob(s) updated. "
+                + (refresh.failed() == 0
+                        ? "No server restart required."
+                        : refresh.failed() + " mob(s) could not be updated (see server log).");
     }
 
     private RendererDiscoveryShared() {

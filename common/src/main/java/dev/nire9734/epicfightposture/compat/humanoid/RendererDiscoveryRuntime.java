@@ -14,6 +14,10 @@ public final class RendererDiscoveryRuntime {
     public record Result(int ready, int skipped) {
     }
 
+    /** Result of activating patches on entities that predate an operator report. */
+    public record LiveRefresh(int updated, int failed) {
+    }
+
     /** Returns ready only after the loader confirms ownership of the active provider. */
     public static Result activate(RendererDiscoveryStore.ActiveTargets targets,
                                   BiPredicate<ResourceLocation, Kind> register) {

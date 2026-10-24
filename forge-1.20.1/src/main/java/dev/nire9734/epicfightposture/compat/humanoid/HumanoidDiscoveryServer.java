@@ -122,9 +122,10 @@ public final class HumanoidDiscoveryServer {
 
         RendererDiscoveryRuntime.Result activation = RendererDiscoveryRuntime.activate(
                 RendererDiscoveryStore.pendingTargets(), VanillaHumanoidCompat::registerTrustedDedicatedTarget);
+        RendererDiscoveryRuntime.LiveRefresh refresh = ForgeExistingPatchRefresh.refresh(sender.getServer());
         sender.sendSystemMessage(Component.literal(RendererDiscoveryShared.runtimeAppliedMessage(
                 result.pendingVanillaCount(), result.pendingExtendedCount(),
-                result.pendingSpiderCount(), result.conflictCount(), activation)));
+                result.pendingSpiderCount(), result.conflictCount(), activation, refresh)));
     }
 
     private HumanoidDiscoveryServer() {
