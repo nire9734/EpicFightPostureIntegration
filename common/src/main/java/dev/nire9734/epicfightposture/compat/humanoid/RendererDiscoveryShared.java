@@ -3,7 +3,7 @@ package dev.nire9734.epicfightposture.compat.humanoid;
 import java.util.Objects;
 import java.util.Set;
 
-/** Loader-independent renderer discovery cache name and operator notices. */
+/** Loader-independent renderer discovery cache name and report validation. */
 public final class RendererDiscoveryShared {
     public static final String CACHE_FILE_NAME = "renderer-discovery.json";
     private static final int MAX_REPORT_IDS = 8192;
@@ -43,41 +43,6 @@ public final class RendererDiscoveryShared {
             if (second.contains(id)) return true;
         }
         return false;
-    }
-
-    public static String rejectionMessage(ValidationError error) {
-        return switch (error) {
-            case INVALID_FINGERPRINT -> "EFPI: rejected invalid renderer discovery fingerprint.";
-            case INCONSISTENT -> "EFPI: rejected inconsistent renderer discovery report.";
-            case AMBIGUOUS -> "EFPI: rejected ambiguous renderer discovery report.";
-            case NONE -> throw new IllegalArgumentException("No report validation error");
-        };
-    }
-
-    public static String cacheFullMessage() {
-        return "EFPI: renderer discovery report cache is full; report ignored.";
-    }
-
-    public static String runtimeAppliedMessage(
-            int vanillaHumanoids,
-            int extendedHumanoids,
-            int vanillaSpiders,
-            int conflicts,
-            RendererDiscoveryRuntime.Result activation,
-            RendererDiscoveryRuntime.LiveRefresh refresh) {
-        int confirmed = vanillaHumanoids + extendedHumanoids + vanillaSpiders;
-        return "EFPI: renderer discovery: "
-                + confirmed + " confirmed ("
-                + vanillaHumanoids + " vanilla humanoid, "
-                + extendedHumanoids + " extended humanoid, "
-                + vanillaSpiders + " vanilla SpiderModel), "
-                + conflicts + " conflict(s). "
-                + activation.ready() + " ready for newly spawned mobs, "
-                + activation.skipped() + " skipped. "
-                + refresh.updated() + " already-loaded mob(s) updated. "
-                + (refresh.failed() == 0
-                        ? "No server restart required."
-                        : refresh.failed() + " mob(s) could not be updated (see server log).");
     }
 
     private RendererDiscoveryShared() {

@@ -64,7 +64,7 @@ mod_denylist = []
 
 Automatic support depends on the mob's model, animations and other mods. A Posture bar does not guarantee that every third-party execution animation will succeed. For dedicated-server renderer discovery, EFPI maintains a generated cache under `config/epicfight_posture_integration/cache/`. Compare Forge/NeoForge renderer coverage reports and test guard breaks, executions, equipment and model layers in game before releasing a new modpack.
 
-**Dedicated servers (3.2.0 development):** After an OP client submits a trusted renderer-discovery report, EFPI immediately registers approved compatibility for new spawns **and** patches compatible mobs already loaded in the world. No server restart, chunk reload, or entity replacement is required. Mobs whose Epic Fight patches belong to other mods are left untouched. The report shows how many existing mobs were updated or could not be updated; failures are logged. This behavior is under testing and is not part of the released 3.1.0 version.
+**Dedicated servers (3.2.0 development):** After an OP client submits a trusted renderer-discovery report, EFPI immediately registers approved compatibility for new spawns **and** patches compatible mobs already loaded in the world. No server restart, chunk reload, or entity replacement is required. Mobs whose Epic Fight patches belong to other mods are left untouched. Results and failures are recorded in the server log without sending in-game chat messages. This behavior is under testing and is not part of the released 3.1.0 version.
 
 ## Building
 

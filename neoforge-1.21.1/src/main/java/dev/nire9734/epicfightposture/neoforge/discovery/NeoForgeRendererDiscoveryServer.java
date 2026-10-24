@@ -1,5 +1,6 @@
 package dev.nire9734.epicfightposture.neoforge.discovery;
 
+import com.mojang.logging.LogUtils;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -11,7 +12,6 @@ import dev.nire9734.epicfightposture.compat.humanoid.RendererDiscoveryRuntime;
 import dev.nire9734.epicfightposture.neoforge.compat.NeoForgeAutoCompatibility;
 import dev.nire9734.epicfightposture.neoforge.compat.NeoForgeExistingPatchRefresh;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.EntityType;
@@ -22,12 +22,14 @@ import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.entity.player.PermissionsChangedEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
+import org.slf4j.Logger;
 
 /**
  * Trusted operator report ingestion and live activation for future spawns
  * and for compatible entities already loaded in the current server process.
  */
 public final class NeoForgeRendererDiscoveryServer {
+    private static final Logger LOGGER = LogUtils.getLogger();
     private static final int REQUIRED_PERMISSIONS = 2;
     private static final Map<UUID, UUID> PENDING_NONCES = new HashMap<>();
     private static volatile Set<ResourceLocation> active = Set.of();
@@ -84,12 +86,17 @@ public final class NeoForgeRendererDiscoveryServer {
         if (FMLEnvironment.dist != Dist.DEDICATED_SERVER || player == null
                 || !player.hasPermissions(REQUIRED_PERMISSIONS)) return;
         UUID expected = PENDING_NONCES.remove(player.getUUID());
-        if (expected == null || !expected.equals(report.nonce())) return;
+        if (expected == null || !expected.equals(report.nonce())) {
+            LOGGER.warn("EFPI ignored unexpected or expired renderer discovery from {}",
+                    player.getGameProfile().getName());
+            return;
+        }
         RendererDiscoveryShared.ValidationError error = RendererDiscoveryShared.validateReport(
                 report.fingerprint(), report.inspected(), report.vanillaHumanoids(),
                 report.extendedHumanoids(), report.spiders());
         if (error != RendererDiscoveryShared.ValidationError.NONE) {
-            player.sendSystemMessage(Component.literal(RendererDiscoveryShared.rejectionMessage(error)));
+            LOGGER.warn("EFPI rejected renderer discovery from {}: {}",
+                    player.getGameProfile().getName(), error);
             return;
         }
 
@@ -108,15 +115,18 @@ public final class NeoForgeRendererDiscoveryServer {
                 RendererDiscoveryStore.acceptReport(
                         report.fingerprint(), inspected, vanilla, extended, spider);
         if (!result.accepted()) {
-            player.sendSystemMessage(Component.literal(RendererDiscoveryShared.cacheFullMessage()));
+            LOGGER.warn("EFPI ignored renderer discovery from {} because the cache is full",
+                    player.getGameProfile().getName());
             return;
         }
         RendererDiscoveryRuntime.Result activation = RendererDiscoveryRuntime.activate(
                 RendererDiscoveryStore.pendingTargets(), NeoForgeAutoCompatibility::registerTrustedDedicatedTarget);
         RendererDiscoveryRuntime.LiveRefresh refresh = NeoForgeExistingPatchRefresh.refresh(player.getServer());
-        player.sendSystemMessage(Component.literal(RendererDiscoveryShared.runtimeAppliedMessage(
-                result.pendingVanillaCount(), result.pendingExtendedCount(),
-                result.pendingSpiderCount(), result.conflictCount(), activation, refresh)));
+        LOGGER.info("EFPI accepted renderer discovery from {}: {} vanilla, {} extended, {} spiders, "
+                        + "{} conflicts; {} runtime types ready, {} skipped; {} existing mobs updated, {} failed",
+                player.getGameProfile().getName(), result.pendingVanillaCount(),
+                result.pendingExtendedCount(), result.pendingSpiderCount(), result.conflictCount(),
+                activation.ready(), activation.skipped(), refresh.updated(), refresh.failed());
     }
 
     private NeoForgeRendererDiscoveryServer() {}

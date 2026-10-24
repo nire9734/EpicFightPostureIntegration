@@ -4,7 +4,6 @@ import com.mojang.logging.LogUtils;
 import dev.nire9734.epicfightposture.EpicFightPostureIntegration;
 import dev.nire9734.epicfightposture.network.BridgeNetwork;
 import dev.nire9734.epicfightposture.network.HumanoidDiscoveryRequestPacket;
-import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.EntityType;
@@ -96,7 +95,6 @@ public final class HumanoidDiscoveryServer {
         if (error != RendererDiscoveryShared.ValidationError.NONE) {
             LOGGER.warn("EFPI rejected renderer discovery reply from {}: {}",
                     sender.getGameProfile().getName(), error);
-            sender.sendSystemMessage(Component.literal(RendererDiscoveryShared.rejectionMessage(error)));
             return;
         }
 
@@ -124,7 +122,8 @@ public final class HumanoidDiscoveryServer {
         );
 
         if (!result.accepted()) {
-            sender.sendSystemMessage(Component.literal(RendererDiscoveryShared.cacheFullMessage()));
+            LOGGER.warn("EFPI ignored renderer discovery report from {} because the cache is full",
+                    sender.getGameProfile().getName());
             return;
         }
 
@@ -136,9 +135,10 @@ public final class HumanoidDiscoveryServer {
                 result.pendingExtendedCount(), result.pendingSpiderCount(), result.conflictCount(),
                 activation.ready(), activation.skipped());
         RendererDiscoveryRuntime.LiveRefresh refresh = ForgeExistingPatchRefresh.refresh(sender.getServer());
-        sender.sendSystemMessage(Component.literal(RendererDiscoveryShared.runtimeAppliedMessage(
-                result.pendingVanillaCount(), result.pendingExtendedCount(),
-                result.pendingSpiderCount(), result.conflictCount(), activation, refresh)));
+        if (refresh.failed() > 0) {
+            LOGGER.warn("EFPI could not refresh {} existing mobs after discovery from {}",
+                    refresh.failed(), sender.getGameProfile().getName());
+        }
     }
 
     private HumanoidDiscoveryServer() {
