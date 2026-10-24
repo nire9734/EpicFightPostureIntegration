@@ -1,6 +1,7 @@
 package dev.nire9734.epicfightposture;
 
 import com.mojang.logging.LogUtils;
+import dev.nire9734.epicfightposture.sync.ForgePostureCoverage;
 import dev.nire9734.epicfightposture.sync.PostureSyncEvents;
 import dev.nire9734.epicfightposture.sync.RuntimeAccess;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -342,21 +343,30 @@ public final class PostureManager {
     }
 
     private static boolean isEligiblePostureEntity(LivingEntity entity, LivingEntityPatch<?> targetPatch) {
-        if (!canReceivePosture(entity) || entity instanceof Player || targetPatch == null
-                || PostureServerConfig.isBlacklisted(entityTypeId(entity))
-                || targetPatch instanceof CEHumanoidPatch
-                || !hasNeutralizeAnimation(targetPatch)) {
-            return false;
+        if (entity instanceof Player) return false;
+        PostureExecutionEligibility.Reason exclusion = null;
+        if (!canReceivePosture(entity)) {
+            exclusion = PostureExecutionEligibility.Reason.TARGET_NOT_ALIVE;
+        } else if (PostureServerConfig.isBlacklisted(entityTypeId(entity))) {
+            exclusion = PostureExecutionEligibility.Reason.ENTITY_BLACKLISTED;
+        } else if (targetPatch instanceof CEHumanoidPatch) {
+            exclusion = PostureExecutionEligibility.Reason.CE_OWNED_PATCH;
         }
-
-        // A CustomExecuteEntity may decide based on the actual executor; that
-        // check is repeated in the client HUD with the local player patch.
-        if (targetPatch instanceof CustomExecuteEntity) {
-            return true;
-        }
-
         try {
-            return targetPatch.getArmature() instanceof HumanoidArmature;
+            if (exclusion == null && targetPatch != null) {
+                dev.nire9734.epicfightposture.compat.humanoid.MissingHumanoidNeutralize.installIfNeeded(targetPatch);
+            }
+            boolean spiderCompatible = !(targetPatch instanceof dev.nire9734.epicfightposture.compat.spider.LightweightSpiderPatch)
+                    || dev.nire9734.epicfightposture.compat.spider.SpiderExecutionSupport.isCompatible(targetPatch);
+            PostureExecutionEligibility.Comparison comparison = PostureExecutionEligibility.compare(
+                    targetPatch, targetPatch != null && targetPatch.isInitialized(),
+                    targetPatch instanceof CustomExecuteEntity, exclusion, spiderCompatible);
+            try {
+                ForgePostureCoverage.observe(entity, targetPatch, comparison);
+            } catch (RuntimeException | LinkageError ignored) {
+                // Diagnostics must not change gameplay eligibility.
+            }
+            return comparison.current().supported();
         } catch (Throwable ignored) {
             return false;
         }
@@ -375,17 +385,7 @@ public final class PostureManager {
         // The provider, not a return-value Mixin, is the canonical source read
         // by applyStun and Combat Evolution.
         dev.nire9734.epicfightposture.compat.humanoid.MissingHumanoidNeutralize.installIfNeeded(patch);
-        try {
-            AssetAccessor<? extends StaticAnimation> neutralize = patch.getHitAnimation(StunType.NEUTRALIZE);
-            if (neutralize == null || neutralize.isEmpty()) {
-                return false;
-            }
-            AssetAccessor<? extends StaticAnimation> shortHit = patch.getHitAnimation(StunType.SHORT);
-            AssetAccessor<? extends StaticAnimation> longHit = patch.getHitAnimation(StunType.LONG);
-            return !sameAnimation(neutralize, shortHit) && !sameAnimation(neutralize, longHit);
-        } catch (Throwable ignored) {
-            return false;
-        }
+        return PostureExecutionEligibility.hasDistinctNeutralize(patch);
     }
 
     private static boolean isActiveNeutralize(LivingEntityPatch<?> patch) {

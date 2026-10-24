@@ -7,6 +7,7 @@ on:
       - '3.0.1'
       - '3.0.2'
       - dev/multiloader
+      - 'dev/3.2.0'
       - dev/vanilla-humanoid-ef-special-render
       - dev/spider-generalized-compat
       - dev/humanoid-retargeting
@@ -39,6 +40,7 @@ jobs:
           name: epicfight-posture-integration-forge-1.20.1
           path: forge-1.20.1/build/libs/*.jar
           if-no-files-found: error
+          retention-days: 30
 
   neoforge:
     name: NeoForge 1.21.1 (Java 21)
@@ -63,6 +65,7 @@ jobs:
           name: epicfight-posture-integration-neoforge-1.21.1
           path: neoforge-1.21.1/build/libs/*.jar
           if-no-files-found: error
+          retention-days: 30
 
   windows-bootstrap:
     name: Windows Gradle bootstrap
