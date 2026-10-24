@@ -14,6 +14,9 @@ public final class RendererDiscoveryRuntime {
     public record Result(int ready, int skipped) {
     }
 
+    public record ActivationUpdate(int ready, int skipped, int newlyReady, int newlySkipped) {
+    }
+
     /** Result of activating patches on entities that predate an operator report. */
     public record LiveRefresh(int updated, int failed) {
     }
@@ -38,6 +41,53 @@ public final class RendererDiscoveryRuntime {
             }
         }
         return new Result(ready, skipped);
+    }
+
+    /** Count newly activated targets separately from repeat OP reports. */
+    public static ActivationUpdate activateTrackingChanges(
+            RendererDiscoveryStore.ActiveTargets previous,
+            RendererDiscoveryStore.ActiveTargets targets,
+            BiPredicate<ResourceLocation, Kind> register) {
+        int ready = 0;
+        int skipped = 0;
+        int newlyReady = 0;
+        int newlySkipped = 0;
+        for (Kind kind : Kind.values()) {
+            Set<ResourceLocation> priorIds = idsFor(previous, kind);
+            for (ResourceLocation id : idsFor(targets, kind)) {
+                boolean isNew = !priorIds.contains(id);
+                if (register.test(id, kind)) {
+                    ready++;
+                    if (isNew) newlyReady++;
+                } else {
+                    skipped++;
+                    if (isNew) newlySkipped++;
+                }
+            }
+        }
+        return new ActivationUpdate(ready, skipped, newlyReady, newlySkipped);
+    }
+
+    public static int withdrawnTargets(
+            RendererDiscoveryStore.ActiveTargets previous,
+            RendererDiscoveryStore.ActiveTargets current) {
+        int withdrawn = 0;
+        for (Kind kind : Kind.values()) {
+            Set<ResourceLocation> remaining = idsFor(current, kind);
+            for (ResourceLocation id : idsFor(previous, kind)) {
+                if (!remaining.contains(id)) withdrawn++;
+            }
+        }
+        return withdrawn;
+    }
+
+    private static Set<ResourceLocation> idsFor(RendererDiscoveryStore.ActiveTargets targets, Kind kind) {
+        if (targets == null) return Set.of();
+        return switch (kind) {
+            case VANILLA_HUMANOID -> targets.vanillaHumanoid();
+            case EXTENDED_HUMANOID -> targets.extendedHumanoid();
+            case VANILLA_SPIDER -> targets.vanillaSpider();
+        };
     }
 
     private RendererDiscoveryRuntime() {

@@ -12,6 +12,7 @@ import dev.nire9734.epicfightposture.compat.humanoid.RendererDiscoveryRuntime;
 import dev.nire9734.epicfightposture.neoforge.compat.NeoForgeAutoCompatibility;
 import dev.nire9734.epicfightposture.neoforge.compat.NeoForgeExistingPatchRefresh;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.EntityType;
@@ -97,6 +98,7 @@ public final class NeoForgeRendererDiscoveryServer {
         if (error != RendererDiscoveryShared.ValidationError.NONE) {
             LOGGER.warn("EFPI rejected renderer discovery from {}: {}",
                     player.getGameProfile().getName(), error);
+            player.sendSystemMessage(Component.literal(RendererDiscoveryShared.reportErrorNotice()));
             return;
         }
 
@@ -111,22 +113,35 @@ public final class NeoForgeRendererDiscoveryServer {
         vanilla.retainAll(inspected);
         extended.retainAll(inspected);
         spider.retainAll(inspected);
+        RendererDiscoveryStore.ActiveTargets previous = RendererDiscoveryStore.pendingTargets();
+        Set<ResourceLocation> previousConflicts = RendererDiscoveryStore.conflicts();
         RendererDiscoveryStore.UpdateResult result =
-                RendererDiscoveryStore.acceptReport(
-                        report.fingerprint(), inspected, vanilla, extended, spider);
+                RendererDiscoveryStore.acceptOperatorReport(
+                        player.getUUID(), report.fingerprint(), inspected, vanilla, extended, spider);
         if (!result.accepted()) {
             LOGGER.warn("EFPI ignored renderer discovery from {} because the cache is full",
                     player.getGameProfile().getName());
+            player.sendSystemMessage(Component.literal(RendererDiscoveryShared.reportErrorNotice()));
             return;
         }
-        RendererDiscoveryRuntime.Result activation = RendererDiscoveryRuntime.activate(
-                RendererDiscoveryStore.pendingTargets(), NeoForgeAutoCompatibility::registerTrustedDedicatedTarget);
+        RendererDiscoveryStore.ActiveTargets current = RendererDiscoveryStore.pendingTargets();
+        RendererDiscoveryRuntime.ActivationUpdate activation = RendererDiscoveryRuntime.activateTrackingChanges(
+                previous, current, NeoForgeAutoCompatibility::registerTrustedDedicatedTarget);
         RendererDiscoveryRuntime.LiveRefresh refresh = NeoForgeExistingPatchRefresh.refresh(player.getServer());
         LOGGER.info("EFPI accepted renderer discovery from {}: {} vanilla, {} extended, {} spiders, "
                         + "{} conflicts; {} runtime types ready, {} skipped; {} existing mobs updated, {} failed",
                 player.getGameProfile().getName(), result.pendingVanillaCount(),
                 result.pendingExtendedCount(), result.pendingSpiderCount(), result.conflictCount(),
                 activation.ready(), activation.skipped(), refresh.updated(), refresh.failed());
+        Set<ResourceLocation> newConflicts = new HashSet<>(RendererDiscoveryStore.conflicts());
+        newConflicts.removeAll(previousConflicts);
+        String notice = RendererDiscoveryShared.changeNotice(
+                activation.newlyReady(),
+                RendererDiscoveryRuntime.withdrawnTargets(previous, current),
+                refresh.updated(), newConflicts.size(), activation.newlySkipped(), refresh.failed());
+        if (notice != null) {
+            player.sendSystemMessage(Component.literal(notice));
+        }
     }
 
     private NeoForgeRendererDiscoveryServer() {}

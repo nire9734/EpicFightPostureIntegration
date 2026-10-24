@@ -4,6 +4,7 @@ import com.mojang.logging.LogUtils;
 import dev.nire9734.epicfightposture.EpicFightPostureIntegration;
 import dev.nire9734.epicfightposture.network.BridgeNetwork;
 import dev.nire9734.epicfightposture.network.HumanoidDiscoveryRequestPacket;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.EntityType;
@@ -95,6 +96,7 @@ public final class HumanoidDiscoveryServer {
         if (error != RendererDiscoveryShared.ValidationError.NONE) {
             LOGGER.warn("EFPI rejected renderer discovery reply from {}: {}",
                     sender.getGameProfile().getName(), error);
+            sender.sendSystemMessage(Component.literal(RendererDiscoveryShared.reportErrorNotice()));
             return;
         }
 
@@ -113,8 +115,10 @@ public final class HumanoidDiscoveryServer {
         Set<ResourceLocation> validSpider = new HashSet<>(vanillaSpider);
         validSpider.retainAll(validInspected);
 
-        RendererDiscoveryStore.UpdateResult result = RendererDiscoveryStore.acceptReport(
-                environmentFingerprint,
+        RendererDiscoveryStore.ActiveTargets previous = RendererDiscoveryStore.pendingTargets();
+        Set<ResourceLocation> previousConflicts = RendererDiscoveryStore.conflicts();
+        RendererDiscoveryStore.UpdateResult result = RendererDiscoveryStore.acceptOperatorReport(
+                sender.getUUID(), environmentFingerprint,
                 validInspected,
                 validVanilla,
                 validExtended,
@@ -124,11 +128,13 @@ public final class HumanoidDiscoveryServer {
         if (!result.accepted()) {
             LOGGER.warn("EFPI ignored renderer discovery report from {} because the cache is full",
                     sender.getGameProfile().getName());
+            sender.sendSystemMessage(Component.literal(RendererDiscoveryShared.reportErrorNotice()));
             return;
         }
 
-        RendererDiscoveryRuntime.Result activation = RendererDiscoveryRuntime.activate(
-                RendererDiscoveryStore.pendingTargets(), VanillaHumanoidCompat::registerTrustedDedicatedTarget);
+        RendererDiscoveryStore.ActiveTargets current = RendererDiscoveryStore.pendingTargets();
+        RendererDiscoveryRuntime.ActivationUpdate activation = RendererDiscoveryRuntime.activateTrackingChanges(
+                previous, current, VanillaHumanoidCompat::registerTrustedDedicatedTarget);
         LOGGER.info("EFPI accepted renderer discovery from {}: {} vanilla, {} extended, {} spiders, "
                         + "{} conflicts; {} runtime types ready, {} skipped",
                 sender.getGameProfile().getName(), result.pendingVanillaCount(),
@@ -138,6 +144,15 @@ public final class HumanoidDiscoveryServer {
         if (refresh.failed() > 0) {
             LOGGER.warn("EFPI could not refresh {} existing mobs after discovery from {}",
                     refresh.failed(), sender.getGameProfile().getName());
+        }
+        Set<ResourceLocation> newConflicts = new HashSet<>(RendererDiscoveryStore.conflicts());
+        newConflicts.removeAll(previousConflicts);
+        String notice = RendererDiscoveryShared.changeNotice(
+                activation.newlyReady(),
+                RendererDiscoveryRuntime.withdrawnTargets(previous, current),
+                refresh.updated(), newConflicts.size(), activation.newlySkipped(), refresh.failed());
+        if (notice != null) {
+            sender.sendSystemMessage(Component.literal(notice));
         }
     }
 

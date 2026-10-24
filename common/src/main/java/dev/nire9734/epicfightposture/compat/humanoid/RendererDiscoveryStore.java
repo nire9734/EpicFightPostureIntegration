@@ -22,6 +22,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 
 /** Dedicated-server persistence for trusted client renderer observations. */
 public final class RendererDiscoveryStore {
@@ -106,6 +107,40 @@ public final class RendererDiscoveryStore {
                 state.pendingSpider.size(),
                 state.conflicts.size()
         );
+    }
+
+    /**
+     * Keep one current report per trusted OP, even when multiple operators use
+     * the same mod set but different renderer resources. Otherwise the newest
+     * operator silently overwrites the earlier one's observations and can
+     * enable a patch that another connected client cannot render.
+     */
+    public static synchronized UpdateResult acceptOperatorReport(
+            UUID operatorId,
+            String environmentFingerprint,
+            Set<ResourceLocation> inspected,
+            Set<ResourceLocation> vanillaHumanoid,
+            Set<ResourceLocation> extendedHumanoid,
+            Set<ResourceLocation> vanillaSpider) {
+        if (operatorId == null || environmentFingerprint == null) {
+            return currentResult(false);
+        }
+        String suffix = "@" + operatorId;
+        String key = environmentFingerprint + suffix;
+
+        // Include space reclaimed from this operator's last report and from the
+        // legacy environment-only entry, without altering state on rejection.
+        long obsolete = state.reports.keySet().stream()
+                .filter(stored -> stored.endsWith(suffix) || stored.equals(environmentFingerprint))
+                .count();
+        if (state.reports.size() - obsolete >= MAX_REPORT_ENVIRONMENTS) {
+            LOGGER.warn("Ignoring EFPI renderer discovery report because {} operator reports are already stored",
+                    MAX_REPORT_ENVIRONMENTS);
+            return currentResult(false);
+        }
+        state.reports.keySet().removeIf(stored -> stored.endsWith(suffix)
+                || stored.equals(environmentFingerprint));
+        return acceptReport(key, inspected, vanillaHumanoid, extendedHumanoid, vanillaSpider);
     }
 
     private static UpdateResult currentResult(boolean accepted) {

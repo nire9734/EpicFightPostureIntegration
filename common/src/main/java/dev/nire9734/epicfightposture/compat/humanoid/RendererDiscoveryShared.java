@@ -2,6 +2,7 @@ package dev.nire9734.epicfightposture.compat.humanoid;
 
 import java.util.Objects;
 import java.util.Set;
+import java.util.StringJoiner;
 
 /** Loader-independent renderer discovery cache name and report validation. */
 public final class RendererDiscoveryShared {
@@ -43,6 +44,31 @@ public final class RendererDiscoveryShared {
             if (second.contains(id)) return true;
         }
         return false;
+    }
+
+    /** At most one short notice to the OP whose report changed server behavior. */
+    public static String changeNotice(
+            int newlyReady,
+            int withdrawn,
+            int patchedMobs,
+            int newConflicts,
+            int newlySkipped,
+            int failedPatches) {
+        StringJoiner details = new StringJoiner(", ");
+        if (newlyReady > 0) details.add(newlyReady + " mob types enabled");
+        if (patchedMobs > 0) details.add(patchedMobs + " existing mobs patched");
+        if (withdrawn > 0) details.add(withdrawn + " mob types disabled");
+        if (newConflicts > 0) details.add(newConflicts + " renderer conflicts");
+        if (newlySkipped > 0) details.add(newlySkipped + " registrations skipped");
+        if (failedPatches > 0) details.add(failedPatches + " patch failures");
+        if (details.length() == 0) return null;
+        boolean problems = newConflicts > 0 || newlySkipped > 0 || failedPatches > 0;
+        return "[EFPI] Compatibility " + (problems ? "update needs attention: " : "updated: ")
+                + details + (problems ? ". See server log." : ".");
+    }
+
+    public static String reportErrorNotice() {
+        return "[EFPI] Renderer discovery failed. See server log.";
     }
 
     private RendererDiscoveryShared() {

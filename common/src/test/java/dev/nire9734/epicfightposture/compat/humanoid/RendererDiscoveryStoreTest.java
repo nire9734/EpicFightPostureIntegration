@@ -7,6 +7,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Set;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -70,5 +71,53 @@ class RendererDiscoveryStoreTest {
                 RendererDiscoveryRuntime.Kind.VANILLA_HUMANOID));
         assertTrue(RendererDiscoveryStore.isRuntimeApproved(id,
                 RendererDiscoveryRuntime.Kind.EXTENDED_HUMANOID));
+    }
+
+    @Test
+    void operatorsWithIdenticalModSetsKeepIndependentRendererReports() {
+        RendererDiscoveryStore.bootstrap("server", configDirectory);
+        UUID first = UUID.randomUUID();
+        UUID second = UUID.randomUUID();
+        String environment = "a".repeat(64);
+        ResourceLocation golem = ResourceLocation.tryParse("cataclysm:coral_golem");
+
+        assertTrue(RendererDiscoveryStore.acceptOperatorReport(first, environment,
+                Set.of(golem), Set.of(golem), Set.of(), Set.of()).accepted());
+        assertTrue(RendererDiscoveryStore.isRuntimeApproved(golem));
+
+        // Same mod versions, but another operator's client lacks this renderer.
+        assertTrue(RendererDiscoveryStore.acceptOperatorReport(second, environment,
+                Set.of(golem), Set.of(), Set.of(), Set.of()).accepted());
+        assertFalse(RendererDiscoveryStore.isRuntimeApproved(golem));
+        assertTrue(RendererDiscoveryStore.conflicts().contains(golem));
+        assertFalse(RendererDiscoveryStore.bootstrap("server", configDirectory)
+                .vanillaHumanoid().contains(golem));
+
+        // Re-reporting from the first OP must not erase the second OP's findings.
+        assertTrue(RendererDiscoveryStore.acceptOperatorReport(first, environment,
+                Set.of(golem), Set.of(golem), Set.of(), Set.of()).accepted());
+        assertFalse(RendererDiscoveryStore.isRuntimeApproved(golem));
+
+        // Once the second OP agrees, the target becomes usable again.
+        assertTrue(RendererDiscoveryStore.acceptOperatorReport(second, environment,
+                Set.of(golem), Set.of(golem), Set.of(), Set.of()).accepted());
+        assertTrue(RendererDiscoveryStore.isRuntimeApproved(golem));
+        assertFalse(RendererDiscoveryStore.conflicts().contains(golem));
+    }
+
+    @Test
+    void operatorChangingEnvironmentReplacesStaleReport() {
+        RendererDiscoveryStore.bootstrap("server", configDirectory);
+        UUID operator = UUID.randomUUID();
+        ResourceLocation id = ResourceLocation.tryParse("example:mob");
+        RendererDiscoveryStore.acceptOperatorReport(operator, "a".repeat(64),
+                Set.of(id), Set.of(id), Set.of(), Set.of());
+        assertTrue(RendererDiscoveryStore.isRuntimeApproved(id));
+
+        RendererDiscoveryStore.acceptOperatorReport(operator, "b".repeat(64),
+                Set.of(id), Set.of(), Set.of(id), Set.of());
+        assertTrue(RendererDiscoveryStore.isRuntimeApproved(id,
+                RendererDiscoveryRuntime.Kind.EXTENDED_HUMANOID));
+        assertFalse(RendererDiscoveryStore.conflicts().contains(id));
     }
 }

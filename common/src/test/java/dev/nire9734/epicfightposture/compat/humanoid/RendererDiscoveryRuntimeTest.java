@@ -32,4 +32,24 @@ class RendererDiscoveryRuntimeTest {
         assertTrue(observed.contains(extended + ":EXTENDED_HUMANOID"));
         assertTrue(observed.contains(spider + ":VANILLA_SPIDER"));
     }
+
+    @Test
+    void repeatedReportDoesNotCountAsNewActivation() {
+        ResourceLocation golem = ResourceLocation.tryParse("cataclysm:coral_golem");
+        RendererDiscoveryStore.ActiveTargets targets = new RendererDiscoveryStore.ActiveTargets(
+                Set.of(golem), Set.of(), Set.of());
+        RendererDiscoveryRuntime.ActivationUpdate first =
+                RendererDiscoveryRuntime.activateTrackingChanges(
+                        RendererDiscoveryStore.ActiveTargets.empty(), targets, (id, kind) -> true);
+        assertEquals(1, first.newlyReady());
+
+        RendererDiscoveryRuntime.ActivationUpdate again =
+                RendererDiscoveryRuntime.activateTrackingChanges(targets, targets, (id, kind) -> true);
+        assertEquals(1, again.ready());
+        assertEquals(0, again.newlyReady());
+        assertEquals(0, again.newlySkipped());
+        assertEquals(0, RendererDiscoveryRuntime.withdrawnTargets(targets, targets));
+        assertEquals(1, RendererDiscoveryRuntime.withdrawnTargets(
+                targets, RendererDiscoveryStore.ActiveTargets.empty()));
+    }
 }

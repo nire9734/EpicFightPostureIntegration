@@ -4,7 +4,8 @@
 
 - **Dedicated-server discovery:** apply newly confirmed, conflict-free renderer compatibility immediately to both new spawns and already-loaded mobs without a server restart on Forge and NeoForge.
 - **Safe live registration:** preserve patches owned by Epic Fight addons and disable EFPI-owned compatibility when renderer reports conflict. Existing mobs stay in place without being replaced or despawned.
-- **Silent discovery:** no in-game chat messages are sent to operators or other players; status and failure details remain in server logs.
+- **Conditional OP notifications:** only the operator whose renderer report changes compatibility or encounters a problem receives a brief in-game notice. No message is sent for unchanged reports or to other players.
+- **Multiple-OP safety:** each operator's renderer observations are retained independently, and conflicting observations disable the affected automatic compatibility until resolved.
 
 ## 3.1.0
 
