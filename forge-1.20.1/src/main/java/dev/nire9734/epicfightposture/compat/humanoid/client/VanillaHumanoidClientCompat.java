@@ -141,6 +141,9 @@ public final class VanillaHumanoidClientCompat {
                 verifiedVanillaIds.size() + verifiedPreparedIds.size() + verifiedSpiderIds.size(),
                 summary
         );
+        // On F3+T, the old OP report may no longer match the rebuilt models.
+        // The server verifies permission and issues a fresh one-time nonce.
+        HumanoidClientDiscovery.requestServerRescanAfterReload();
     }
 
     private static Set<EntityType<?>> registerVanillaHumanoids(

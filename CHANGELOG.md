@@ -6,6 +6,7 @@
 - **Safe live registration:** preserve patches owned by Epic Fight addons and disable EFPI-owned compatibility when renderer reports conflict. Existing mobs stay in place without being replaced or despawned.
 - **Conditional OP notifications:** only the operator whose renderer report changes compatibility or encounters a problem receives a brief in-game notice. No message is sent for unchanged reports or to other players.
 - **Multiple-OP safety:** each operator's renderer observations are retained independently, and conflicting observations disable the affected automatic compatibility until resolved.
+- **Resource-pack reloads:** an OP's client automatically requests a fresh authorized renderer scan after its renderer resources are rebuilt (for example, F3+T); no reconnect or dedicated-server restart is needed.
 
 ## 3.1.0
 

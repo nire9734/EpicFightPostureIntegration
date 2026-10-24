@@ -4,6 +4,7 @@ import dev.nire9734.epicfightposture.compat.humanoid.HumanoidEnvironmentFingerpr
 import dev.nire9734.epicfightposture.compat.humanoid.VanillaHumanoidCompat;
 import dev.nire9734.epicfightposture.network.BridgeNetwork;
 import dev.nire9734.epicfightposture.network.HumanoidDiscoveryUploadPacket;
+import dev.nire9734.epicfightposture.network.HumanoidDiscoveryRefreshPacket;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.model.HumanoidModel;
 import net.minecraft.client.model.SpiderModel;
@@ -107,6 +108,14 @@ public final class HumanoidClientDiscovery {
      */
     public static void updateServerReportSnapshot(ScanSnapshot snapshot) {
         serverReportSnapshot = snapshot == null ? ScanSnapshot.empty() : snapshot;
+    }
+
+    /** Called only after the renderer reload has prepared its new validated snapshot. */
+    public static void requestServerRescanAfterReload() {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.getConnection() != null && !minecraft.hasSingleplayerServer()) {
+            BridgeNetwork.sendToServer(new HumanoidDiscoveryRefreshPacket());
+        }
     }
 
     public static void handleServerRequest(UUID nonce) {

@@ -33,6 +33,7 @@ public final class NeoForgeRendererDiscoveryServer {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final int REQUIRED_PERMISSIONS = 2;
     private static final Map<UUID, UUID> PENDING_NONCES = new HashMap<>();
+    private static final Map<UUID, Integer> LAST_RELOAD_REQUEST_TICK = new HashMap<>();
     private static volatile Set<ResourceLocation> active = Set.of();
     private static volatile Set<ResourceLocation> extended = Set.of();
     private static volatile Set<ResourceLocation> spiders = Set.of();
@@ -62,9 +63,7 @@ public final class NeoForgeRendererDiscoveryServer {
         if (FMLEnvironment.dist != Dist.DEDICATED_SERVER
                 || !(event.getEntity() instanceof ServerPlayer player)
                 || !player.hasPermissions(REQUIRED_PERMISSIONS)) return;
-        UUID nonce = UUID.randomUUID();
-        PENDING_NONCES.put(player.getUUID(), nonce);
-        PacketDistributor.sendToPlayer(player, new NeoForgeRendererScanRequest(nonce));
+        requestScan(player);
     }
 
     /** Trigger discovery for a player made OP after joining, without a reconnect. */
@@ -74,13 +73,36 @@ public final class NeoForgeRendererDiscoveryServer {
                 || event.getOldLevel() >= REQUIRED_PERMISSIONS
                 || event.getNewLevel() < REQUIRED_PERMISSIONS
                 || !(event.getEntity() instanceof ServerPlayer player)) return;
-        UUID nonce = UUID.randomUUID();
-        PENDING_NONCES.put(player.getUUID(), nonce);
-        PacketDistributor.sendToPlayer(player, new NeoForgeRendererScanRequest(nonce));
+        requestScan(player);
     }
 
     private static synchronized void onLogout(PlayerEvent.PlayerLoggedOutEvent event) {
-        if (event.getEntity() instanceof ServerPlayer player) PENDING_NONCES.remove(player.getUUID());
+        if (event.getEntity() instanceof ServerPlayer player) {
+            PENDING_NONCES.remove(player.getUUID());
+            LAST_RELOAD_REQUEST_TICK.remove(player.getUUID());
+        }
+    }
+
+    /** Accept only OP-initiated reloads; never accept an unsolicited discovery report. */
+    public static synchronized void requestReloadScan(ServerPlayer player) {
+        if (FMLEnvironment.dist != Dist.DEDICATED_SERVER || player == null
+                || !player.hasPermissions(REQUIRED_PERMISSIONS) || player.getServer() == null) {
+            return;
+        }
+        int tick = player.getServer().getTickCount();
+        Integer last = LAST_RELOAD_REQUEST_TICK.get(player.getUUID());
+        if (last != null && tick >= last
+                && tick - last < RendererDiscoveryShared.RELOAD_REQUEST_COOLDOWN_TICKS) {
+            return;
+        }
+        LAST_RELOAD_REQUEST_TICK.put(player.getUUID(), tick);
+        requestScan(player);
+    }
+
+    private static void requestScan(ServerPlayer player) {
+        UUID nonce = UUID.randomUUID();
+        PENDING_NONCES.put(player.getUUID(), nonce);
+        PacketDistributor.sendToPlayer(player, new NeoForgeRendererScanRequest(nonce));
     }
 
     public static synchronized void acceptReport(ServerPlayer player, NeoForgeRendererScanReport report) {

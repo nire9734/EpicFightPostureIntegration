@@ -7,6 +7,8 @@ import java.util.StringJoiner;
 /** Loader-independent renderer discovery cache name and report validation. */
 public final class RendererDiscoveryShared {
     public static final String CACHE_FILE_NAME = "renderer-discovery.json";
+    /** Prevent rapid resource reloads from repeatedly refreshing all loaded mobs. */
+    public static final int RELOAD_REQUEST_COOLDOWN_TICKS = 20;
     private static final int MAX_REPORT_IDS = 8192;
 
     public enum ValidationError {

@@ -11,7 +11,7 @@ import net.minecraftforge.network.simple.SimpleChannel;
 
 public final class BridgeNetwork {
     // Network protocol version is intentionally independent from the mod version.
-    private static final String VERSION = "3";
+    private static final String VERSION = "4";
     private static SimpleChannel channel;
     private static boolean initialized;
 
@@ -48,6 +48,12 @@ public final class BridgeNetwork {
                 .encoder(ServerSettingsSyncPacket::encode)
                 .decoder(ServerSettingsSyncPacket::decode)
                 .consumerMainThread(ServerSettingsSyncPacket::handle)
+                .add();
+
+        channel.messageBuilder(HumanoidDiscoveryRefreshPacket.class, 4, NetworkDirection.PLAY_TO_SERVER)
+                .encoder(HumanoidDiscoveryRefreshPacket::encode)
+                .decoder(HumanoidDiscoveryRefreshPacket::decode)
+                .consumerMainThread(HumanoidDiscoveryRefreshPacket::handle)
                 .add();
     }
 

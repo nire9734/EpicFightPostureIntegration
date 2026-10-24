@@ -29,6 +29,7 @@ public final class HumanoidDiscoveryServer {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final int REQUIRED_PERMISSION_LEVEL = 2;
     private static final Map<UUID, UUID> PENDING_NONCES = new HashMap<>();
+    private static final Map<UUID, Integer> LAST_RELOAD_REQUEST_TICK = new HashMap<>();
 
     @SubscribeEvent
     public static void onPlayerLogin(PlayerEvent.PlayerLoggedInEvent event) {
@@ -60,7 +61,24 @@ public final class HumanoidDiscoveryServer {
     public static synchronized void onPlayerLogout(PlayerEvent.PlayerLoggedOutEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
             PENDING_NONCES.remove(player.getUUID());
+            LAST_RELOAD_REQUEST_TICK.remove(player.getUUID());
         }
+    }
+
+    /** A client reload is only a request: authentication and the nonce stay server-owned. */
+    public static synchronized void requestReloadScan(ServerPlayer player) {
+        if (FMLEnvironment.dist != Dist.DEDICATED_SERVER || player == null
+                || !player.hasPermissions(REQUIRED_PERMISSION_LEVEL) || player.getServer() == null) {
+            return;
+        }
+        int tick = player.getServer().getTickCount();
+        Integer last = LAST_RELOAD_REQUEST_TICK.get(player.getUUID());
+        if (last != null && tick >= last
+                && tick - last < RendererDiscoveryShared.RELOAD_REQUEST_COOLDOWN_TICKS) {
+            return;
+        }
+        LAST_RELOAD_REQUEST_TICK.put(player.getUUID(), tick);
+        requestScan(player);
     }
 
     private static synchronized void requestScan(ServerPlayer player) {

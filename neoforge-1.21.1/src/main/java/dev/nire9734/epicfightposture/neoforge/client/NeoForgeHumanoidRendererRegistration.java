@@ -117,6 +117,9 @@ public final class NeoForgeHumanoidRendererRegistration {
         LOGGER.info("EFPI NeoForge renderer scan: {} verified {} / {} inspected",
                 verifiedByBackend.values().stream().mapToInt(Integer::intValue).sum(),
                 verifiedByBackend, inspected.size());
+        // F3+T may change model classifications without changing loaded MODs.
+        // Ask the dedicated server for another trusted OP-only nonce handshake.
+        NeoForgeRendererDiscoveryClient.requestServerRescanAfterReload();
     }
 
     /** Returns the verified renderer backend, or null if registration failed. */

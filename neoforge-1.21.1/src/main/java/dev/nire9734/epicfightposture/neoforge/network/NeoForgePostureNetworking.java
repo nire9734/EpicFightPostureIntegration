@@ -8,6 +8,7 @@ import net.neoforged.neoforge.network.handling.IPayloadContext;
 import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 import net.minecraft.server.level.ServerPlayer;
 import dev.nire9734.epicfightposture.neoforge.discovery.NeoForgeRendererScanRequest;
+import dev.nire9734.epicfightposture.neoforge.discovery.NeoForgeRendererRescanRequest;
 import dev.nire9734.epicfightposture.neoforge.discovery.NeoForgeRendererScanReport;
 import dev.nire9734.epicfightposture.neoforge.discovery.NeoForgeRendererDiscoveryServer;
 import dev.nire9734.epicfightposture.neoforge.client.NeoForgeRendererDiscoveryClient;
@@ -18,7 +19,7 @@ import dev.nire9734.epicfightposture.neoforge.client.NeoForgeRendererDiscoveryCl
  */
 public final class NeoForgePostureNetworking {
     public static void registerPayloads(RegisterPayloadHandlersEvent event) {
-        PayloadRegistrar registrar = event.registrar("2");
+        PayloadRegistrar registrar = event.registrar("3");
         registrar.playToClient(
                 PostureStatePayload.TYPE, PostureStatePayload.STREAM_CODEC,
                 NeoForgePostureNetworking::receiveOnClient);
@@ -33,6 +34,13 @@ public final class NeoForgePostureNetworking {
                 (packet, context) -> {
                     if (context.player() instanceof ServerPlayer player) {
                         NeoForgeRendererDiscoveryServer.acceptReport(player, packet);
+                    }
+                });
+        registrar.playToServer(
+                NeoForgeRendererRescanRequest.TYPE, NeoForgeRendererRescanRequest.STREAM_CODEC,
+                (packet, context) -> {
+                    if (context.player() instanceof ServerPlayer player) {
+                        NeoForgeRendererDiscoveryServer.requestReloadScan(player);
                     }
                 });
     }
