@@ -120,14 +120,11 @@ public final class HumanoidDiscoveryServer {
             return;
         }
 
-        if (result.restartRequired()) {
-            String summary = RendererDiscoveryShared.restartRequiredMessage(
-                    result.pendingVanillaCount(),
-                    result.pendingExtendedCount(),
-                    result.pendingSpiderCount(),
-                    result.conflictCount());
-            sender.sendSystemMessage(Component.literal(summary));
-        }
+        RendererDiscoveryRuntime.Result activation = RendererDiscoveryRuntime.activate(
+                RendererDiscoveryStore.pendingTargets(), VanillaHumanoidCompat::registerTrustedDedicatedTarget);
+        sender.sendSystemMessage(Component.literal(RendererDiscoveryShared.runtimeAppliedMessage(
+                result.pendingVanillaCount(), result.pendingExtendedCount(),
+                result.pendingSpiderCount(), result.conflictCount(), activation)));
     }
 
     private HumanoidDiscoveryServer() {

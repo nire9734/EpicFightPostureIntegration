@@ -58,19 +58,22 @@ public final class RendererDiscoveryShared {
         return "EFPI: renderer discovery report cache is full; report ignored.";
     }
 
-    public static String restartRequiredMessage(
+    public static String runtimeAppliedMessage(
             int vanillaHumanoids,
             int extendedHumanoids,
             int vanillaSpiders,
-            int conflicts) {
+            int conflicts,
+            RendererDiscoveryRuntime.Result activation) {
         int confirmed = vanillaHumanoids + extendedHumanoids + vanillaSpiders;
         return "EFPI: renderer discovery: "
                 + confirmed + " confirmed ("
                 + vanillaHumanoids + " vanilla humanoid, "
                 + extendedHumanoids + " extended humanoid, "
                 + vanillaSpiders + " vanilla SpiderModel), "
-                + conflicts + " conflict(s)."
-                + " Restart the server to apply the pending compatibility list.";
+                + conflicts + " conflict(s). "
+                + activation.ready() + " ready for newly spawned mobs, "
+                + activation.skipped() + " skipped. "
+                + "No server restart is needed for new spawns; existing mobs may need to respawn.";
     }
 
     private RendererDiscoveryShared() {

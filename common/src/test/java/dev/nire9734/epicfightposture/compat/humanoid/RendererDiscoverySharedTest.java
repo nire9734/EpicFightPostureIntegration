@@ -6,13 +6,15 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class RendererDiscoverySharedTest {
     @Test
-    void cacheNameAndRestartNoticeAreIdenticalAcrossLoaders() {
+    void cacheNameAndLiveActivationNoticeAreIdenticalAcrossLoaders() {
         assertEquals("renderer-discovery.json", RendererDiscoveryShared.CACHE_FILE_NAME);
         assertEquals(
                 "EFPI: renderer discovery: 9 confirmed (3 vanilla humanoid, "
-                        + "4 extended humanoid, 2 vanilla SpiderModel), 1 conflict(s)."
-                        + " Restart the server to apply the pending compatibility list.",
-                RendererDiscoveryShared.restartRequiredMessage(3, 4, 2, 1)
+                        + "4 extended humanoid, 2 vanilla SpiderModel), 1 conflict(s). "
+                        + "8 ready for newly spawned mobs, 1 skipped. "
+                        + "No server restart is needed for new spawns; existing mobs may need to respawn.",
+                RendererDiscoveryShared.runtimeAppliedMessage(
+                        3, 4, 2, 1, new RendererDiscoveryRuntime.Result(8, 1))
         );
     }
 }

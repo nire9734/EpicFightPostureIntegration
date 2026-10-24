@@ -2,7 +2,7 @@
 
 Epic Fight Posture Integration (EFPI) adds a server-authoritative Posture system to compatible Epic Fight mobs, with guard breaks and Combat Evolution executions.
 
-## Supported editions (3.1.0)
+## Supported editions (3.2.0 development branch)
 
 | | Forge | NeoForge |
 | --- | --- | --- |
@@ -11,7 +11,7 @@ Epic Fight Posture Integration (EFPI) adds a server-authoritative Posture system
 | Epic Fight | 20.14.17–20.14.x | 21.17.3.1–21.17.x |
 | Combat Evolution | 2.2.8–2.3.x | 2.3.2–2.3.x |
 | Java for building | 17 | 21 |
-| File | `epicfight-posture-integration-forge-1.20.1-3.1.0.jar` | `epicfight-posture-integration-neoforge-1.21.1-3.1.0.jar` |
+| File | `epicfight-posture-integration-forge-1.20.1-3.2.0.jar` | `epicfight-posture-integration-neoforge-1.21.1-3.2.0.jar` |
 
 Install **only the JAR matching your Minecraft version and loader**. Install EFPI and its required mods on both client and server. GeckoLib and Lionfish API are optional compatibility libraries, not EFPI hard dependencies.
 
@@ -64,6 +64,8 @@ mod_denylist = []
 
 Automatic support depends on the mob's model, animations and other mods. A Posture bar does not guarantee that every third-party execution animation will succeed. For dedicated-server renderer discovery, EFPI maintains a generated cache under `config/epicfight_posture_integration/cache/`. Compare Forge/NeoForge renderer coverage reports and test guard breaks, executions, equipment and model layers in game before releasing a new modpack.
 
+**Dedicated servers (3.2.0 development):** After an OP client submits a trusted renderer-discovery report, EFPI attempts to register new compatible mobs immediately. A server restart is no longer required for *newly spawned* mobs; mobs already loaded may need to be despawned and spawned again. Mobs whose Epic Fight patches belong to other mods are left untouched. This behavior is under testing and is not part of the released 3.1.0 version.
+
 ## Building
 
 Both editions compile shared source files directly from `common/src/main/java`. Loader APIs, event hooks and specific render preparation remain in their respective project directories.
@@ -78,7 +80,7 @@ cd ../neoforge-1.21.1
 ./gradlew clean build
 ```
 
-Both build scripts download and verify their pinned Gradle distributions on first use; no system Gradle installation is required. On Windows, run `gradlew.bat clean build` inside the corresponding loader directory. Both builds run their associated tests. JARs are generated in each edition's `build/libs/` directory. The integration branch is `dev/multiloader`; the older loader-specific branches are historical references.
+Both build scripts download and verify their pinned Gradle distributions on first use; no system Gradle installation is required. On Windows, run `gradlew.bat clean build` inside the corresponding loader directory. Both builds run their associated tests. JARs are generated in each edition's `build/libs/` directory. Active development for the next release takes place on `dev/3.2.0`; the released 3.1.0 source remains on `main`.
 
 ## License
 

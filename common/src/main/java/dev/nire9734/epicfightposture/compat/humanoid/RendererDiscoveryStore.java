@@ -34,6 +34,9 @@ public final class RendererDiscoveryStore {
 
     private static State state = State.fresh("");
     private static Path cacheFile;
+    /** Published without allocating a new set on every posture eligibility check. */
+    private static volatile Set<ResourceLocation> runtimeApproved = Set.of();
+    private static volatile ActiveTargets runtimeApprovedKinds = ActiveTargets.empty();
 
     /** Promotes the previous process's pending lists before Epic Fight patch registration. */
     public static synchronized ActiveTargets bootstrap(String serverFingerprint, Path configDirectory) {
@@ -45,6 +48,7 @@ public final class RendererDiscoveryStore {
                 LOGGER.info("EFPI renderer discovery cache is stale after a server mod-set change; clearing it");
             }
             state = State.fresh(serverFingerprint);
+            publishRuntimeApproved();
             save();
             return ActiveTargets.empty();
         }
@@ -65,6 +69,7 @@ public final class RendererDiscoveryStore {
             );
             save();
         }
+        publishRuntimeApproved();
         return new ActiveTargets(state.activeVanilla, state.activeExtended, state.activeSpider);
     }
 
@@ -91,14 +96,11 @@ public final class RendererDiscoveryStore {
                 )
         );
         rebuildPending();
+        publishRuntimeApproved();
         save();
 
-        boolean restartRequired = !state.pendingVanilla.equals(state.activeVanilla)
-                || !state.pendingExtended.equals(state.activeExtended)
-                || !state.pendingSpider.equals(state.activeSpider);
         return new UpdateResult(
                 true,
-                restartRequired,
                 state.pendingVanilla.size(),
                 state.pendingExtended.size(),
                 state.pendingSpider.size(),
@@ -107,12 +109,8 @@ public final class RendererDiscoveryStore {
     }
 
     private static UpdateResult currentResult(boolean accepted) {
-        boolean restartRequired = !state.pendingVanilla.equals(state.activeVanilla)
-                || !state.pendingExtended.equals(state.activeExtended)
-                || !state.pendingSpider.equals(state.activeSpider);
         return new UpdateResult(
                 accepted,
-                restartRequired,
                 state.pendingVanilla.size(),
                 state.pendingExtended.size(),
                 state.pendingSpider.size(),
@@ -128,10 +126,35 @@ public final class RendererDiscoveryStore {
     }
 
     public static synchronized Set<ResourceLocation> pending() {
+        return runtimeApproved;
+    }
+
+    /** The currently conflict-free trusted targets, including reports accepted after startup. */
+    public static synchronized ActiveTargets pendingTargets() {
+        return new ActiveTargets(state.pendingVanilla, state.pendingExtended, state.pendingSpider);
+    }
+
+    /** Fast, fail-closed server-side gate for a previously registered EFPI patch. */
+    public static boolean isRuntimeApproved(ResourceLocation id) {
+        return id != null && runtimeApproved.contains(id);
+    }
+
+    public static boolean isRuntimeApproved(ResourceLocation id, RendererDiscoveryRuntime.Kind kind) {
+        if (id == null || kind == null) return false;
+        ActiveTargets current = runtimeApprovedKinds;
+        return switch (kind) {
+            case VANILLA_HUMANOID -> current.vanillaHumanoid().contains(id);
+            case EXTENDED_HUMANOID -> current.extendedHumanoid().contains(id);
+            case VANILLA_SPIDER -> current.vanillaSpider().contains(id);
+        };
+    }
+
+    private static void publishRuntimeApproved() {
+        runtimeApprovedKinds = new ActiveTargets(state.pendingVanilla, state.pendingExtended, state.pendingSpider);
         Set<ResourceLocation> result = new HashSet<>(state.pendingVanilla);
         result.addAll(state.pendingExtended);
         result.addAll(state.pendingSpider);
-        return Set.copyOf(result);
+        runtimeApproved = Set.copyOf(result);
     }
 
     public static synchronized Set<ResourceLocation> conflicts() {
@@ -372,7 +395,6 @@ public final class RendererDiscoveryStore {
 
     public record UpdateResult(
             boolean accepted,
-            boolean restartRequired,
             int pendingVanillaCount,
             int pendingExtendedCount,
             int pendingSpiderCount,

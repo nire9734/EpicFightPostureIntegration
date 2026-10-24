@@ -7,6 +7,8 @@ import java.util.Set;
 import java.util.UUID;
 import dev.nire9734.epicfightposture.compat.humanoid.RendererDiscoveryShared;
 import dev.nire9734.epicfightposture.compat.humanoid.RendererDiscoveryStore;
+import dev.nire9734.epicfightposture.compat.humanoid.RendererDiscoveryRuntime;
+import dev.nire9734.epicfightposture.neoforge.compat.NeoForgeAutoCompatibility;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -21,8 +23,8 @@ import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
 
 /**
- * Trusted operator report ingestion. No dynamic patch registration occurs in
- * response to a packet: promotion is delayed until the next server restart.
+ * Trusted operator report ingestion and live activation for future mob spawns.
+ * Existing patch attachments are never mutated in place.
  */
 public final class NeoForgeRendererDiscoveryServer {
     private static final int REQUIRED_PERMISSIONS = 2;
@@ -108,14 +110,11 @@ public final class NeoForgeRendererDiscoveryServer {
             player.sendSystemMessage(Component.literal(RendererDiscoveryShared.cacheFullMessage()));
             return;
         }
-        if (result.restartRequired()) {
-            String message = RendererDiscoveryShared.restartRequiredMessage(
-                    result.pendingVanillaCount(),
-                    result.pendingExtendedCount(),
-                    result.pendingSpiderCount(),
-                    result.conflictCount());
-            player.sendSystemMessage(Component.literal(message));
-        }
+        RendererDiscoveryRuntime.Result activation = RendererDiscoveryRuntime.activate(
+                RendererDiscoveryStore.pendingTargets(), NeoForgeAutoCompatibility::registerTrustedDedicatedTarget);
+        player.sendSystemMessage(Component.literal(RendererDiscoveryShared.runtimeAppliedMessage(
+                result.pendingVanillaCount(), result.pendingExtendedCount(),
+                result.pendingSpiderCount(), result.conflictCount(), activation)));
     }
 
     private NeoForgeRendererDiscoveryServer() {}

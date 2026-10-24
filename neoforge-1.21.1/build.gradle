@@ -55,6 +55,7 @@ sourceSets {
             include 'dev/nire9734/epicfightposture/neoforge/**'
             include 'dev/nire9734/epicfightposture/compat/humanoid/RendererDiscoveryShared.java'
             include 'dev/nire9734/epicfightposture/compat/humanoid/RendererDiscoveryStore.java'
+            include 'dev/nire9734/epicfightposture/compat/humanoid/RendererDiscoveryRuntime.java'
             include 'dev/nire9734/epicfightposture/compat/humanoid/ModSetFingerprint.java'
             include 'dev/nire9734/epicfightposture/compat/humanoid/rig/**'
             include 'dev/nire9734/epicfightposture/compat/humanoid/client/**'

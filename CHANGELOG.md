@@ -1,6 +1,11 @@
 # Changelog
 
-## 3.1.0 (unreleased)
+## 3.2.0 (in development)
+
+- **Dedicated-server discovery:** apply newly confirmed, conflict-free renderer compatibility to *newly spawned* mobs without a server restart on both Forge and NeoForge.
+- **Safe live registration:** preserve patches owned by Epic Fight addons and disable EFPI-owned compatibility when renderer reports conflict. Already-loaded mobs may need to respawn.
+
+## 3.1.0
 
 Changes since the `3.0.2` Forge branch:
 
