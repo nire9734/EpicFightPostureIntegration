@@ -2,7 +2,7 @@
 
 ## 3.2.0 (in development)
 
-- **Posture preflight diagnostics:** compare the previous eligibility rules with the current Animator and armature checks for each encountered mob type. Forge and NeoForge write separate `posture-coverage.tsv` reports with exclusion reasons; reporting does not enable unsupported mobs.
+- **Unified diagnostics:** one `forge-diagnostics.tsv` or `neoforge-diagnostics.tsv` report combines entity registry coverage, renderer scans, posture eligibility/preflight reasons, loaded mod versions and observed guard-break/execution outcomes. Untested entities stay explicitly marked as such; CE refusal before the execution-start event remains unobservable. Reports do not enable unsupported mobs.
 - **Dedicated-server discovery:** apply newly confirmed, conflict-free renderer compatibility immediately to both new spawns and already-loaded mobs without a server restart on Forge and NeoForge.
 - **Safe live registration:** preserve patches owned by Epic Fight addons and disable EFPI-owned compatibility when renderer reports conflict. Existing mobs stay in place without being replaced or despawned.
 - **Conditional OP notifications:** only the operator whose renderer report changes compatibility or encounters a problem receives a brief in-game notice. No message is sent for unchanged reports or to other players.

@@ -3,7 +3,9 @@ package dev.nire9734.epicfightposture.compat.humanoid;
 import net.minecraft.resources.ResourceLocation;
 
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.UUID;
 import java.util.function.BiPredicate;
 import java.util.function.Predicate;
@@ -86,6 +88,27 @@ public final class RendererDiscoveryReportProcessor {
         Set<ResourceLocation> result = new HashSet<>(candidates);
         result.retainAll(inspected);
         return result;
+    }
+
+    /** Read-only, conflict-aware diagnosis of the currently accepted OP scan. */
+    public static Map<String, String> diagnosticSnapshot(Set<ResourceLocation> recentlyInspected) {
+        RendererDiscoveryStore.ActiveTargets approved = RendererDiscoveryStore.pendingTargets();
+        Set<ResourceLocation> conflicts = RendererDiscoveryStore.conflicts();
+        Set<ResourceLocation> keys = new HashSet<>(recentlyInspected);
+        keys.addAll(approved.vanillaHumanoid());
+        keys.addAll(approved.extendedHumanoid());
+        keys.addAll(approved.vanillaSpider());
+        keys.addAll(conflicts);
+        Map<String, String> summary = new TreeMap<>();
+        for (ResourceLocation key : keys) {
+            String status = conflicts.contains(key) ? "CONFLICT"
+                    : approved.vanillaHumanoid().contains(key) ? "verified:vanilla_humanoid"
+                    : approved.extendedHumanoid().contains(key) ? "verified:extended_humanoid"
+                    : approved.vanillaSpider().contains(key) ? "verified:spider"
+                    : "scanned_not_approved";
+            summary.put(key.toString(), status);
+        }
+        return summary;
     }
 
     private RendererDiscoveryReportProcessor() { }

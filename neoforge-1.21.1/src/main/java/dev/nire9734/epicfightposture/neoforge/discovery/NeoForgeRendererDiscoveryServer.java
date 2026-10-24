@@ -10,6 +10,7 @@ import dev.nire9734.epicfightposture.compat.humanoid.RendererDiscoveryStore;
 import dev.nire9734.epicfightposture.compat.humanoid.RendererDiscoveryRuntime;
 import dev.nire9734.epicfightposture.neoforge.compat.NeoForgeAutoCompatibility;
 import dev.nire9734.epicfightposture.neoforge.compat.NeoForgeExistingPatchRefresh;
+import dev.nire9734.epicfightposture.neoforge.NeoForgePostureCoverage;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -131,6 +132,8 @@ public final class NeoForgeRendererDiscoveryServer {
             return;
         }
         RendererDiscoveryRuntime.LiveRefresh refresh = outcome.refresh();
+        NeoForgePostureCoverage.replaceTrustedRendererScan(
+                RendererDiscoveryReportProcessor.diagnosticSnapshot(report.inspected()));
         LOGGER.info("{}", outcome.acceptanceSummary(player.getGameProfile().getName()));
         String notice = outcome.operatorNotice();
         if (notice != null) {

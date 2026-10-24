@@ -4,6 +4,7 @@ import com.mojang.logging.LogUtils;
 import dev.nire9734.epicfightposture.EpicFightPostureIntegration;
 import dev.nire9734.epicfightposture.network.BridgeNetwork;
 import dev.nire9734.epicfightposture.network.HumanoidDiscoveryRequestPacket;
+import dev.nire9734.epicfightposture.sync.ForgePostureCoverage;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
@@ -123,6 +124,8 @@ public final class HumanoidDiscoveryServer {
             return;
         }
         LOGGER.info("{}", outcome.acceptanceSummary(sender.getGameProfile().getName()));
+        ForgePostureCoverage.replaceTrustedRendererScan(
+                RendererDiscoveryReportProcessor.diagnosticSnapshot(inspected));
         RendererDiscoveryRuntime.LiveRefresh refresh = outcome.refresh();
         if (refresh.failed() > 0) {
             LOGGER.warn("EFPI could not refresh {} existing mobs after discovery from {}",

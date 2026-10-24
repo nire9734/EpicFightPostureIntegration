@@ -123,7 +123,10 @@ public final class NeoForgePostureServerEvents {
         }
         if (state.postureState == PostureState.BROKEN || state.postureState == PostureState.EXECUTING) {
             if (isExecuting(mob)) {
-                PENDING_EXECUTION_START.remove(mob);
+                boolean pendingExecution = PENDING_EXECUTION_START.remove(mob) != null;
+                if (pendingExecution || state.postureState != PostureState.EXECUTING) {
+                    NeoForgePostureCoverage.observeExecution(mob, "CONFIRMED");
+                }
                 if (state.postureState != PostureState.EXECUTING) {
                     state.enterExecution();
                     dev.nire9734.epicfightposture.neoforge.network.NeoForgePostureSync.syncNow(mob, stateForSync(mob));
@@ -139,7 +142,9 @@ public final class NeoForgePostureServerEvents {
                     // Do not return to the vanilla renderer during this gap.
                     return;
                 }
-                PENDING_EXECUTION_START.remove(mob);
+                if (PENDING_EXECUTION_START.remove(mob) != null) {
+                    NeoForgePostureCoverage.observeExecution(mob, "TIMEOUT");
+                }
                 state.beginRecovery(RECOVERY_TICKS);
                 dev.nire9734.epicfightposture.neoforge.network.NeoForgePostureSync.syncNow(mob, stateForSync(mob));
                 return;
@@ -209,16 +214,21 @@ public final class NeoForgePostureServerEvents {
         if (mob.isUsingItem()) mob.stopUsingItem();
 
         boolean active = false;
+        String failureReason = patch == null ? "PATCH_MISSING" : "NEUTRALIZE_MISSING";
         if (patch != null && hasDistinctNeutralize(patch)) {
             try {
-                active = patch.applyStun(StunType.NEUTRALIZE, 0.0F)
-                        && isActiveNeutralize(patch);
+                boolean applied = patch.applyStun(StunType.NEUTRALIZE, 0.0F);
+                active = applied && isActiveNeutralize(patch);
+                if (!active) failureReason = applied ? "ANIMATION_NOT_ACTIVE" : "STUN_NOT_APPLIED";
             } catch (Throwable failure) {
+                failureReason = "STUN_EXCEPTION:" + failure.getClass().getSimpleName();
                 LOGGER.warn("EFPI neutralize threw for {} ({}) using patch {}",
                         BuiltInRegistries.ENTITY_TYPE.getKey(mob.getType()),
                         mob.getUUID(), patch.getClass().getName(), failure);
             }
         }
+
+        NeoForgePostureCoverage.observeGuardBreak(mob, active, active ? "none" : failureReason);
 
         if (active) state.confirmBreak();
         else state.beginRecovery(RECOVERY_TICKS);
@@ -239,6 +249,7 @@ public final class NeoForgePostureServerEvents {
                 target -> new PostureRuntimeState(maximumPosture(target)));
         mob.stopUsingItem();
         state.startExecution();
+        NeoForgePostureCoverage.observeExecution(mob, "STARTED");
         PENDING_EXECUTION_START.put(mob,
                 mob.tickCount + PostureRuntimeState.EXECUTION_START_GRACE_TICKS);
         dev.nire9734.epicfightposture.neoforge.network.NeoForgePostureSync.syncNow(mob, stateForSync(mob));
@@ -334,6 +345,11 @@ public final class NeoForgePostureServerEvents {
             }
             return comparison.current().supported();
         } catch (Throwable ignored) {
+            try {
+                NeoForgePostureCoverage.observeEligibilityFailure(mob, patch);
+            } catch (Throwable diagnosticFailure) {
+                // Never let report failures change combat behavior.
+            }
             return false;
         }
     }
