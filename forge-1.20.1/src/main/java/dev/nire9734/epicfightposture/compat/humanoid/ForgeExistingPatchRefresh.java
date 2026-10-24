@@ -14,6 +14,7 @@ import net.minecraftforge.event.entity.EntityJoinLevelEvent;
 import org.slf4j.Logger;
 import yesman.epicfight.world.capabilities.EpicFightCapabilities;
 import yesman.epicfight.world.capabilities.entitypatch.EntityPatch;
+import yesman.epicfight.world.capabilities.entitypatch.GlobalMobPatch;
 import yesman.epicfight.world.capabilities.entitypatch.LivingEntityPatch;
 import yesman.epicfight.world.capabilities.provider.EntityPatchProvider;
 
@@ -27,10 +28,11 @@ import java.util.Map;
  * confirms renderer compatibility. No entity is unloaded, replaced or respawned.
  *
  * <p>Forge normally attaches EntityPatchProvider during entity construction.
- * Existing unpatched entities have already passed that event, so we append our
- * provider to their existing dispatcher rather than discarding other mods'
- * capabilities or serialized data. The reflective fields are checked once, and
- * every unsuccessful per-mob installation is rolled back.</p>
+ * Existing entities have already passed that event. Epic Fight normally leaves
+ * its generic GlobalMobPatch in their dispatcher before renderer approval, so
+ * we replace only that fallback provider. If no patch exists we append our
+ * provider, preserving all unrelated capabilities and serialized data.
+ * Every unsuccessful per-mob installation is rolled back.</p>
  */
 final class ForgeExistingPatchRefresh {
     private static final Logger LOGGER = LogUtils.getLogger();
@@ -52,6 +54,7 @@ final class ForgeExistingPatchRefresh {
         int compatibleMobs = 0;
         int ownedMobs = 0;
         int alreadyPatched = 0;
+        int replaceableFallbacks = 0;
         for (ServerLevel level : server.getAllLevels()) {
             for (Entity entity : level.getAllEntities()) {
                 if (!(entity instanceof Mob mob) || mob.isRemoved()) {
@@ -62,16 +65,18 @@ final class ForgeExistingPatchRefresh {
                 compatibleMobs++;
                 if (EpicFightPatchOwnership.state(mob.getType()) != EpicFightPatchOwnership.State.OWNED) continue;
                 ownedMobs++;
-                // Never overwrite or initialize a patch owned by Epic Fight or another addon.
+                // Only Epic Fight's exact generic fallback may be replaced.
+                // Keep genuine native/addon patches, including subclasses of GlobalMobPatch.
                 EntityPatch<?> existing = EpicFightCapabilities.getEntityPatch(mob, EntityPatch.class);
-                if (existing != null) {
+                if (existing != null && existing.getClass() != GlobalMobPatch.class) {
                     alreadyPatched++;
                     LOGGER.debug("EFPI kept existing Epic Fight patch {} for {} ({})",
                             existing.getClass().getName(), mob.getType(), mob.getUUID());
                     continue;
                 }
+                if (existing != null) replaceableFallbacks++;
                 try {
-                    if (install(mob, level)) {
+                    if (install(mob, level, existing)) {
                         updated++;
                     }
                 } catch (ReflectiveOperationException | RuntimeException exception) {
@@ -82,12 +87,13 @@ final class ForgeExistingPatchRefresh {
             }
         }
         LOGGER.info("EFPI Forge live patch refresh: {} loaded mobs, {} compatibility-enabled, "
-                        + "{} EFPI-owned, {} already patched, {} updated, {} failed",
-                loadedMobs, compatibleMobs, ownedMobs, alreadyPatched, updated, failed);
+                        + "{} EFPI-owned, {} replaceable fallback patches, {} retained patches, {} updated, {} failed",
+                loadedMobs, compatibleMobs, ownedMobs, replaceableFallbacks, alreadyPatched, updated, failed);
         return new RendererDiscoveryRuntime.LiveRefresh(updated, failed);
     }
 
-    private static boolean install(Mob mob, ServerLevel level) throws ReflectiveOperationException {
+    private static boolean install(Mob mob, ServerLevel level, EntityPatch<?> previousPatch)
+            throws ReflectiveOperationException {
         EntityPatchProvider provider = new EntityPatchProvider(mob);
         EntityPatch<?> candidate = provider.get();
         if (!(candidate instanceof LightweightHumanoidPatch)
@@ -113,8 +119,28 @@ final class ForgeExistingPatchRefresh {
             if (previousProviders == null) {
                 throw new IllegalStateException("Forge capability provider array unavailable");
             }
-            ICapabilityProvider[] expanded = Arrays.copyOf(previousProviders, previousProviders.length + 1);
-            expanded[previousProviders.length] = provider;
+            int replacementIndex = -1;
+            if (previousPatch != null) {
+                for (int index = 0; index < previousProviders.length; index++) {
+                    if (previousProviders[index] instanceof EntityPatchProvider previousProvider
+                            && previousProvider.get() == previousPatch) {
+                        if (replacementIndex != -1) {
+                            throw new IllegalStateException("Multiple Epic Fight fallback providers found");
+                        }
+                        replacementIndex = index;
+                    }
+                }
+                if (replacementIndex == -1) {
+                    throw new IllegalStateException("Cannot identify the original Epic Fight fallback provider");
+                }
+            }
+            ICapabilityProvider[] expanded = Arrays.copyOf(previousProviders,
+                    previousProviders.length + (replacementIndex < 0 ? 1 : 0));
+            if (replacementIndex >= 0) {
+                expanded[replacementIndex] = provider;
+            } else {
+                expanded[previousProviders.length] = provider;
+            }
             providersField.set(previousDispatcher, expanded);
         }
 

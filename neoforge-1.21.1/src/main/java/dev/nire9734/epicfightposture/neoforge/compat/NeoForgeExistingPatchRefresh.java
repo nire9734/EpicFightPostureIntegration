@@ -10,12 +10,13 @@ import net.neoforged.neoforge.attachment.AttachmentType;
 import org.slf4j.Logger;
 import yesman.epicfight.registry.entries.EpicFightAttachmentTypes;
 import yesman.epicfight.world.capabilities.entitypatch.EntityPatch;
+import yesman.epicfight.world.capabilities.entitypatch.GlobalMobPatch;
 import yesman.epicfight.world.capabilities.provider.AttachmentEntityPatchProvider;
 
 /**
- * Refresh only EFPI's missing Epic Fight attachment on all already-loaded mobs.
- * NeoForge retains an unpatched attachment constructed before renderer approval;
- * replacing that single empty attachment leaves the entity and other mods' data intact.
+ * Refresh the Epic Fight attachment on EFPI-owned, already-loaded mobs.
+ * Only an empty attachment or Epic Fight's exact generic GlobalMobPatch fallback
+ * may be replaced; all native/addon patches remain untouched.
  */
 public final class NeoForgeExistingPatchRefresh {
     private static final Logger LOGGER = LogUtils.getLogger();
@@ -56,7 +57,7 @@ public final class NeoForgeExistingPatchRefresh {
                                       AttachmentType<AttachmentEntityPatchProvider> attachment) {
         AttachmentEntityPatchProvider previous = mob.getData(attachment);
         EntityPatch<?> current = previous.getCapability();
-        if (current != null) {
+        if (current != null && current.getClass() != GlobalMobPatch.class) {
             // Only finish an EFPI-owned patch that already exists but was never initialized.
             if (!isOurPatch(current) || !current.uninitialized()) return false;
             initialize(current, mob, level);
