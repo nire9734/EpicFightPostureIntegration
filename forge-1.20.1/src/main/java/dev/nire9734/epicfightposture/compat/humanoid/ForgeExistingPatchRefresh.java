@@ -48,15 +48,26 @@ final class ForgeExistingPatchRefresh {
         }
         int updated = 0;
         int failed = 0;
+        int loadedMobs = 0;
+        int compatibleMobs = 0;
+        int ownedMobs = 0;
+        int alreadyPatched = 0;
         for (ServerLevel level : server.getAllLevels()) {
             for (Entity entity : level.getAllEntities()) {
-                if (!(entity instanceof Mob mob) || mob.isRemoved()
-                        || !VanillaHumanoidCompat.isCompatibilityEnabled(mob.getType())
-                        || EpicFightPatchOwnership.state(mob.getType()) != EpicFightPatchOwnership.State.OWNED) {
+                if (!(entity instanceof Mob mob) || mob.isRemoved()) {
                     continue;
                 }
+                loadedMobs++;
+                if (!VanillaHumanoidCompat.isCompatibilityEnabled(mob.getType())) continue;
+                compatibleMobs++;
+                if (EpicFightPatchOwnership.state(mob.getType()) != EpicFightPatchOwnership.State.OWNED) continue;
+                ownedMobs++;
                 // Never overwrite or initialize a patch owned by Epic Fight or another addon.
-                if (EpicFightCapabilities.getEntityPatch(mob, EntityPatch.class) != null) {
+                EntityPatch<?> existing = EpicFightCapabilities.getEntityPatch(mob, EntityPatch.class);
+                if (existing != null) {
+                    alreadyPatched++;
+                    LOGGER.debug("EFPI kept existing Epic Fight patch {} for {} ({})",
+                            existing.getClass().getName(), mob.getType(), mob.getUUID());
                     continue;
                 }
                 try {
@@ -70,9 +81,9 @@ final class ForgeExistingPatchRefresh {
                 }
             }
         }
-        if (updated > 0 || failed > 0) {
-            LOGGER.info("EFPI Forge live patch refresh: {} existing mobs updated, {} failed", updated, failed);
-        }
+        LOGGER.info("EFPI Forge live patch refresh: {} loaded mobs, {} compatibility-enabled, "
+                        + "{} EFPI-owned, {} already patched, {} updated, {} failed",
+                loadedMobs, compatibleMobs, ownedMobs, alreadyPatched, updated, failed);
         return new RendererDiscoveryRuntime.LiveRefresh(updated, failed);
     }
 

@@ -1,5 +1,6 @@
 package dev.nire9734.epicfightposture.compat.humanoid;
 
+import com.mojang.logging.LogUtils;
 import dev.nire9734.epicfightposture.EpicFightPostureIntegration;
 import dev.nire9734.epicfightposture.network.BridgeNetwork;
 import dev.nire9734.epicfightposture.network.HumanoidDiscoveryRequestPacket;
@@ -14,6 +15,7 @@ import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.loading.FMLEnvironment;
 import net.minecraftforge.registries.ForgeRegistries;
+import org.slf4j.Logger;
 
 import java.util.HashMap;
 import java.util.HashSet;
@@ -24,6 +26,7 @@ import java.util.UUID;
 /** Dedicated-server handshake for trusted OP renderer-discovery reports. */
 @Mod.EventBusSubscriber(modid = EpicFightPostureIntegration.MODID, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public final class HumanoidDiscoveryServer {
+    private static final Logger LOGGER = LogUtils.getLogger();
     private static final int REQUIRED_PERMISSION_LEVEL = 2;
     private static final Map<UUID, UUID> PENDING_NONCES = new HashMap<>();
 
@@ -63,6 +66,7 @@ public final class HumanoidDiscoveryServer {
     private static synchronized void requestScan(ServerPlayer player) {
         UUID nonce = UUID.randomUUID();
         PENDING_NONCES.put(player.getUUID(), nonce);
+        LOGGER.info("EFPI requested a renderer discovery report from operator {}", player.getGameProfile().getName());
         BridgeNetwork.sendPlayer(player, new HumanoidDiscoveryRequestPacket(nonce));
     }
 
@@ -82,12 +86,16 @@ public final class HumanoidDiscoveryServer {
 
         UUID expectedNonce = PENDING_NONCES.remove(sender.getUUID());
         if (expectedNonce == null || !expectedNonce.equals(nonce)) {
+            LOGGER.warn("EFPI ignored an unexpected or expired renderer discovery reply from {}",
+                    sender.getGameProfile().getName());
             return;
         }
 
         RendererDiscoveryShared.ValidationError error = RendererDiscoveryShared.validateReport(
                 environmentFingerprint, inspected, vanillaHumanoid, extendedHumanoid, vanillaSpider);
         if (error != RendererDiscoveryShared.ValidationError.NONE) {
+            LOGGER.warn("EFPI rejected renderer discovery reply from {}: {}",
+                    sender.getGameProfile().getName(), error);
             sender.sendSystemMessage(Component.literal(RendererDiscoveryShared.rejectionMessage(error)));
             return;
         }
@@ -122,6 +130,11 @@ public final class HumanoidDiscoveryServer {
 
         RendererDiscoveryRuntime.Result activation = RendererDiscoveryRuntime.activate(
                 RendererDiscoveryStore.pendingTargets(), VanillaHumanoidCompat::registerTrustedDedicatedTarget);
+        LOGGER.info("EFPI accepted renderer discovery from {}: {} vanilla, {} extended, {} spiders, "
+                        + "{} conflicts; {} runtime types ready, {} skipped",
+                sender.getGameProfile().getName(), result.pendingVanillaCount(),
+                result.pendingExtendedCount(), result.pendingSpiderCount(), result.conflictCount(),
+                activation.ready(), activation.skipped());
         RendererDiscoveryRuntime.LiveRefresh refresh = ForgeExistingPatchRefresh.refresh(sender.getServer());
         sender.sendSystemMessage(Component.literal(RendererDiscoveryShared.runtimeAppliedMessage(
                 result.pendingVanillaCount(), result.pendingExtendedCount(),
