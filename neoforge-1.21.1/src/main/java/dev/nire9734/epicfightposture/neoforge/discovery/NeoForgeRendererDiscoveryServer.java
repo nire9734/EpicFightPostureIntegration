@@ -1,11 +1,10 @@
 package dev.nire9734.epicfightposture.neoforge.discovery;
 
 import com.mojang.logging.LogUtils;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import dev.nire9734.epicfightposture.compat.humanoid.RendererDiscoverySessions;
+import dev.nire9734.epicfightposture.compat.humanoid.RendererDiscoveryReportProcessor;
 import dev.nire9734.epicfightposture.compat.humanoid.RendererDiscoveryShared;
 import dev.nire9734.epicfightposture.compat.humanoid.RendererDiscoveryStore;
 import dev.nire9734.epicfightposture.compat.humanoid.RendererDiscoveryRuntime;
@@ -32,8 +31,7 @@ import org.slf4j.Logger;
 public final class NeoForgeRendererDiscoveryServer {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final int REQUIRED_PERMISSIONS = 2;
-    private static final Map<UUID, UUID> PENDING_NONCES = new HashMap<>();
-    private static final Map<UUID, Integer> LAST_RELOAD_REQUEST_TICK = new HashMap<>();
+    private static final RendererDiscoverySessions SESSIONS = new RendererDiscoverySessions();
     private static volatile Set<ResourceLocation> active = Set.of();
     private static volatile Set<ResourceLocation> extended = Set.of();
     private static volatile Set<ResourceLocation> spiders = Set.of();
@@ -78,8 +76,7 @@ public final class NeoForgeRendererDiscoveryServer {
 
     private static synchronized void onLogout(PlayerEvent.PlayerLoggedOutEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
-            PENDING_NONCES.remove(player.getUUID());
-            LAST_RELOAD_REQUEST_TICK.remove(player.getUUID());
+            SESSIONS.clear(player.getUUID());
         }
     }
 
@@ -89,34 +86,37 @@ public final class NeoForgeRendererDiscoveryServer {
                 || !player.hasPermissions(REQUIRED_PERMISSIONS) || player.getServer() == null) {
             return;
         }
-        int tick = player.getServer().getTickCount();
-        Integer last = LAST_RELOAD_REQUEST_TICK.get(player.getUUID());
-        if (last != null && tick >= last
-                && tick - last < RendererDiscoveryShared.RELOAD_REQUEST_COOLDOWN_TICKS) {
-            return;
-        }
-        LAST_RELOAD_REQUEST_TICK.put(player.getUUID(), tick);
-        requestScan(player);
+        UUID nonce = SESSIONS.issueAfterReload(player.getUUID(), player.getServer().getTickCount());
+        if (nonce != null) sendRequest(player, nonce);
     }
 
     private static void requestScan(ServerPlayer player) {
-        UUID nonce = UUID.randomUUID();
-        PENDING_NONCES.put(player.getUUID(), nonce);
+        sendRequest(player, SESSIONS.issue(player.getUUID()));
+    }
+
+    private static void sendRequest(ServerPlayer player, UUID nonce) {
+        LOGGER.info("EFPI requested a renderer discovery report from operator {}", player.getGameProfile().getName());
         PacketDistributor.sendToPlayer(player, new NeoForgeRendererScanRequest(nonce));
     }
 
     public static synchronized void acceptReport(ServerPlayer player, NeoForgeRendererScanReport report) {
         if (FMLEnvironment.dist != Dist.DEDICATED_SERVER || player == null
                 || !player.hasPermissions(REQUIRED_PERMISSIONS)) return;
-        UUID expected = PENDING_NONCES.remove(player.getUUID());
-        if (expected == null || !expected.equals(report.nonce())) {
+        if (!SESSIONS.consume(player.getUUID(), report.nonce())) {
             LOGGER.warn("EFPI ignored unexpected or expired renderer discovery from {}",
                     player.getGameProfile().getName());
             return;
         }
-        RendererDiscoveryShared.ValidationError error = RendererDiscoveryShared.validateReport(
-                report.fingerprint(), report.inspected(), report.vanillaHumanoids(),
-                report.extendedHumanoids(), report.spiders());
+        RendererDiscoveryReportProcessor.Outcome outcome = RendererDiscoveryReportProcessor.process(
+                player.getUUID(), report.fingerprint(), report.inspected(),
+                report.vanillaHumanoids(), report.extendedHumanoids(), report.spiders(),
+                id -> {
+                    EntityType<?> type = BuiltInRegistries.ENTITY_TYPE.getOptional(id).orElse(null);
+                    return type != null && type != EntityType.PLAYER;
+                },
+                NeoForgeAutoCompatibility::registerTrustedDedicatedTarget,
+                () -> NeoForgeExistingPatchRefresh.refresh(player.getServer()));
+        RendererDiscoveryShared.ValidationError error = outcome.validationError();
         if (error != RendererDiscoveryShared.ValidationError.NONE) {
             LOGGER.warn("EFPI rejected renderer discovery from {}: {}",
                     player.getGameProfile().getName(), error);
@@ -124,43 +124,15 @@ public final class NeoForgeRendererDiscoveryServer {
             return;
         }
 
-        Set<ResourceLocation> inspected = new HashSet<>();
-        for (ResourceLocation id : report.inspected()) {
-            EntityType<?> type = BuiltInRegistries.ENTITY_TYPE.getOptional(id).orElse(null);
-            if (type != null && type != EntityType.PLAYER) inspected.add(id);
-        }
-        Set<ResourceLocation> vanilla = new HashSet<>(report.vanillaHumanoids());
-        Set<ResourceLocation> extended = new HashSet<>(report.extendedHumanoids());
-        Set<ResourceLocation> spider = new HashSet<>(report.spiders());
-        vanilla.retainAll(inspected);
-        extended.retainAll(inspected);
-        spider.retainAll(inspected);
-        RendererDiscoveryStore.ActiveTargets previous = RendererDiscoveryStore.pendingTargets();
-        Set<ResourceLocation> previousConflicts = RendererDiscoveryStore.conflicts();
-        RendererDiscoveryStore.UpdateResult result =
-                RendererDiscoveryStore.acceptOperatorReport(
-                        player.getUUID(), report.fingerprint(), inspected, vanilla, extended, spider);
-        if (!result.accepted()) {
+        if (!outcome.accepted()) {
             LOGGER.warn("EFPI ignored renderer discovery from {} because the cache is full",
                     player.getGameProfile().getName());
             player.sendSystemMessage(Component.literal(RendererDiscoveryShared.reportErrorNotice()));
             return;
         }
-        RendererDiscoveryStore.ActiveTargets current = RendererDiscoveryStore.pendingTargets();
-        RendererDiscoveryRuntime.ActivationUpdate activation = RendererDiscoveryRuntime.activateTrackingChanges(
-                previous, current, NeoForgeAutoCompatibility::registerTrustedDedicatedTarget);
-        RendererDiscoveryRuntime.LiveRefresh refresh = NeoForgeExistingPatchRefresh.refresh(player.getServer());
-        LOGGER.info("EFPI accepted renderer discovery from {}: {} vanilla, {} extended, {} spiders, "
-                        + "{} conflicts; {} runtime types ready, {} skipped; {} existing mobs updated, {} failed",
-                player.getGameProfile().getName(), result.pendingVanillaCount(),
-                result.pendingExtendedCount(), result.pendingSpiderCount(), result.conflictCount(),
-                activation.ready(), activation.skipped(), refresh.updated(), refresh.failed());
-        Set<ResourceLocation> newConflicts = new HashSet<>(RendererDiscoveryStore.conflicts());
-        newConflicts.removeAll(previousConflicts);
-        String notice = RendererDiscoveryShared.changeNotice(
-                activation.newlyReady(),
-                RendererDiscoveryRuntime.withdrawnTargets(previous, current),
-                refresh.updated(), newConflicts.size(), activation.newlySkipped(), refresh.failed());
+        RendererDiscoveryRuntime.LiveRefresh refresh = outcome.refresh();
+        LOGGER.info("{}", outcome.acceptanceSummary(player.getGameProfile().getName()));
+        String notice = outcome.operatorNotice();
         if (notice != null) {
             player.sendSystemMessage(Component.literal(notice));
         }

@@ -56,6 +56,8 @@ sourceSets {
             include 'dev/nire9734/epicfightposture/compat/humanoid/RendererDiscoveryShared.java'
             include 'dev/nire9734/epicfightposture/compat/humanoid/RendererDiscoveryStore.java'
             include 'dev/nire9734/epicfightposture/compat/humanoid/RendererDiscoveryRuntime.java'
+            include 'dev/nire9734/epicfightposture/compat/humanoid/RendererDiscoverySessions.java'
+            include 'dev/nire9734/epicfightposture/compat/humanoid/RendererDiscoveryReportProcessor.java'
             include 'dev/nire9734/epicfightposture/compat/humanoid/ModSetFingerprint.java'
             include 'dev/nire9734/epicfightposture/compat/humanoid/rig/**'
             include 'dev/nire9734/epicfightposture/compat/humanoid/client/**'
@@ -77,6 +79,7 @@ sourceSets {
             include 'dev/nire9734/epicfightposture/client/PostureHudPolicyTest.java'
             include 'dev/nire9734/epicfightposture/client/PostureHudGeometryTest.java'
             include 'dev/nire9734/epicfightposture/compat/humanoid/RendererDiscoverySharedTest.java'
+            include 'dev/nire9734/epicfightposture/compat/humanoid/RendererDiscoverySessionsTest.java'
             include 'dev/nire9734/epicfightposture/compat/humanoid/RendererDiscoveryReportRulesTest.java'
             // This Minecraft-type-dependent store test runs under Forge's
             // deobfuscated test classpath; ModDevGradle does not expose

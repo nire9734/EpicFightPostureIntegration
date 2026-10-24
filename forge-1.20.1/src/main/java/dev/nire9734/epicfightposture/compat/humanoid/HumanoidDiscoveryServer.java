@@ -17,9 +17,6 @@ import net.minecraftforge.fml.loading.FMLEnvironment;
 import net.minecraftforge.registries.ForgeRegistries;
 import org.slf4j.Logger;
 
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -28,8 +25,7 @@ import java.util.UUID;
 public final class HumanoidDiscoveryServer {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final int REQUIRED_PERMISSION_LEVEL = 2;
-    private static final Map<UUID, UUID> PENDING_NONCES = new HashMap<>();
-    private static final Map<UUID, Integer> LAST_RELOAD_REQUEST_TICK = new HashMap<>();
+    private static final RendererDiscoverySessions SESSIONS = new RendererDiscoverySessions();
 
     @SubscribeEvent
     public static void onPlayerLogin(PlayerEvent.PlayerLoggedInEvent event) {
@@ -60,8 +56,7 @@ public final class HumanoidDiscoveryServer {
     @SubscribeEvent
     public static synchronized void onPlayerLogout(PlayerEvent.PlayerLoggedOutEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
-            PENDING_NONCES.remove(player.getUUID());
-            LAST_RELOAD_REQUEST_TICK.remove(player.getUUID());
+            SESSIONS.clear(player.getUUID());
         }
     }
 
@@ -71,19 +66,15 @@ public final class HumanoidDiscoveryServer {
                 || !player.hasPermissions(REQUIRED_PERMISSION_LEVEL) || player.getServer() == null) {
             return;
         }
-        int tick = player.getServer().getTickCount();
-        Integer last = LAST_RELOAD_REQUEST_TICK.get(player.getUUID());
-        if (last != null && tick >= last
-                && tick - last < RendererDiscoveryShared.RELOAD_REQUEST_COOLDOWN_TICKS) {
-            return;
-        }
-        LAST_RELOAD_REQUEST_TICK.put(player.getUUID(), tick);
-        requestScan(player);
+        UUID nonce = SESSIONS.issueAfterReload(player.getUUID(), player.getServer().getTickCount());
+        if (nonce != null) sendRequest(player, nonce);
     }
 
     private static synchronized void requestScan(ServerPlayer player) {
-        UUID nonce = UUID.randomUUID();
-        PENDING_NONCES.put(player.getUUID(), nonce);
+        sendRequest(player, SESSIONS.issue(player.getUUID()));
+    }
+
+    private static void sendRequest(ServerPlayer player, UUID nonce) {
         LOGGER.info("EFPI requested a renderer discovery report from operator {}", player.getGameProfile().getName());
         BridgeNetwork.sendPlayer(player, new HumanoidDiscoveryRequestPacket(nonce));
     }
@@ -102,15 +93,22 @@ public final class HumanoidDiscoveryServer {
             return;
         }
 
-        UUID expectedNonce = PENDING_NONCES.remove(sender.getUUID());
-        if (expectedNonce == null || !expectedNonce.equals(nonce)) {
+        if (!SESSIONS.consume(sender.getUUID(), nonce)) {
             LOGGER.warn("EFPI ignored an unexpected or expired renderer discovery reply from {}",
                     sender.getGameProfile().getName());
             return;
         }
 
-        RendererDiscoveryShared.ValidationError error = RendererDiscoveryShared.validateReport(
-                environmentFingerprint, inspected, vanillaHumanoid, extendedHumanoid, vanillaSpider);
+        RendererDiscoveryReportProcessor.Outcome outcome = RendererDiscoveryReportProcessor.process(
+                sender.getUUID(), environmentFingerprint, inspected,
+                vanillaHumanoid, extendedHumanoid, vanillaSpider,
+                id -> {
+                    EntityType<?> type = ForgeRegistries.ENTITY_TYPES.getValue(id);
+                    return type != null && type != EntityType.PLAYER;
+                },
+                VanillaHumanoidCompat::registerTrustedDedicatedTarget,
+                () -> ForgeExistingPatchRefresh.refresh(sender.getServer()));
+        RendererDiscoveryShared.ValidationError error = outcome.validationError();
         if (error != RendererDiscoveryShared.ValidationError.NONE) {
             LOGGER.warn("EFPI rejected renderer discovery reply from {}: {}",
                     sender.getGameProfile().getName(), error);
@@ -118,57 +116,19 @@ public final class HumanoidDiscoveryServer {
             return;
         }
 
-        Set<ResourceLocation> validInspected = new HashSet<>();
-        for (ResourceLocation id : inspected) {
-            EntityType<?> type = ForgeRegistries.ENTITY_TYPES.getValue(id);
-            if (type != null && type != EntityType.PLAYER) {
-                validInspected.add(id);
-            }
-        }
-
-        Set<ResourceLocation> validVanilla = new HashSet<>(vanillaHumanoid);
-        validVanilla.retainAll(validInspected);
-        Set<ResourceLocation> validExtended = new HashSet<>(extendedHumanoid);
-        validExtended.retainAll(validInspected);
-        Set<ResourceLocation> validSpider = new HashSet<>(vanillaSpider);
-        validSpider.retainAll(validInspected);
-
-        RendererDiscoveryStore.ActiveTargets previous = RendererDiscoveryStore.pendingTargets();
-        Set<ResourceLocation> previousConflicts = RendererDiscoveryStore.conflicts();
-        RendererDiscoveryStore.UpdateResult result = RendererDiscoveryStore.acceptOperatorReport(
-                sender.getUUID(), environmentFingerprint,
-                validInspected,
-                validVanilla,
-                validExtended,
-                validSpider
-        );
-
-        if (!result.accepted()) {
+        if (!outcome.accepted()) {
             LOGGER.warn("EFPI ignored renderer discovery report from {} because the cache is full",
                     sender.getGameProfile().getName());
             sender.sendSystemMessage(Component.literal(RendererDiscoveryShared.reportErrorNotice()));
             return;
         }
-
-        RendererDiscoveryStore.ActiveTargets current = RendererDiscoveryStore.pendingTargets();
-        RendererDiscoveryRuntime.ActivationUpdate activation = RendererDiscoveryRuntime.activateTrackingChanges(
-                previous, current, VanillaHumanoidCompat::registerTrustedDedicatedTarget);
-        LOGGER.info("EFPI accepted renderer discovery from {}: {} vanilla, {} extended, {} spiders, "
-                        + "{} conflicts; {} runtime types ready, {} skipped",
-                sender.getGameProfile().getName(), result.pendingVanillaCount(),
-                result.pendingExtendedCount(), result.pendingSpiderCount(), result.conflictCount(),
-                activation.ready(), activation.skipped());
-        RendererDiscoveryRuntime.LiveRefresh refresh = ForgeExistingPatchRefresh.refresh(sender.getServer());
+        LOGGER.info("{}", outcome.acceptanceSummary(sender.getGameProfile().getName()));
+        RendererDiscoveryRuntime.LiveRefresh refresh = outcome.refresh();
         if (refresh.failed() > 0) {
             LOGGER.warn("EFPI could not refresh {} existing mobs after discovery from {}",
                     refresh.failed(), sender.getGameProfile().getName());
         }
-        Set<ResourceLocation> newConflicts = new HashSet<>(RendererDiscoveryStore.conflicts());
-        newConflicts.removeAll(previousConflicts);
-        String notice = RendererDiscoveryShared.changeNotice(
-                activation.newlyReady(),
-                RendererDiscoveryRuntime.withdrawnTargets(previous, current),
-                refresh.updated(), newConflicts.size(), activation.newlySkipped(), refresh.failed());
+        String notice = outcome.operatorNotice();
         if (notice != null) {
             sender.sendSystemMessage(Component.literal(notice));
         }
