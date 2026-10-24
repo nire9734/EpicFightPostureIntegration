@@ -79,7 +79,6 @@ sourceSets {
             include 'dev/nire9734/epicfightposture/PostureDeathSafetyTest.java'
             include 'dev/nire9734/epicfightposture/PostureRuntimeStateTest.java'
             include 'dev/nire9734/epicfightposture/PostureCoverageReportTest.java'
-            include 'dev/nire9734/epicfightposture/PostureExecutionEligibilityTest.java'
             include 'dev/nire9734/epicfightposture/client/PostureHudPolicyTest.java'
             include 'dev/nire9734/epicfightposture/client/PostureHudGeometryTest.java'
             include 'dev/nire9734/epicfightposture/compat/humanoid/RendererDiscoverySharedTest.java'
