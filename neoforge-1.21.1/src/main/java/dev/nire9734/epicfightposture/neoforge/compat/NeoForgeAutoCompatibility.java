@@ -29,6 +29,7 @@ import java.util.function.Function;
 import net.minecraft.world.entity.Entity;
 import yesman.epicfight.world.capabilities.entitypatch.EntityPatch;
 import dev.nire9734.epicfightposture.neoforge.discovery.NeoForgeRendererDiscoveryServer;
+import dev.nire9734.epicfightposture.compat.humanoid.RendererDiscoveryReportProcessor;
 
 
 /**
@@ -61,6 +62,9 @@ public final class NeoForgeAutoCompatibility {
 
     @SuppressWarnings("deprecation")
     private static synchronized void onPatchRegistry(EntityPatchRegistryEvent event) {
+        if (FMLEnvironment.dist == Dist.DEDICATED_SERVER) {
+            RendererDiscoveryReportProcessor.invalidateRuntimeValidation();
+        }
         Set<EntityType<?>> previousOwned = new HashSet<>(OWNED);
         Set<EntityType<?>> previousSpiders = new HashSet<>(SPIDER_OWNED);
         Set<EntityType<?>> previousRejected = new HashSet<>(RUNTIME_REJECTED);

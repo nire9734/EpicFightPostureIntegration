@@ -63,6 +63,9 @@ public final class VanillaHumanoidCompat {
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public static synchronized void onEntityPatchRegistry(EntityPatchRegistryEvent event) {
+        if (FMLEnvironment.dist == Dist.DEDICATED_SERVER) {
+            RendererDiscoveryReportProcessor.invalidateRuntimeValidation();
+        }
         Map<ResourceLocation, CompatibilityKind> previousOwnership = new HashMap<>(registeredByEfpi);
         registeredByEfpi.clear();
         runtimeRejected.clear();

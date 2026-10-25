@@ -6,11 +6,13 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.Mob;
 import net.minecraftforge.common.capabilities.CapabilityDispatcher;
 import net.minecraftforge.common.capabilities.CapabilityProvider;
 import net.minecraftforge.common.capabilities.ICapabilityProvider;
 import net.minecraftforge.event.entity.EntityJoinLevelEvent;
+import net.minecraftforge.registries.ForgeRegistries;
 import org.slf4j.Logger;
 import yesman.epicfight.world.capabilities.EpicFightCapabilities;
 import yesman.epicfight.world.capabilities.entitypatch.EntityPatch;
@@ -20,8 +22,10 @@ import yesman.epicfight.world.capabilities.provider.EntityPatchProvider;
 
 import java.lang.reflect.Field;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Attach EFPI-owned Epic Fight patches to mobs already present when an operator
@@ -40,13 +44,22 @@ final class ForgeExistingPatchRefresh {
     private static Field providersField;
     private static boolean reflectionUnavailable;
 
-    static RendererDiscoveryRuntime.LiveRefresh refresh(MinecraftServer server) {
+    static RendererDiscoveryRuntime.LiveRefresh refresh(MinecraftServer server,
+                                                        Set<ResourceLocation> affectedTypes) {
         if (server == null || !server.isSameThread()) {
             LOGGER.warn("EFPI live Forge patch refresh skipped: not on the server thread");
             return new RendererDiscoveryRuntime.LiveRefresh(0, 1);
         }
+        if (affectedTypes.isEmpty()) {
+            return new RendererDiscoveryRuntime.LiveRefresh(0, 0);
+        }
         if (!resolveReflection()) {
             return new RendererDiscoveryRuntime.LiveRefresh(0, 1);
+        }
+        Set<EntityType<?>> targets = new HashSet<>();
+        for (ResourceLocation id : affectedTypes) {
+            EntityType<?> type = ForgeRegistries.ENTITY_TYPES.getValue(id);
+            if (type != null) targets.add(type);
         }
         int updated = 0;
         int failed = 0;
@@ -61,6 +74,7 @@ final class ForgeExistingPatchRefresh {
                     continue;
                 }
                 loadedMobs++;
+                if (!targets.contains(mob.getType())) continue;
                 if (!VanillaHumanoidCompat.isCompatibilityEnabled(mob.getType())) continue;
                 compatibleMobs++;
                 if (EpicFightPatchOwnership.state(mob.getType()) != EpicFightPatchOwnership.State.OWNED) continue;

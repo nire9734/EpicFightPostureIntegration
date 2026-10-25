@@ -35,12 +35,14 @@ public final class RendererDiscoveryStore {
 
     private static State state = State.fresh("");
     private static Path cacheFile;
+    private static volatile long bootstrapGeneration;
     /** Published without allocating a new set on every posture eligibility check. */
     private static volatile Set<ResourceLocation> runtimeApproved = Set.of();
     private static volatile ActiveTargets runtimeApprovedKinds = ActiveTargets.empty();
 
     /** Promotes the previous process's pending lists before Epic Fight patch registration. */
     public static synchronized ActiveTargets bootstrap(String serverFingerprint, Path configDirectory) {
+        bootstrapGeneration++;
         cacheFile = configDirectory.resolve("epicfight_posture_integration")
                 .resolve(CACHE_DIRECTORY).resolve(FILE_NAME);
         State loaded = load();
@@ -87,15 +89,14 @@ public final class RendererDiscoveryStore {
             return currentResult(false);
         }
 
-        state.reports.put(
-                environmentFingerprint,
-                new Report(
-                        new HashSet<>(inspected),
-                        new HashSet<>(vanillaHumanoid),
-                        new HashSet<>(extendedHumanoid),
-                        new HashSet<>(vanillaSpider)
-                )
-        );
+        Report existing = state.reports.get(environmentFingerprint);
+        if (existing != null && existing.matches(inspected, vanillaHumanoid, extendedHumanoid, vanillaSpider)) {
+            return currentResult(true);
+        }
+
+        state.reports.put(environmentFingerprint,
+                new Report(new HashSet<>(inspected), new HashSet<>(vanillaHumanoid),
+                        new HashSet<>(extendedHumanoid), new HashSet<>(vanillaSpider)));
         rebuildPending();
         publishRuntimeApproved();
         save();
@@ -128,6 +129,13 @@ public final class RendererDiscoveryStore {
         String suffix = "@" + operatorId;
         String key = environmentFingerprint + suffix;
 
+        Report previous = state.reports.get(key);
+        if (previous != null && previous.matches(inspected, vanillaHumanoid, extendedHumanoid, vanillaSpider)
+                && state.reports.keySet().stream().noneMatch(stored ->
+                        !stored.equals(key) && (stored.endsWith(suffix) || stored.equals(environmentFingerprint)))) {
+            return currentResult(true);
+        }
+
         // Include space reclaimed from this operator's last report and from the
         // legacy environment-only entry, without altering state on rejection.
         long obsolete = state.reports.keySet().stream()
@@ -158,6 +166,11 @@ public final class RendererDiscoveryStore {
         result.addAll(state.activeExtended);
         result.addAll(state.activeSpider);
         return Set.copyOf(result);
+    }
+
+    /** Allows runtime optimizations to forget success from a previous server session. */
+    public static long bootstrapGeneration() {
+        return bootstrapGeneration;
     }
 
     public static synchronized Set<ResourceLocation> pending() {
@@ -461,6 +474,14 @@ public final class RendererDiscoveryStore {
             this.vanillaHumanoid = vanillaHumanoid;
             this.extendedHumanoid = extendedHumanoid;
             this.vanillaSpider = vanillaSpider;
+        }
+
+        boolean matches(Set<ResourceLocation> inspected, Set<ResourceLocation> vanillaHumanoid,
+                        Set<ResourceLocation> extendedHumanoid, Set<ResourceLocation> vanillaSpider) {
+            return this.inspected.equals(inspected)
+                    && this.vanillaHumanoid.equals(vanillaHumanoid)
+                    && this.extendedHumanoid.equals(extendedHumanoid)
+                    && this.vanillaSpider.equals(vanillaSpider);
         }
     }
 

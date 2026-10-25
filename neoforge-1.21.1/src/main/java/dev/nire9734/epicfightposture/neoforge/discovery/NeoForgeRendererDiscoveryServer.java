@@ -116,7 +116,7 @@ public final class NeoForgeRendererDiscoveryServer {
                     return type != null && type != EntityType.PLAYER;
                 },
                 NeoForgeAutoCompatibility::registerTrustedDedicatedTarget,
-                () -> NeoForgeExistingPatchRefresh.refresh(player.getServer()));
+                affected -> NeoForgeExistingPatchRefresh.refresh(player.getServer(), affected));
         RendererDiscoveryShared.ValidationError error = outcome.validationError();
         if (error != RendererDiscoveryShared.ValidationError.NONE) {
             LOGGER.warn("EFPI rejected renderer discovery from {}: {}",

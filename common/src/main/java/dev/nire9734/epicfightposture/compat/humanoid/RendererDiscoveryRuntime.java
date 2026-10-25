@@ -2,6 +2,7 @@ package dev.nire9734.epicfightposture.compat.humanoid;
 
 import net.minecraft.resources.ResourceLocation;
 
+import java.util.HashSet;
 import java.util.Set;
 import java.util.function.BiPredicate;
 
@@ -79,6 +80,26 @@ public final class RendererDiscoveryRuntime {
             }
         }
         return withdrawn;
+    }
+
+    /** Newly approved entity types, including types whose approved renderer kind changed. */
+    public static Set<ResourceLocation> newlyApprovedTypes(
+            RendererDiscoveryStore.ActiveTargets previous,
+            RendererDiscoveryStore.ActiveTargets current) {
+        Set<ResourceLocation> added = new HashSet<>();
+        for (Kind kind : Kind.values()) {
+            Set<ResourceLocation> prior = idsFor(previous, kind);
+            for (ResourceLocation id : idsFor(current, kind)) {
+                if (!prior.contains(id)) added.add(id);
+            }
+        }
+        return Set.copyOf(added);
+    }
+
+    /** A previously verified registration remains valid until the registry is rebuilt. */
+    public static boolean contains(RendererDiscoveryStore.ActiveTargets targets,
+                                   ResourceLocation id, Kind kind) {
+        return idsFor(targets, kind).contains(id);
     }
 
     private static Set<ResourceLocation> idsFor(RendererDiscoveryStore.ActiveTargets targets, Kind kind) {

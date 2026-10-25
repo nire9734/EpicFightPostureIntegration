@@ -52,4 +52,16 @@ class RendererDiscoveryRuntimeTest {
         assertEquals(1, RendererDiscoveryRuntime.withdrawnTargets(
                 targets, RendererDiscoveryStore.ActiveTargets.empty()));
     }
+
+    @Test
+    void kindChangeRequiresNewApprovalForTheSameEntityType() {
+        ResourceLocation id = ResourceLocation.tryParse("example:dynamic_mob");
+        ResourceLocation other = ResourceLocation.tryParse("example:unchanged_mob");
+        var prior = new RendererDiscoveryStore.ActiveTargets(Set.of(id, other), Set.of(), Set.of());
+        var current = new RendererDiscoveryStore.ActiveTargets(Set.of(other), Set.of(id), Set.of());
+        assertEquals(Set.of(id), RendererDiscoveryRuntime.newlyApprovedTypes(prior, current));
+        assertTrue(RendererDiscoveryRuntime.contains(current, id,
+                RendererDiscoveryRuntime.Kind.EXTENDED_HUMANOID));
+        assertEquals(1, RendererDiscoveryRuntime.withdrawnTargets(prior, current));
+    }
 }

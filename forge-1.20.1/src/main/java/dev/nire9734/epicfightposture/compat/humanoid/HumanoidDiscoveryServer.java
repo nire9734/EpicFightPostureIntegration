@@ -108,7 +108,7 @@ public final class HumanoidDiscoveryServer {
                     return type != null && type != EntityType.PLAYER;
                 },
                 VanillaHumanoidCompat::registerTrustedDedicatedTarget,
-                () -> ForgeExistingPatchRefresh.refresh(sender.getServer()));
+                affected -> ForgeExistingPatchRefresh.refresh(sender.getServer(), affected));
         RendererDiscoveryShared.ValidationError error = outcome.validationError();
         if (error != RendererDiscoveryShared.ValidationError.NONE) {
             LOGGER.warn("EFPI rejected renderer discovery reply from {}: {}",

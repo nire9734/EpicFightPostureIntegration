@@ -2,12 +2,18 @@ package dev.nire9734.epicfightposture.neoforge.compat;
 
 import com.mojang.logging.LogUtils;
 import dev.nire9734.epicfightposture.compat.humanoid.RendererDiscoveryRuntime;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.Mob;
 import net.neoforged.neoforge.attachment.AttachmentType;
 import org.slf4j.Logger;
+
+import java.util.HashSet;
+import java.util.Set;
 import yesman.epicfight.registry.entries.EpicFightAttachmentTypes;
 import yesman.epicfight.world.capabilities.entitypatch.EntityPatch;
 import yesman.epicfight.world.capabilities.entitypatch.GlobalMobPatch;
@@ -21,17 +27,26 @@ import yesman.epicfight.world.capabilities.provider.AttachmentEntityPatchProvide
 public final class NeoForgeExistingPatchRefresh {
     private static final Logger LOGGER = LogUtils.getLogger();
 
-    public static RendererDiscoveryRuntime.LiveRefresh refresh(MinecraftServer server) {
+    public static RendererDiscoveryRuntime.LiveRefresh refresh(MinecraftServer server,
+                                                               Set<ResourceLocation> affectedTypes) {
         if (server == null || !server.isSameThread()) {
             LOGGER.warn("EFPI live NeoForge patch refresh skipped: not on the server thread");
             return new RendererDiscoveryRuntime.LiveRefresh(0, 1);
         }
+        if (affectedTypes.isEmpty()) {
+            return new RendererDiscoveryRuntime.LiveRefresh(0, 0);
+        }
         int updated = 0;
         int failed = 0;
+        Set<EntityType<?>> targets = new HashSet<>();
+        for (ResourceLocation id : affectedTypes) {
+            BuiltInRegistries.ENTITY_TYPE.getOptional(id).ifPresent(targets::add);
+        }
         AttachmentType<AttachmentEntityPatchProvider> attachment = EpicFightAttachmentTypes.ENTITY_PATCH.get();
         for (ServerLevel level : server.getAllLevels()) {
             for (Entity entity : level.getAllEntities()) {
                 if (!(entity instanceof Mob mob) || mob.isRemoved()
+                        || !targets.contains(mob.getType())
                         || !NeoForgeAutoCompatibility.isOwnedByEfpi(mob.getType())
                         || !NeoForgeAutoCompatibility.isEnabled(mob.getType())) {
                     continue;

@@ -6,6 +6,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.util.Set;
 import java.util.UUID;
 
@@ -119,5 +120,23 @@ class RendererDiscoveryStoreTest {
         assertTrue(RendererDiscoveryStore.isRuntimeApproved(id,
                 RendererDiscoveryRuntime.Kind.EXTENDED_HUMANOID));
         assertFalse(RendererDiscoveryStore.conflicts().contains(id));
+    }
+
+    @Test
+    void identicalOperatorReportDoesNotRewriteTheCache() throws Exception {
+        RendererDiscoveryStore.bootstrap("server", configDirectory);
+        UUID operator = UUID.randomUUID();
+        ResourceLocation id = ResourceLocation.tryParse("example:stable");
+        String fingerprint = "a".repeat(64);
+        RendererDiscoveryStore.acceptOperatorReport(operator, fingerprint,
+                Set.of(id), Set.of(id), Set.of(), Set.of());
+
+        Path cache = configDirectory.resolve("epicfight_posture_integration/cache/renderer-discovery.json");
+        FileTime marker = FileTime.fromMillis(1_000_000);
+        Files.setLastModifiedTime(cache, marker);
+        assertTrue(RendererDiscoveryStore.acceptOperatorReport(operator, fingerprint,
+                Set.of(id), Set.of(id), Set.of(), Set.of()).accepted());
+        assertEquals(marker, Files.getLastModifiedTime(cache));
+        assertTrue(RendererDiscoveryStore.isRuntimeApproved(id));
     }
 }

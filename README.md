@@ -68,6 +68,8 @@ Automatic support depends on the mob's model, animations and other mods. A Postu
 
 **Dedicated servers (3.2.0 development):** After an OP client submits a trusted renderer-discovery report, EFPI immediately registers approved compatibility for new spawns **and** patches compatible mobs already loaded in the world. No server restart, chunk reload, or entity replacement is required. An OP's client automatically requests a new scan after a resource-pack/renderer reload (e.g., F3+T) while connected to a dedicated server. Mobs whose Epic Fight patches belong to other mods are left untouched. Reports from multiple operators are checked for conflicting renderer observations; ambiguous mobs are skipped. Only the reporting OP receives a brief notification if compatibility changes or a problem occurs; details remain in the server log. This behavior is under testing and is not part of the released 3.1.0 version.
 
+Repeated reports with unchanged approved targets skip the expensive live refresh. When approval changes, only newly approved entity types are refreshed; failed updates are retried on later reports, while an Epic Fight registry rebuild forces revalidation.
+
 ## Building
 
 Both editions compile shared source files directly from `common/src/main/java`. Loader APIs, event hooks and specific render preparation remain in their respective project directories.

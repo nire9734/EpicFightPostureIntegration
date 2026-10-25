@@ -2,6 +2,7 @@
 
 ## 3.2.0 (in development)
 
+- **Faster live compatibility updates:** unchanged OP reports no longer repeat server-side registration or scan loaded entities. New approvals refresh only affected mob types; failed registration or patch refresh attempts remain retryable, and registry rebuilds invalidate cached success.
 - **Unified diagnostics:** one `forge-diagnostics.tsv` or `neoforge-diagnostics.tsv` report combines entity registry coverage, renderer scans, posture eligibility/preflight reasons, loaded mod versions and observed guard-break/execution outcomes. Untested entities stay explicitly marked as such; CE refusal before the execution-start event remains unobservable. Reports do not enable unsupported mobs.
 - **Dedicated-server discovery:** apply newly confirmed, conflict-free renderer compatibility immediately to both new spawns and already-loaded mobs without a server restart on Forge and NeoForge.
 - **Safe live registration:** preserve patches owned by Epic Fight addons and disable EFPI-owned compatibility when renderer reports conflict. Existing mobs stay in place without being replaced or despawned.
