@@ -369,15 +369,15 @@ public final class PostureManager {
             }
             boolean spiderCompatible = !(targetPatch instanceof dev.nire9734.epicfightposture.compat.spider.LightweightSpiderPatch)
                     || dev.nire9734.epicfightposture.compat.spider.SpiderExecutionSupport.isCompatible(targetPatch);
-            PostureExecutionEligibility.Comparison comparison = PostureExecutionEligibility.compare(
+            PostureExecutionEligibility.Result result = PostureExecutionEligibility.evaluate(
                     targetPatch, targetPatch != null && targetPatch.isInitialized(),
                     targetPatch instanceof CustomExecuteEntity, exclusion, spiderCompatible);
             try {
-                ForgePostureCoverage.observe(entity, targetPatch, comparison);
+                ForgePostureCoverage.observe(entity, targetPatch, result);
             } catch (RuntimeException | LinkageError ignored) {
                 // Diagnostics must not change gameplay eligibility.
             }
-            return comparison.current().supported();
+            return result.supported();
         } catch (Throwable ignored) {
             try {
                 ForgePostureCoverage.observeEligibilityFailure(entity, targetPatch);

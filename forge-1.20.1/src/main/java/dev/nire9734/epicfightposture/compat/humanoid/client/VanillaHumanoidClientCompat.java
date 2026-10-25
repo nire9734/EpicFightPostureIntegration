@@ -66,8 +66,9 @@ public final class VanillaHumanoidClientCompat {
         );
 
         Set<EntityType<?>> alreadyPatched = new HashSet<>(EntityPatchProvider.getPatchedEntities());
-        Set<EntityType<?>> verifiedVanilla = registerVanillaHumanoids(event, scan, alreadyPatched);
-        Set<EntityType<?>> verifiedSpider = registerVanillaSpiders(event, scan, alreadyPatched);
+        Map<ResourceLocation, String> registrationFailures = new HashMap<>();
+        Set<EntityType<?>> verifiedVanilla = registerVanillaHumanoids(event, scan, alreadyPatched, registrationFailures);
+        Set<EntityType<?>> verifiedSpider = registerVanillaSpiders(event, scan, alreadyPatched, registrationFailures);
         Set<EntityType<?>> verifiedPreparedHumanoids = HumanoidBackendRegistry.registerRenderers(
                 event,
                 scan.extendedHumanoidTypes()
@@ -99,7 +100,7 @@ public final class VanillaHumanoidClientCompat {
                 verifiedSpider
         ));
 
-        // Keep the per-Mob comparison data out of latest.log. This diagnostic
+        // Keep the per-Mob renderer evidence out of latest.log. This diagnostic
         // file is rebuilt on each renderer reload and has no gameplay effect.
         Map<ResourceLocation, String> coverage = new HashMap<>();
         for (EntityType<?> type : event.getContext().getEntityRenderDispatcher().renderers.keySet()) {
@@ -112,9 +113,11 @@ public final class VanillaHumanoidClientCompat {
                 coverage.put(id, "excluded:existing_patch");
             } else {
                 coverage.put(id, scan.inspected().contains(id)
-                        ? "rejected:backend_or_registration" : "rejected:renderer_type");
+                        ? "rejected:unsupported_model" : "rejected:renderer_type");
             }
         }
+        coverage.putAll(HumanoidBackendRegistry.rejectionReasons());
+        coverage.putAll(registrationFailures);
         for (ResourceLocation id : verifiedVanillaIds) coverage.put(id, "verified:vanilla");
         for (ResourceLocation id : verifiedSpiderIds) coverage.put(id, "verified:spider");
         for (EntityType<?> type : verifiedPreparedHumanoids) {
@@ -149,7 +152,8 @@ public final class VanillaHumanoidClientCompat {
     private static Set<EntityType<?>> registerVanillaHumanoids(
             PatchedRenderersEvent.Add event,
             HumanoidClientDiscovery.ScanSnapshot scan,
-            Set<EntityType<?>> alreadyPatched) {
+            Set<EntityType<?>> alreadyPatched,
+            Map<ResourceLocation, String> failures) {
         Set<EntityType<?>> verified = new HashSet<>();
 
         for (EntityType<?> entityType : scan.vanillaHumanoidTypes()) {
@@ -160,11 +164,13 @@ public final class VanillaHumanoidClientCompat {
 
             boolean oursAlready = VanillaHumanoidCompat.isRegisteredByEfpi(entityId);
             if (alreadyPatched.contains(entityType) && !oursAlready) {
+                failures.put(entityId, "excluded:existing_patch");
                 continue;
             }
 
             AssetAccessor<SkinnedMesh> runtimeMesh = bakeRuntimeMesh(event, entityType, entityId);
             if (runtimeMesh == null) {
+                failures.put(entityId, "rejected:vanilla_mesh_bake");
                 VanillaHumanoidCompat.rejectRuntimeCompatibility(entityType);
                 continue;
             }
@@ -172,6 +178,7 @@ public final class VanillaHumanoidClientCompat {
             if (!VanillaHumanoidCompat.registerDiscoveredAtRuntime(
                     entityType,
                     VanillaHumanoidCompat.CompatibilityKind.VANILLA_HUMANOID)) {
+                failures.put(entityId, "rejected:patch_registration");
                 continue;
             }
 
@@ -183,6 +190,7 @@ public final class VanillaHumanoidClientCompat {
                     () -> VanillaHumanoidCompat.rejectRuntimeCompatibility(entityType),
                     throwable -> LOGGER.warn("EFPI could not install vanilla humanoid renderer for {}",
                             entityId, throwable))) {
+                failures.put(entityId, "rejected:renderer_registration");
                 continue;
             }
             verified.add(entityType);
@@ -194,7 +202,8 @@ public final class VanillaHumanoidClientCompat {
     private static Set<EntityType<?>> registerVanillaSpiders(
             PatchedRenderersEvent.Add event,
             HumanoidClientDiscovery.ScanSnapshot scan,
-            Set<EntityType<?>> alreadyPatched) {
+            Set<EntityType<?>> alreadyPatched,
+            Map<ResourceLocation, String> failures) {
         Set<EntityType<?>> verified = new HashSet<>();
 
         for (EntityType<?> entityType : scan.vanillaSpiderTypes()) {
@@ -205,12 +214,14 @@ public final class VanillaHumanoidClientCompat {
 
             boolean oursAlready = VanillaHumanoidCompat.isRegisteredByEfpi(entityId);
             if (alreadyPatched.contains(entityType) && !oursAlready) {
+                failures.put(entityId, "excluded:existing_patch");
                 continue;
             }
 
             if (!VanillaHumanoidCompat.registerDiscoveredAtRuntime(
                     entityType,
                     VanillaHumanoidCompat.CompatibilityKind.VANILLA_SPIDER)) {
+                failures.put(entityId, "rejected:patch_registration");
                 continue;
             }
 
@@ -222,6 +233,7 @@ public final class VanillaHumanoidClientCompat {
                     () -> VanillaHumanoidCompat.rejectRuntimeCompatibility(entityType),
                     throwable -> LOGGER.warn("EFPI could not install vanilla spider renderer for {}",
                             entityId, throwable))) {
+                failures.put(entityId, "rejected:renderer_registration");
                 continue;
             }
             verified.add(entityType);

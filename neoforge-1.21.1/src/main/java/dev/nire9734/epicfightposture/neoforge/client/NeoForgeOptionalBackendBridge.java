@@ -49,7 +49,7 @@ public final class NeoForgeOptionalBackendBridge {
      * Match Forge HumanoidBackendRegistry: accept exactly ONE prepared model.
      * An ambiguous result is not resolved by backend registration order.
      */
-    public static NeoForgePreparedRig inspect(EntityType<?> type, EntityRenderer<?> source) {
+    public static InspectionOutcome inspectWithReason(EntityType<?> type, EntityRenderer<?> source) {
         List<NeoForgePreparedRig> candidates = new ArrayList<>(3);
         NeoForgePreparedRig modelPart = invoke(MODELPART, type, source);
         if (modelPart != null) candidates.add(modelPart);
@@ -64,8 +64,31 @@ public final class NeoForgeOptionalBackendBridge {
         if (candidates.size() > 1) {
             LOGGER.debug("EFPI rejected ambiguous humanoid renderer for {}: {}", type,
                     candidates.stream().map(NeoForgePreparedRig::backend).toList());
+            return new InspectionOutcome(null, "ambiguous_backends");
         }
-        return NeoForgeBackendSelection.unique(candidates);
+        NeoForgePreparedRig selected = NeoForgeBackendSelection.unique(candidates);
+        if (selected != null) return new InspectionOutcome(selected, "none");
+        boolean matchedOptionalModel = mightBeGeckoRenderer(source)
+                || (ModList.get().isLoaded("lionfishapi") && looksLikeLionfishModel(source));
+        return new InspectionOutcome(null, matchedOptionalModel
+                ? "backend_model_not_supported" : "unsupported_model");
+    }
+
+    /** Result is diagnostic only; it never changes the exact-one admission rule. */
+    public record InspectionOutcome(NeoForgePreparedRig prepared, String rejection) {}
+
+    private static boolean looksLikeLionfishModel(EntityRenderer<?> source) {
+        if (!(source instanceof net.minecraft.client.renderer.entity.LivingEntityRenderer<?, ?> living)) {
+            return false;
+        }
+        Object model = living.getModel();
+        if (model == null) return false;
+        for (Class<?> type = model.getClass(); type != null; type = type.getSuperclass()) {
+            if (type.getName().equals("com.github.L_Ender.lionfishapi.client.model.tools.AdvancedEntityModel")) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** Replay GeckoLib held items / per-bone layers only for a verified Gecko renderer. */

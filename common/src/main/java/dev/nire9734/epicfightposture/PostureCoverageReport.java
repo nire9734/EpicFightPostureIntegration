@@ -35,10 +35,9 @@ public final class PostureCoverageReport {
         this.loader = loader;
     }
 
-    public synchronized void observe(String entityId, boolean legacyEligible,
-                                     String status, String reason, String patchType) {
+    public synchronized void observe(String entityId, String status, String reason, String patchType) {
         if (entityId == null || entityId.isBlank()) return;
-        Sample sample = new Sample(legacyEligible, safe(status), safe(reason), safe(patchType));
+        Sample sample = new Sample(safe(status), safe(reason), safe(patchType));
         String key = safe(entityId);
         Seen previous = entry(key);
         if (previous.latest == null || !previous.latest.equals(sample)) {
@@ -169,14 +168,15 @@ public final class PostureCoverageReport {
     }
 
     public synchronized String format() {
-        StringBuilder tsv = new StringBuilder("# EFPI diagnostics v2\n");
+        StringBuilder tsv = new StringBuilder("# EFPI diagnostics v3\n");
         tsv.append("# loader: ").append(loader).append('\n');
         tsv.append("# session_started_utc: ").append(sessionStarted).append('\n');
         tsv.append("# generated_utc: ").append(Instant.now()).append('\n');
         tsv.append("# scope: entity registry + latest client/OP renderer scan + observed server posture checks\n");
         tsv.append("# NOT_OBSERVED: no server eligibility check yet; registry includes non-living entities\n");
-        tsv.append("# legacy: admission checks before Animator/armature preflight; diagnostic only\n");
         tsv.append("# current: admission checks used by the server; does not guarantee CE execution\n");
+        tsv.append("# missing_patch_*: clue from the available renderer scan, not proof of the cause on the server\n");
+        tsv.append("# rejected renderer stages distinguish unsupported models, preparation and registration failures\n");
         tsv.append("# execution: CE refusal before its start event cannot be observed; timeout means start was unconfirmed\n");
         tsv.append("# client_hud_visibility_at_scan: ").append(clientHudVisibility).append('\n');
         tsv.append("# mods: ");
@@ -187,15 +187,15 @@ public final class PostureCoverageReport {
             first = false;
         }
         tsv.append('\n');
-        tsv.append("entity_id\tlegacy_eligible\tcurrent_status\tcurrent_reason\tcomparison\tpatch_class\tvariants_seen\tregistered\trenderer_result\trenderer_source\tguard_break_confirmed\tguard_break_failed\tguard_break_last_failure\texecution_started\texecution_confirmed\texecution_timeout\n");
+        tsv.append("entity_id\tcurrent_status\tcurrent_reason\tmissing_patch_stage\tmissing_patch_clue\tpatch_class\tvariants_seen\tregistered\trenderer_result\trenderer_source\tguard_break_confirmed\tguard_break_failed\tguard_break_last_failure\texecution_started\texecution_confirmed\texecution_timeout\n");
         for (var entry : seen.entrySet()) {
             Seen value = entry.getValue();
             Sample sample = value.latest;
             tsv.append(entry.getKey()).append('\t')
-                    .append(sample == null ? "NOT_OBSERVED" : sample.legacyEligible).append('\t')
                     .append(sample == null ? "NOT_OBSERVED" : sample.status).append('\t')
                     .append(sample == null ? "NOT_OBSERVED" : sample.reason).append('\t')
-                    .append(comparison(sample)).append('\t')
+                    .append(missingPatchStage(sample, value.renderer)).append('\t')
+                    .append(missingPatchClue(sample, value.renderer)).append('\t')
                     .append(sample == null ? "none" : sample.patchType).append('\t')
                     .append(value.varied).append('\t')
                     .append(value.registered).append('\t')
@@ -211,20 +211,45 @@ public final class PostureCoverageReport {
         return tsv.toString();
     }
 
-    private static String comparison(Sample sample) {
-        if (sample == null) return "not_tested";
-        if ("PENDING".equals(sample.status)) return "pending";
-        boolean currentEligible = "SUPPORTED".equals(sample.status);
-        if (sample.legacyEligible && !currentEligible) return "newly_excluded";
-        if (!sample.legacyEligible && currentEligible) return "newly_supported";
-        return "unchanged";
+    private static String missingPatchStage(Sample sample, Renderer renderer) {
+        if (sample == null || !"MISSING_PATCH".equals(sample.reason)) return "none";
+        if (renderer == null) return "UNKNOWN";
+        String result = renderer.result;
+        if (result.startsWith("verified:")) return "SERVER_PATCH";
+        if (result.startsWith("excluded:config")) return "CONFIG";
+        if (result.startsWith("excluded:existing_patch")) return "EXTERNAL_PATCH";
+        if (result.equals("CONFLICT")) return "OP_CONSENSUS";
+        if (result.equals("scanned_not_approved")) return "OP_DISCOVERY";
+        if (result.startsWith("rejected:")) {
+            String code = result.substring("rejected:".length());
+            if (code.equals("renderer_type")) return "RENDERER_TYPE";
+            if (code.equals("unsupported_model")) return "MODEL_CLASSIFICATION";
+            if (code.equals("ambiguous_backends")) return "BACKEND_CONFLICT";
+            if (code.startsWith("backend_")) return "BACKEND_PREPARATION";
+            if (code.equals("vanilla_mesh_bake")) return "MODEL_PREPARATION";
+            if (code.equals("armature_preparation")) return "ARMATURE_PREPARATION";
+            if (code.equals("patch_registration")) return "PATCH_REGISTRATION";
+            if (code.startsWith("renderer_registration")) return "RENDERER_REGISTRATION";
+        }
+        return "UNKNOWN";
+    }
+
+    private static String missingPatchClue(Sample sample, Renderer renderer) {
+        if (sample == null || !"MISSING_PATCH".equals(sample.reason)) return "none";
+        if (renderer == null) return "NO_RENDERER_SCAN_AVAILABLE";
+        String result = renderer.result;
+        if (result.startsWith("verified:")) return "RENDERER_VERIFIED_BUT_SERVER_PATCH_MISSING";
+        if (result.equals("CONFLICT")) return "OP_REPORT_CONFLICT";
+        if (result.equals("scanned_not_approved")) return "OP_SCAN_NO_APPROVED_PATCH";
+        if (result.startsWith("rejected:") || result.startsWith("excluded:")) return result;
+        return "NO_DETAILED_CAUSE_AVAILABLE";
     }
 
     private static String safe(String text) {
         return text == null ? "" : text.replace('\t', '_').replace('\n', '_').replace('\r', '_');
     }
 
-    private record Sample(boolean legacyEligible, String status, String reason, String patchType) {}
+    private record Sample(String status, String reason, String patchType) {}
     private record Renderer(String result, String source) {}
 
     private static final class Seen {

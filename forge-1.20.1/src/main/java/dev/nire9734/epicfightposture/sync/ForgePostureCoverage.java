@@ -33,10 +33,9 @@ public final class ForgePostureCoverage {
     private static final PostureCoverageReport REPORT = new PostureCoverageReport("forge");
 
     public static void observe(LivingEntity entity, LivingEntityPatch<?> patch,
-                               PostureExecutionEligibility.Comparison comparison) {
+                               PostureExecutionEligibility.Result result) {
         REPORT.observe(entity.getType().builtInRegistryHolder().key().location().toString(),
-                comparison.legacyEligible(), comparison.current().status().name(),
-                comparison.current().reason().name(),
+                result.status().name(), result.reason().name(),
                 patch == null ? "none" : patch.getClass().getName());
     }
 
@@ -46,7 +45,7 @@ public final class ForgePostureCoverage {
 
     public static void observeEligibilityFailure(LivingEntity entity, LivingEntityPatch<?> patch) {
         REPORT.observe(entity.getType().builtInRegistryHolder().key().location().toString(),
-                false, "PENDING", "ELIGIBILITY_CHECK_EXCEPTION",
+                "PENDING", "ELIGIBILITY_CHECK_EXCEPTION",
                 patch == null ? "none" : patch.getClass().getName());
     }
 

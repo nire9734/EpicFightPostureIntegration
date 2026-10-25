@@ -47,46 +47,22 @@ public final class PostureExecutionEligibility {
         }
     }
 
-    /** Old admission versus the current stricter preflight, on the same patch. */
-    public record Comparison(boolean legacyEligible, Result current) {}
-
     private static final Result READY = new Result(Status.SUPPORTED, Reason.READY);
 
     /**
-     * The pre-preflight (3.1.x-style) decision is only evaluated for reporting.
-     * It must never be used to enable posture on the server.
-     *
-     * @param baseExclusion a loader-specific exclusion applying to both versions,
-     *                      or null if the mob is eligible for further checks
-     * @param spiderCompatible a new preflight-only restriction for EFPI spider patches
+     * Applies loader-specific exclusions before the shared animation preflight.
+     * @param baseExclusion exclusion supplied by the loader, or null
+     * @param spiderCompatible whether an EFPI spider patch has execution support
      */
-    public static Comparison compare(LivingEntityPatch<?> patch, boolean initialized,
-                                     boolean customExecution, Reason baseExclusion,
-                                     boolean spiderCompatible) {
+    public static Result evaluate(LivingEntityPatch<?> patch, boolean initialized,
+                                  boolean customExecution, Reason baseExclusion,
+                                  boolean spiderCompatible) {
         if (baseExclusion != null) {
-            return new Comparison(false, unsupported(baseExclusion));
+            return unsupported(baseExclusion);
         }
-        boolean legacy = legacyEligible(patch, customExecution);
-        Result current = spiderCompatible
+        return spiderCompatible
                 ? inspect(patch, initialized, customExecution)
                 : unsupported(Reason.SPIDER_EXECUTION_UNAVAILABLE);
-        return new Comparison(legacy, current);
-    }
-
-    /** Mirrors the former Forge/NeoForge predicate, without the new preflight. */
-    private static boolean legacyEligible(LivingEntityPatch<?> patch, boolean customExecution) {
-        if (patch == null) return false;
-        try {
-            AssetAccessor<? extends StaticAnimation> neutralize = patch.getHitAnimation(StunType.NEUTRALIZE);
-            if (!available(neutralize)
-                    || sameAnimation(neutralize, patch.getHitAnimation(StunType.SHORT))
-                    || sameAnimation(neutralize, patch.getHitAnimation(StunType.LONG))) {
-                return false;
-            }
-            return customExecution || patch.getArmature() instanceof HumanoidArmature;
-        } catch (Throwable ignored) {
-            return false;
-        }
     }
 
     /**

@@ -335,15 +335,15 @@ public final class NeoForgePostureServerEvents {
             }
             boolean spiderCompatible = !(patch instanceof dev.nire9734.epicfightposture.neoforge.compat.NeoForgeLightweightSpiderPatch<?>)
                     || dev.nire9734.epicfightposture.neoforge.compat.NeoForgeSpiderExecutionSupport.isCompatible(patch);
-            PostureExecutionEligibility.Comparison comparison = PostureExecutionEligibility.compare(
+            PostureExecutionEligibility.Result result = PostureExecutionEligibility.evaluate(
                     patch, patch != null && !patch.uninitialized(),
                     patch instanceof CustomExecuteEntity, exclusion, spiderCompatible);
             try {
-                NeoForgePostureCoverage.observe(mob, patch, comparison);
+                NeoForgePostureCoverage.observe(mob, patch, result);
             } catch (RuntimeException | LinkageError ignored) {
                 // Diagnostics must not change gameplay eligibility.
             }
-            return comparison.current().supported();
+            return result.supported();
         } catch (Throwable ignored) {
             try {
                 NeoForgePostureCoverage.observeEligibilityFailure(mob, patch);

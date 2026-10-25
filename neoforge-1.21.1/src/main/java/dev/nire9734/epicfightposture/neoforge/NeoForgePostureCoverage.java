@@ -38,10 +38,9 @@ public final class NeoForgePostureCoverage {
     }
 
     public static void observe(LivingEntity entity, LivingEntityPatch<?> patch,
-                               PostureExecutionEligibility.Comparison comparison) {
+                               PostureExecutionEligibility.Result result) {
         REPORT.observe(BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType()).toString(),
-                comparison.legacyEligible(), comparison.current().status().name(),
-                comparison.current().reason().name(),
+                result.status().name(), result.reason().name(),
                 patch == null ? "none" : patch.getClass().getName());
     }
 
@@ -51,7 +50,7 @@ public final class NeoForgePostureCoverage {
 
     public static void observeEligibilityFailure(LivingEntity entity, LivingEntityPatch<?> patch) {
         REPORT.observe(BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType()).toString(),
-                false, "PENDING", "ELIGIBILITY_CHECK_EXCEPTION",
+                "PENDING", "ELIGIBILITY_CHECK_EXCEPTION",
                 patch == null ? "none" : patch.getClass().getName());
     }
 
