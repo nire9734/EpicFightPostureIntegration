@@ -67,10 +67,9 @@ public final class GeckoSourceRigAdapter {
                 .or(() -> pivotBounds.toBounds())
                 .orElseThrow(() -> new IllegalArgumentException("Gecko model produced no finite bind-space bounds"));
 
-        return new Capture(
-                new SourceRigSnapshot(key, nodes, bounds, nonUniformScale[0]),
-                Map.copyOf(sourceNodes)
-        );
+        SourceRigSnapshot snapshot = new SourceRigSnapshot(key, nodes, bounds, nonUniformScale[0]);
+        RigFixtureCapture.capture(snapshot);
+        return new Capture(snapshot, Map.copyOf(sourceNodes));
     }
 
     private static void captureBone(

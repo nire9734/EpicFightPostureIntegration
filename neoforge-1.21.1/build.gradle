@@ -92,6 +92,7 @@ sourceSets {
             include 'dev/nire9734/epicfightposture/compat/humanoid/retarget/**'
             include 'dev/nire9734/epicfightposture/compat/humanoid/skeleton/**'
             include 'dev/nire9734/epicfightposture/compat/humanoid/client/RendererCoverageFormatterTest.java'
+            include 'dev/nire9734/epicfightposture/compat/humanoid/client/RigFixtureCaptureTest.java'
             include 'dev/nire9734/epicfightposture/NeoForgeAssassinationStateTest.java'
             include 'dev/nire9734/epicfightposture/NeoForgeCompatibilityDamageTest.java'
             include 'dev/nire9734/epicfightposture/neoforge/compat/AutoCompatibilityRulesTest.java'
@@ -102,6 +103,7 @@ sourceSets {
             include 'dev/nire9734/epicfightposture/neoforge/compat/models/NeoForgeLayerUtilityTest.java'
             include 'dev/nire9734/epicfightposture/neoforge/compat/models/NeoForgeGeckoArmorCacheKeyTest.java'
         }
+        resources.srcDir('../common/src/test/resources')
     }
 }
 

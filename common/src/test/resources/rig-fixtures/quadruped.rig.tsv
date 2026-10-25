@@ -1,0 +1,10 @@
+# EFPI source rig fixture v1
+rig	fixture:quadruped	quadruped	0
+bounds	-0.35	0	-0.8	0.35	1.3	0.95
+node	back_left_leg	back_left_leg	body	1	-0.2	0.6	-0.45	0	0	0	1	-0.3	0	-0.55	-0.1	0.8	-0.35
+node	back_right_leg	back_right_leg	body	1	0.2	0.6	-0.45	0	0	0	1	0.1	0	-0.55	0.3	0.8	-0.35
+node	body	body	root	1	0	0.85	0	0	0	0	1	-0.3	0.55	-0.7	0.3	1.15	0.7
+node	front_left_leg	front_left_leg	body	1	-0.2	0.6	0.45	0	0	0	1	-0.3	0	0.35	-0.1	0.8	0.55
+node	front_right_leg	front_right_leg	body	1	0.2	0.6	0.45	0	0	0	1	0.1	0	0.35	0.3	0.8	0.55
+node	head	head	body	1	0	1	0.7	0	0	0	1	-0.2	0.8	0.5	0.2	1.3	0.95
+node	root	root		0	0	0	0	0	0	0	1	-	-	-	-	-	-

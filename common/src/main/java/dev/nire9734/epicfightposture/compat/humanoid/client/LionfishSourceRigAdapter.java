@@ -59,7 +59,9 @@ public final class LionfishSourceRigAdapter {
 
         BodyBounds bounds = geometryBounds.toBounds().or(() -> pivotBounds.toBounds())
                 .orElseThrow(() -> new IllegalArgumentException("Lionfish model produced no finite bind-space bounds"));
-        return new Capture(new SourceRigSnapshot(key, nodes, bounds, nonUniformScale[0]), Map.copyOf(sourceNodes));
+        SourceRigSnapshot snapshot = new SourceRigSnapshot(key, nodes, bounds, nonUniformScale[0]);
+        RigFixtureCapture.capture(snapshot);
+        return new Capture(snapshot, Map.copyOf(sourceNodes));
     }
 
     /** Matches Epic Fight's vanilla model baker: Y180 * X180 * translate(0,-24px,0). */

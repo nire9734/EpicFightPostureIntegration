@@ -1,0 +1,18 @@
+# Canonical EFPI bind-joint positions (x,y,z) for this rig v1
+joint	ROOT	0	0.76	0
+joint	SPINE	0	1.005	0
+joint	CHEST	0	1.25	0
+joint	NECK	0	1.525	0
+joint	HEAD	0	1.8	0
+joint	SHOULDER_LEFT	-0.53	1.45	0
+joint	ELBOW_LEFT	-0.53999996	1.125	0
+joint	WRIST_LEFT	-0.55	0.8	0
+joint	SHOULDER_RIGHT	0.53	1.45	0
+joint	ELBOW_RIGHT	0.53999996	1.125	0
+joint	WRIST_RIGHT	0.55	0.8	0
+joint	HIP_LEFT	-0.16	0.76	0
+joint	KNEE_LEFT	-0.1625	0.38	0
+joint	ANKLE_LEFT	-0.165	0	0
+joint	HIP_RIGHT	0.16	0.76	0
+joint	KNEE_RIGHT	0.1625	0.38	0
+joint	ANKLE_RIGHT	0.165	0	0

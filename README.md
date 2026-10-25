@@ -70,6 +70,8 @@ Automatic support depends on the mob's model, animations and other mods. A Postu
 
 Repeated reports with unchanged approved targets skip the expensive live refresh. When approval changes, only newly approved entity types are refreshed; failed updates are retried on later reports, while an Epic Fight registry rebuild forces revalidation.
 
+**Developer rig regression fixtures:** Both loader builds run the same portable human-rig acceptance/rejection tests from `common/src/test/resources/rig-fixtures/`. The initial fixtures describe synthetic standard humanoids, shoulder carriers, a visible-helmet/empty-head model, and three unsafe structures that must remain excluded. To investigate a new model, optionally set `-Defpi.rigFixtureDirectory=<output-folder>` in the **client JVM arguments**. GeckoLib, Lionfish and ModelPart source rigs captured during renderer preparation are then exported as versioned `.rig.tsv` files (one per model signature). Export is disabled by default, independent of the normal diagnostic report, and does not change compatibility decisions. Review exported fixtures before adding representative cases and expected results to the tests; this does not replace in-game animation/execution checks.
+
 ## Building
 
 Both editions compile shared source files directly from `common/src/main/java`. Loader APIs, event hooks and specific render preparation remain in their respective project directories.

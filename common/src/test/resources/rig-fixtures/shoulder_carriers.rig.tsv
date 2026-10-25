@@ -1,0 +1,12 @@
+# EFPI source rig fixture v1
+rig	fixture:shoulder_carriers	shoulder_carriers	0
+bounds	-0.7	0	-0.25	0.7	2.1	0.25
+node	body	body	root	1	0	1.25	0	0	0	0	1	-0.36	0.8	-0.2	0.36	1.65	0.2
+node	head	head	body	1	0	1.8	0	0	0	0	1	-0.24	1.62	-0.24	0.24	2.08	0.24
+node	left_arm	left_arm	left_shoulder	1	-0.53	1.45	0	0	0	0	1	-0.67	0.8	-0.12	-0.43	1.52	0.12
+node	left_leg	left_leg	root	1	-0.16	0.76	0	0	0	0	1	-0.28	0	-0.12	-0.05	0.82	0.12
+node	left_shoulder	left_shoulder	body	1	-0.43	1.51	0	0	0	0	1	-0.6	1.4	-0.16	-0.32	1.66	0.16
+node	right_arm	right_arm	right_shoulder	1	0.53	1.45	0	0	0	0	1	0.43	0.8	-0.12	0.67	1.52	0.12
+node	right_leg	right_leg	root	1	0.16	0.76	0	0	0	0	1	0.05	0	-0.12	0.28	0.82	0.12
+node	right_shoulder	right_shoulder	body	1	0.43	1.51	0	0	0	0	1	0.32	1.4	-0.16	0.6	1.66	0.16
+node	root	root		0	0	0	0	0	0	0	1	-	-	-	-	-	-
