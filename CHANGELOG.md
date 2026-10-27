@@ -1,7 +1,8 @@
 # Changelog
 
-## 3.2.0 (in development)
+## 3.2.0
 
+- **Epic Fight 20.15.x compatibility (Forge 1.20.1):** expanded the supported range to 20.15.1–20.15.x alongside 20.14.17–20.14.x. Epic Fight 20.15.0 is excluded because it lacks an API required by EFPI.
 - **Compatibility regression fixtures:** portable model-rig fixtures now test expected humanoid acceptance, unsafe-model rejection, canonical joint mapping and skinning across both loaders. Developers can opt in to capturing real model rigs for reproducing future compatibility reports; CI preserves failed test reports.
 - **Faster live compatibility updates:** unchanged OP reports no longer repeat server-side registration or scan loaded entities. New approvals refresh only affected mob types; failed registration or patch refresh attempts remain retryable, and registry rebuilds invalidate cached success.
 - **Unified diagnostics:** one `forge-diagnostics.tsv` or `neoforge-diagnostics.tsv` report combines entity registry coverage, renderer scans, posture eligibility/preflight reasons, loaded mod versions and observed guard-break/execution outcomes. Untested entities stay explicitly marked as such; CE refusal before the execution-start event remains unobservable. Reports do not enable unsupported mobs.
