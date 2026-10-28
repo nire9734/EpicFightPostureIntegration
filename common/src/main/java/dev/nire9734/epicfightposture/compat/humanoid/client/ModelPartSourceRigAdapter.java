@@ -151,11 +151,9 @@ public final class ModelPartSourceRigAdapter {
 
         BodyBounds bounds = globalGeometry.toBounds().or(() -> globalPivots.toBounds())
                 .orElseThrow(() -> new IllegalArgumentException("ModelPart rig produced no finite bind-space bounds"));
-        return new Capture(
-                new SourceRigSnapshot(key, nodes, bounds, nonUniformScale[0]),
-                Map.copyOf(sourceNodes),
-                List.copyOf(cubes)
-        );
+        SourceRigSnapshot snapshot = new SourceRigSnapshot(key, nodes, bounds, nonUniformScale[0]);
+        RigFixtureCapture.capture(snapshot);
+        return new Capture(snapshot, Map.copyOf(sourceNodes), List.copyOf(cubes));
     }
 
     /** Matches Epic Fight's vanilla model conversion basis. */

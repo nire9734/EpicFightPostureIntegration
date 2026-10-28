@@ -5,6 +5,7 @@ import org.slf4j.Logger;
 import java.util.Map;
 import java.util.WeakHashMap;
 import dev.nire9734.epicfightposture.neoforge.NeoForgePostureConfig;
+import dev.nire9734.epicfightposture.neoforge.NeoForgePostureCoverage;
 import dev.nire9734.epicfightposture.neoforge.NeoForgeServerSettings;
 import dev.nire9734.epicfightposture.neoforge.compat.NeoForgeAutoCompatibility;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -49,6 +50,7 @@ public final class NeoForgePostureServerEvents {
         NeoForge.EVENT_BUS.addListener(NeoForgePostureServerEvents::onTick);
         NeoForge.EVENT_BUS.addListener(NeoForgePostureServerEvents::onExecutionStart);
         dev.nire9734.epicfightposture.neoforge.network.NeoForgePostureSync.register();
+        NeoForgePostureCoverage.register();
     }
 
     // NeoForge fires Post only after applying health loss.
@@ -121,7 +123,10 @@ public final class NeoForgePostureServerEvents {
         }
         if (state.postureState == PostureState.BROKEN || state.postureState == PostureState.EXECUTING) {
             if (isExecuting(mob)) {
-                PENDING_EXECUTION_START.remove(mob);
+                boolean pendingExecution = PENDING_EXECUTION_START.remove(mob) != null;
+                if (pendingExecution || state.postureState != PostureState.EXECUTING) {
+                    NeoForgePostureCoverage.observeExecution(mob, "CONFIRMED");
+                }
                 if (state.postureState != PostureState.EXECUTING) {
                     state.enterExecution();
                     dev.nire9734.epicfightposture.neoforge.network.NeoForgePostureSync.syncNow(mob, stateForSync(mob));
@@ -137,7 +142,9 @@ public final class NeoForgePostureServerEvents {
                     // Do not return to the vanilla renderer during this gap.
                     return;
                 }
-                PENDING_EXECUTION_START.remove(mob);
+                if (PENDING_EXECUTION_START.remove(mob) != null) {
+                    NeoForgePostureCoverage.observeExecution(mob, "TIMEOUT");
+                }
                 state.beginRecovery(RECOVERY_TICKS);
                 dev.nire9734.epicfightposture.neoforge.network.NeoForgePostureSync.syncNow(mob, stateForSync(mob));
                 return;
@@ -207,16 +214,21 @@ public final class NeoForgePostureServerEvents {
         if (mob.isUsingItem()) mob.stopUsingItem();
 
         boolean active = false;
+        String failureReason = patch == null ? "PATCH_MISSING" : "NEUTRALIZE_MISSING";
         if (patch != null && hasDistinctNeutralize(patch)) {
             try {
-                active = patch.applyStun(StunType.NEUTRALIZE, 0.0F)
-                        && isActiveNeutralize(patch);
+                boolean applied = patch.applyStun(StunType.NEUTRALIZE, 0.0F);
+                active = applied && isActiveNeutralize(patch);
+                if (!active) failureReason = applied ? "ANIMATION_NOT_ACTIVE" : "STUN_NOT_APPLIED";
             } catch (Throwable failure) {
+                failureReason = "STUN_EXCEPTION:" + failure.getClass().getSimpleName();
                 LOGGER.warn("EFPI neutralize threw for {} ({}) using patch {}",
                         BuiltInRegistries.ENTITY_TYPE.getKey(mob.getType()),
                         mob.getUUID(), patch.getClass().getName(), failure);
             }
         }
+
+        NeoForgePostureCoverage.observeGuardBreak(mob, active, active ? "none" : failureReason);
 
         if (active) state.confirmBreak();
         else state.beginRecovery(RECOVERY_TICKS);
@@ -237,6 +249,7 @@ public final class NeoForgePostureServerEvents {
                 target -> new PostureRuntimeState(maximumPosture(target)));
         mob.stopUsingItem();
         state.startExecution();
+        NeoForgePostureCoverage.observeExecution(mob, "STARTED");
         PENDING_EXECUTION_START.put(mob,
                 mob.tickCount + PostureRuntimeState.EXECUTION_START_GRACE_TICKS);
         dev.nire9734.epicfightposture.neoforge.network.NeoForgePostureSync.syncNow(mob, stateForSync(mob));
@@ -305,14 +318,38 @@ public final class NeoForgePostureServerEvents {
         return PostureDeathSafety.canReceivePosture(target.isAlive(), target.getHealth());
     }
 
-    /** Forge 3.0.2 allows humanoid armatures, plus explicit CE execution targets. */
+    /** Delegate animation, armature and Animator checks to the shared policy. */
     private static boolean isEligiblePostureEntity(LivingEntity mob, LivingEntityPatch<?> patch) {
-        if (!canReceive(mob) || mob instanceof Player || isBlacklisted(mob) || patch == null
-                || patch instanceof CEHumanoidPatch || !hasDistinctNeutralize(patch)) return false;
-        if (patch instanceof CustomExecuteEntity) return true;
+        if (mob instanceof Player) return false;
+        PostureExecutionEligibility.Reason exclusion = null;
+        if (!canReceive(mob)) {
+            exclusion = PostureExecutionEligibility.Reason.TARGET_NOT_ALIVE;
+        } else if (isBlacklisted(mob)) {
+            exclusion = PostureExecutionEligibility.Reason.ENTITY_BLACKLISTED;
+        } else if (patch instanceof CEHumanoidPatch) {
+            exclusion = PostureExecutionEligibility.Reason.CE_OWNED_PATCH;
+        }
         try {
-            return patch.getArmature() instanceof HumanoidArmature;
+            if (exclusion == null && patch != null) {
+                NeoForgeMissingHumanoidNeutralize.installIfNeeded(patch);
+            }
+            boolean spiderCompatible = !(patch instanceof dev.nire9734.epicfightposture.neoforge.compat.NeoForgeLightweightSpiderPatch<?>)
+                    || dev.nire9734.epicfightposture.neoforge.compat.NeoForgeSpiderExecutionSupport.isCompatible(patch);
+            PostureExecutionEligibility.Result result = PostureExecutionEligibility.evaluate(
+                    patch, patch != null && !patch.uninitialized(),
+                    patch instanceof CustomExecuteEntity, exclusion, spiderCompatible);
+            try {
+                NeoForgePostureCoverage.observe(mob, patch, result);
+            } catch (RuntimeException | LinkageError ignored) {
+                // Diagnostics must not change gameplay eligibility.
+            }
+            return result.supported();
         } catch (Throwable ignored) {
+            try {
+                NeoForgePostureCoverage.observeEligibilityFailure(mob, patch);
+            } catch (Throwable diagnosticFailure) {
+                // Never let report failures change combat behavior.
+            }
             return false;
         }
     }
@@ -345,14 +382,7 @@ public final class NeoForgePostureServerEvents {
     private static boolean hasDistinctNeutralize(LivingEntityPatch<?> patch) {
         if (patch == null) return false;
         NeoForgeMissingHumanoidNeutralize.installIfNeeded(patch);
-        try {
-            AssetAccessor<? extends StaticAnimation> neutral = patch.getHitAnimation(StunType.NEUTRALIZE);
-            return neutral != null && !neutral.isEmpty()
-                    && !sameAnimation(neutral, patch.getHitAnimation(StunType.SHORT))
-                    && !sameAnimation(neutral, patch.getHitAnimation(StunType.LONG));
-        } catch (Throwable exception) {
-            return false;
-        }
+        return PostureExecutionEligibility.hasDistinctNeutralize(patch);
     }
 
     private static boolean isActiveNeutralize(LivingEntityPatch<?> patch) {

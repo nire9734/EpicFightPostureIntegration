@@ -2,10 +2,13 @@ package dev.nire9734.epicfightposture.compat.humanoid;
 
 import java.util.Objects;
 import java.util.Set;
+import java.util.StringJoiner;
 
-/** Loader-independent renderer discovery cache name and operator notices. */
+/** Loader-independent renderer discovery cache name and report validation. */
 public final class RendererDiscoveryShared {
     public static final String CACHE_FILE_NAME = "renderer-discovery.json";
+    /** Prevent rapid resource reloads from repeatedly refreshing all loaded mobs. */
+    public static final int RELOAD_REQUEST_COOLDOWN_TICKS = 20;
     private static final int MAX_REPORT_IDS = 8192;
 
     public enum ValidationError {
@@ -45,32 +48,29 @@ public final class RendererDiscoveryShared {
         return false;
     }
 
-    public static String rejectionMessage(ValidationError error) {
-        return switch (error) {
-            case INVALID_FINGERPRINT -> "EFPI: rejected invalid renderer discovery fingerprint.";
-            case INCONSISTENT -> "EFPI: rejected inconsistent renderer discovery report.";
-            case AMBIGUOUS -> "EFPI: rejected ambiguous renderer discovery report.";
-            case NONE -> throw new IllegalArgumentException("No report validation error");
-        };
+    /** At most one short notice to the OP whose report changed server behavior. */
+    public static String changeNotice(
+            int newlyReady,
+            int withdrawn,
+            int patchedMobs,
+            int newConflicts,
+            int newlySkipped,
+            int failedPatches) {
+        StringJoiner details = new StringJoiner(", ");
+        if (newlyReady > 0) details.add(newlyReady + " mob types enabled");
+        if (patchedMobs > 0) details.add(patchedMobs + " existing mobs patched");
+        if (withdrawn > 0) details.add(withdrawn + " mob types disabled");
+        if (newConflicts > 0) details.add(newConflicts + " renderer conflicts");
+        if (newlySkipped > 0) details.add(newlySkipped + " registrations skipped");
+        if (failedPatches > 0) details.add(failedPatches + " patch failures");
+        if (details.length() == 0) return null;
+        boolean problems = newConflicts > 0 || newlySkipped > 0 || failedPatches > 0;
+        return "[EFPI] Compatibility " + (problems ? "update needs attention: " : "updated: ")
+                + details + (problems ? ". See server log." : ".");
     }
 
-    public static String cacheFullMessage() {
-        return "EFPI: renderer discovery report cache is full; report ignored.";
-    }
-
-    public static String restartRequiredMessage(
-            int vanillaHumanoids,
-            int extendedHumanoids,
-            int vanillaSpiders,
-            int conflicts) {
-        int confirmed = vanillaHumanoids + extendedHumanoids + vanillaSpiders;
-        return "EFPI: renderer discovery: "
-                + confirmed + " confirmed ("
-                + vanillaHumanoids + " vanilla humanoid, "
-                + extendedHumanoids + " extended humanoid, "
-                + vanillaSpiders + " vanilla SpiderModel), "
-                + conflicts + " conflict(s)."
-                + " Restart the server to apply the pending compatibility list.";
+    public static String reportErrorNotice() {
+        return "[EFPI] Renderer discovery failed. See server log.";
     }
 
     private RendererDiscoveryShared() {

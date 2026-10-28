@@ -2,18 +2,20 @@
 
 Epic Fight Posture Integration (EFPI) adds a server-authoritative Posture system to compatible Epic Fight mobs, with guard breaks and Combat Evolution executions.
 
-## Supported editions (3.1.0)
+## Supported editions (3.2.0)
 
 | | Forge | NeoForge |
 | --- | --- | --- |
 | Minecraft | 1.20.1 | 1.21.1 |
 | Loader | Forge 47.4.10+ (47.x) | NeoForge 21.1.219+ (21.1.x) |
-| Epic Fight | 20.14.17–20.14.x | 21.17.3.1–21.17.x |
+| Epic Fight | 20.14.17–20.14.x or 20.15.1–20.15.x | 21.17.3.1–21.17.x |
 | Combat Evolution | 2.2.8–2.3.x | 2.3.2–2.3.x |
 | Java for building | 17 | 21 |
-| File | `epicfight-posture-integration-forge-1.20.1-3.1.0.jar` | `epicfight-posture-integration-neoforge-1.21.1-3.1.0.jar` |
+| File | `epicfight-posture-integration-forge-1.20.1-3.2.0.jar` | `epicfight-posture-integration-neoforge-1.21.1-3.2.0.jar` |
 
 Install **only the JAR matching your Minecraft version and loader**. Install EFPI and its required mods on both client and server. GeckoLib and Lionfish API are optional compatibility libraries, not EFPI hard dependencies.
+
+**Forge note:** Epic Fight 20.15.0 is **not supported** because a required API is missing. Use 20.15.1 or later within the 20.15.x series, or a supported 20.14.x version.
 
 ## Features
 
@@ -62,7 +64,15 @@ mod_denylist = []
 
 ## Compatibility and diagnostics
 
-Automatic support depends on the mob's model, animations and other mods. A Posture bar does not guarantee that every third-party execution animation will succeed. For dedicated-server renderer discovery, EFPI maintains a generated cache under `config/epicfight_posture_integration/cache/`. Compare Forge/NeoForge renderer coverage reports and test guard breaks, executions, equipment and model layers in game before releasing a new modpack.
+**Unified diagnostic report (3.2.0):** `forge-diagnostics.tsv` / `neoforge-diagnostics.tsv` is generated under `config/epicfight_posture_integration/cache/` and overwritten during each server session. It lists registered entity types (`NOT_OBSERVED` until evaluated), client or authenticated-OP renderer discovery, installed mod versions, and server-side posture eligibility and rejection reasons. When a patch is missing, `missing_patch_stage` and `missing_patch_clue` record the available renderer evidence; model incompatibility is distinguished from preparation or registration failures. These clues do not prove why the server patch was absent. The report also counts real guard-break successes/failures and CE execution-start, confirmation and timeout events. No mobs are spawned to test compatibility. CE refusals before its execution-start event cannot be diagnosed, and `SUPPORTED` does not guarantee an execution will succeed. On dedicated servers, collect the **server-side** report for posture outcomes; a client's local report only has client-observable information. Reports do not influence gameplay or trust decisions.
+
+Automatic support depends on the mob's model, animations and other mods. A Posture bar does not guarantee that every third-party execution animation will succeed. The separate `renderer-discovery.json` under `config/epicfight_posture_integration/cache/` is a server-side compatibility cache, not an additional diagnostic report. Test guard breaks, executions, equipment and model layers in game before releasing a new modpack.
+
+**Dedicated servers (3.2.0):** After the first server start or a change to installed mods, an operator (OP) must join once so EFPI can receive a trusted renderer-discovery report. EFPI then immediately registers approved compatibility for new spawns **and** patches compatible mobs already loaded in the world. **No server restart, chunk reload, or entity replacement is required.** An OP's client automatically requests a new scan after a resource-pack/renderer reload (e.g., F3+T) while connected to a dedicated server. Mobs whose Epic Fight patches belong to other mods are left untouched. Reports from multiple operators are checked for conflicting renderer observations; ambiguous mobs are skipped. Only the reporting OP receives a brief notification if compatibility changes or a problem occurs; details remain in the server log.
+
+Repeated reports with unchanged approved targets skip the expensive live refresh. When approval changes, only newly approved entity types are refreshed; failed updates are retried on later reports, while an Epic Fight registry rebuild forces revalidation.
+
+**Developer rig regression fixtures:** Both loader builds run the same portable human-rig acceptance/rejection tests from `common/src/test/resources/rig-fixtures/`. The initial fixtures describe synthetic standard humanoids, shoulder carriers, a visible-helmet/empty-head model, and three unsafe structures that must remain excluded. To investigate a new model, optionally set `-Defpi.rigFixtureDirectory=<output-folder>` in the **client JVM arguments**. GeckoLib, Lionfish and ModelPart source rigs captured during renderer preparation are then exported as versioned `.rig.tsv` files (one per model signature). Export is disabled by default, independent of the normal diagnostic report, and does not change compatibility decisions. Review exported fixtures before adding representative cases and expected results to the tests; this does not replace in-game animation/execution checks.
 
 ## Building
 
@@ -78,7 +88,7 @@ cd ../neoforge-1.21.1
 ./gradlew clean build
 ```
 
-Both build scripts download and verify their pinned Gradle distributions on first use; no system Gradle installation is required. On Windows, run `gradlew.bat clean build` inside the corresponding loader directory. Both builds run their associated tests. JARs are generated in each edition's `build/libs/` directory. The integration branch is `dev/multiloader`; the older loader-specific branches are historical references.
+Both build scripts download and verify their pinned Gradle distributions on first use; no system Gradle installation is required. On Windows, run `gradlew.bat clean build` inside the corresponding loader directory. Both builds run their associated tests. JARs are generated in each edition's `build/libs/` directory. See the repository's Git tags for release history.
 
 ## License
 

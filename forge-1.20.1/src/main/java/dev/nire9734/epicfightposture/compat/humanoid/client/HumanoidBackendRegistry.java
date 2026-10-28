@@ -30,11 +30,14 @@ public final class HumanoidBackendRegistry {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final Map<String, HumanoidRenderBackend> BACKENDS = new LinkedHashMap<>();
     private static final Map<EntityType<?>, PreparedHumanoidModel> PREPARED = new HashMap<>();
+    /** Diagnostic only; never used to decide which mobs receive patches. */
+    private static final Map<ResourceLocation, String> REJECTIONS = new HashMap<>();
     private static Map<String, Integer> lastVerifiedByBackend = Map.of();
 
     public static synchronized void clear() {
         BACKENDS.clear();
         PREPARED.clear();
+        REJECTIONS.clear();
         lastVerifiedByBackend = Map.of();
     }
 
@@ -50,6 +53,7 @@ public final class HumanoidBackendRegistry {
 
     public static synchronized ScanResult scan(Map<EntityType<?>, EntityRenderer<?>> renderers) {
         PREPARED.clear();
+        REJECTIONS.clear();
         Set<ResourceLocation> inspected = new HashSet<>();
         Set<ResourceLocation> compatible = new HashSet<>();
         Set<EntityType<?>> compatibleTypes = new HashSet<>();
@@ -69,12 +73,15 @@ public final class HumanoidBackendRegistry {
             }
 
             List<PreparedHumanoidModel> candidates = new ArrayList<>();
+            boolean matchedButNotPrepared = false;
+            boolean inspectionFailed = false;
             for (HumanoidRenderBackend backend : BACKENDS.values()) {
                 HumanoidRenderBackend.Inspection inspection;
                 try {
                     inspection = backend.inspect(entityType, renderer);
                 } catch (Throwable throwable) {
                     backendInspectionFailures++;
+                    inspectionFailed = true;
                     LOGGER.debug("EFPI humanoid backend {} failed while inspecting {}", backend.id(), entityId, throwable);
                     continue;
                 }
@@ -84,6 +91,8 @@ public final class HumanoidBackendRegistry {
                 inspected.add(entityId);
                 if (inspection.prepared() != null) {
                     candidates.add(inspection.prepared());
+                } else {
+                    matchedButNotPrepared = true;
                 }
             }
 
@@ -93,12 +102,17 @@ public final class HumanoidBackendRegistry {
                 compatible.add(entityId);
                 compatibleTypes.add(entityType);
             } else if (candidates.size() > 1) {
+                REJECTIONS.put(entityId, "rejected:ambiguous_backends");
                 ambiguousTargets++;
                 LOGGER.debug(
                         "EFPI rejected {} because multiple humanoid backends prepared it: {}",
                         entityId,
                         candidates.stream().map(PreparedHumanoidModel::backendId).toList()
                 );
+            } else if (matchedButNotPrepared) {
+                REJECTIONS.put(entityId, "rejected:backend_preparation");
+            } else if (inspectionFailed) {
+                REJECTIONS.put(entityId, "rejected:backend_inspection_exception");
             }
         }
 
@@ -126,17 +140,21 @@ public final class HumanoidBackendRegistry {
         for (EntityType<?> entityType : entityTypes) {
             PreparedHumanoidModel prepared = PREPARED.get(entityType);
             if (prepared == null) {
+                ResourceLocation id = EntityType.getKey(entityType);
+                if (id != null) REJECTIONS.put(id, "rejected:backend_preparation");
                 continue;
             }
 
             ResourceLocation entityId = prepared.entityId();
             boolean oursAlready = VanillaHumanoidCompat.isRegisteredByEfpi(entityId);
             if (alreadyPatched.contains(entityType) && !oursAlready) {
+                REJECTIONS.put(entityId, "excluded:existing_patch");
                 continue;
             }
 
             HumanoidRenderBackend backend = BACKENDS.get(prepared.backendId());
             if (backend == null) {
+                REJECTIONS.put(entityId, "rejected:backend_unavailable");
                 LOGGER.warn("EFPI lost humanoid backend {} before renderer registration for {}",
                         prepared.backendId(), entityId);
                 continue;
@@ -160,6 +178,7 @@ public final class HumanoidBackendRegistry {
                     retargetedArmatures++;
                 } catch (Throwable throwable) {
                     armaturePreparationFailures++;
+                    REJECTIONS.put(entityId, "rejected:armature_preparation");
                     if (oursAlready) {
                         VanillaHumanoidCompat.rejectRuntimeCompatibility(entityType);
                     }
@@ -181,6 +200,7 @@ public final class HumanoidBackendRegistry {
                     armatureOverride
             );
             if (!runtimeReady) {
+                REJECTIONS.put(entityId, "rejected:patch_registration");
                 if (oursAlready) {
                     VanillaHumanoidCompat.rejectRuntimeCompatibility(entityType);
                 }
@@ -193,10 +213,12 @@ public final class HumanoidBackendRegistry {
                     throwable -> LOGGER.debug("EFPI backend {} could not install special renderer for {}",
                             prepared.backendId(), entityId, throwable))) {
                 rendererInstallationFailures++;
+                REJECTIONS.put(entityId, "rejected:renderer_registration");
                 continue;
             }
 
             verified.add(entityType);
+            REJECTIONS.remove(entityId);
             verifiedByBackend.merge(prepared.backendId(), 1, Integer::sum);
         }
 
@@ -232,6 +254,10 @@ public final class HumanoidBackendRegistry {
 
     public static synchronized Map<String, Integer> lastVerifiedByBackend() {
         return lastVerifiedByBackend;
+    }
+
+    public static synchronized Map<ResourceLocation, String> rejectionReasons() {
+        return Map.copyOf(REJECTIONS);
     }
 
     public record ScanResult(

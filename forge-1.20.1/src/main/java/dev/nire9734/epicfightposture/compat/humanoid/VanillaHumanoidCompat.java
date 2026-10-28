@@ -63,6 +63,9 @@ public final class VanillaHumanoidCompat {
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public static synchronized void onEntityPatchRegistry(EntityPatchRegistryEvent event) {
+        if (FMLEnvironment.dist == Dist.DEDICATED_SERVER) {
+            RendererDiscoveryReportProcessor.invalidateRuntimeValidation();
+        }
         Map<ResourceLocation, CompatibilityKind> previousOwnership = new HashMap<>(registeredByEfpi);
         registeredByEfpi.clear();
         runtimeRejected.clear();
@@ -157,6 +160,8 @@ public final class VanillaHumanoidCompat {
         }
         CompatibilityKind kind = registeredByEfpi.get(id);
         return kind != null
+                && (FMLEnvironment.dist != Dist.DEDICATED_SERVER
+                    || RendererDiscoveryStore.isRuntimeApproved(id, RendererDiscoveryRuntime.Kind.valueOf(kind.name())))
                 && !PostureServerConfig.isExplicitlyBlacklisted(id)
                 && PostureServerConfig.isAutomaticCompatibilityAllowed(id)
                 && compatibilityKindEnabled(kind);
@@ -164,6 +169,22 @@ public final class VanillaHumanoidCompat {
 
     public static boolean isCompatibilityEnabled(EntityType<?> entityType) {
         return entityType != null && isCompatibilityEnabled(EntityType.getKey(entityType));
+    }
+
+    /** Only an authenticated OP discovery report may activate a dedicated-server provider at runtime. */
+    public static synchronized boolean registerTrustedDedicatedTarget(
+            ResourceLocation id, RendererDiscoveryRuntime.Kind kind) {
+        if (FMLEnvironment.dist != Dist.DEDICATED_SERVER || id == null || kind == null
+                || !RendererDiscoveryStore.isRuntimeApproved(id, kind)
+                || PostureServerConfig.isExplicitlyBlacklisted(id)
+                || !PostureServerConfig.isAutomaticCompatibilityAllowed(id)) {
+            return false;
+        }
+        CompatibilityKind target = CompatibilityKind.valueOf(kind.name());
+        if (!compatibilityKindEnabled(target)) return false;
+        EntityType<?> type = ForgeRegistries.ENTITY_TYPES.getValue(id);
+        return type != null && type != EntityType.PLAYER
+                && registerDiscoveredAtRuntime(type, target);
     }
 
     public static synchronized boolean registerDiscoveredAtRuntime(

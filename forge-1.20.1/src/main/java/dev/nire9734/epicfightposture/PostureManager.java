@@ -1,6 +1,7 @@
 package dev.nire9734.epicfightposture;
 
 import com.mojang.logging.LogUtils;
+import dev.nire9734.epicfightposture.sync.ForgePostureCoverage;
 import dev.nire9734.epicfightposture.sync.PostureSyncEvents;
 import dev.nire9734.epicfightposture.sync.RuntimeAccess;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -185,7 +186,10 @@ public final class PostureManager {
         if (state.postureState == PostureState.BROKEN || state.postureState == PostureState.EXECUTING) {
             boolean executing = isExecuting(entity);
             if (executing) {
-                PENDING_EXECUTION_START.remove(entity);
+                boolean pendingExecution = PENDING_EXECUTION_START.remove(entity) != null;
+                if (pendingExecution || state.postureState != PostureState.EXECUTING) {
+                    ForgePostureCoverage.observeExecution(entity, "CONFIRMED");
+                }
                 if (state.postureState != PostureState.EXECUTING) {
                     state.enterExecution();
                     PostureSyncEvents.syncNow(entity);
@@ -200,7 +204,9 @@ public final class PostureManager {
                         entity.tickCount, PENDING_EXECUTION_START.get(entity))) {
                     return true;
                 }
-                PENDING_EXECUTION_START.remove(entity);
+                if (PENDING_EXECUTION_START.remove(entity) != null) {
+                    ForgePostureCoverage.observeExecution(entity, "TIMEOUT");
+                }
                 startRecovering(state);
                 PostureSyncEvents.syncNow(entity);
                 return true;
@@ -237,6 +243,7 @@ public final class PostureManager {
         PostureRuntimeState state = state(target);
         stopUsingItem(target);
         state.startExecution();
+        ForgePostureCoverage.observeExecution(target, "STARTED");
         PENDING_EXECUTION_START.put(target,
                 target.tickCount + PostureRuntimeState.EXECUTION_START_GRACE_TICKS);
         PostureSyncEvents.syncNow(target);
@@ -319,15 +326,20 @@ public final class PostureManager {
 
         boolean applied = false;
         boolean active = false;
+        String failureReason = patch == null ? "PATCH_MISSING" : "NEUTRALIZE_MISSING";
         if (patch != null && hasNeutralizeAnimation(patch)) {
             try {
                 applied = patch.applyStun(StunType.NEUTRALIZE, 0.0F);
                 active = applied && isActiveNeutralize(patch);
+                if (!active) failureReason = applied ? "ANIMATION_NOT_ACTIVE" : "STUN_NOT_APPLIED";
             } catch (Throwable failure) {
+                failureReason = "STUN_EXCEPTION:" + failure.getClass().getSimpleName();
                 LOGGER.warn("EFPI neutralize threw for {} ({}) using patch {}",
                         entityTypeId(entity), entity.getUUID(), patch.getClass().getName(), failure);
             }
         }
+
+        ForgePostureCoverage.observeGuardBreak(entity, active, active ? "none" : failureReason);
 
         if (active) {
             // CE checks the *NEUTRALIZE* animation identity, not arbitrary LONG stuns.
@@ -342,22 +354,36 @@ public final class PostureManager {
     }
 
     private static boolean isEligiblePostureEntity(LivingEntity entity, LivingEntityPatch<?> targetPatch) {
-        if (!canReceivePosture(entity) || entity instanceof Player || targetPatch == null
-                || PostureServerConfig.isBlacklisted(entityTypeId(entity))
-                || targetPatch instanceof CEHumanoidPatch
-                || !hasNeutralizeAnimation(targetPatch)) {
-            return false;
+        if (entity instanceof Player) return false;
+        PostureExecutionEligibility.Reason exclusion = null;
+        if (!canReceivePosture(entity)) {
+            exclusion = PostureExecutionEligibility.Reason.TARGET_NOT_ALIVE;
+        } else if (PostureServerConfig.isBlacklisted(entityTypeId(entity))) {
+            exclusion = PostureExecutionEligibility.Reason.ENTITY_BLACKLISTED;
+        } else if (targetPatch instanceof CEHumanoidPatch) {
+            exclusion = PostureExecutionEligibility.Reason.CE_OWNED_PATCH;
         }
-
-        // A CustomExecuteEntity may decide based on the actual executor; that
-        // check is repeated in the client HUD with the local player patch.
-        if (targetPatch instanceof CustomExecuteEntity) {
-            return true;
-        }
-
         try {
-            return targetPatch.getArmature() instanceof HumanoidArmature;
+            if (exclusion == null && targetPatch != null) {
+                dev.nire9734.epicfightposture.compat.humanoid.MissingHumanoidNeutralize.installIfNeeded(targetPatch);
+            }
+            boolean spiderCompatible = !(targetPatch instanceof dev.nire9734.epicfightposture.compat.spider.LightweightSpiderPatch)
+                    || dev.nire9734.epicfightposture.compat.spider.SpiderExecutionSupport.isCompatible(targetPatch);
+            PostureExecutionEligibility.Result result = PostureExecutionEligibility.evaluate(
+                    targetPatch, targetPatch != null && targetPatch.isInitialized(),
+                    targetPatch instanceof CustomExecuteEntity, exclusion, spiderCompatible);
+            try {
+                ForgePostureCoverage.observe(entity, targetPatch, result);
+            } catch (RuntimeException | LinkageError ignored) {
+                // Diagnostics must not change gameplay eligibility.
+            }
+            return result.supported();
         } catch (Throwable ignored) {
+            try {
+                ForgePostureCoverage.observeEligibilityFailure(entity, targetPatch);
+            } catch (Throwable diagnosticFailure) {
+                // Never let report failures change combat behavior.
+            }
             return false;
         }
     }
@@ -375,17 +401,7 @@ public final class PostureManager {
         // The provider, not a return-value Mixin, is the canonical source read
         // by applyStun and Combat Evolution.
         dev.nire9734.epicfightposture.compat.humanoid.MissingHumanoidNeutralize.installIfNeeded(patch);
-        try {
-            AssetAccessor<? extends StaticAnimation> neutralize = patch.getHitAnimation(StunType.NEUTRALIZE);
-            if (neutralize == null || neutralize.isEmpty()) {
-                return false;
-            }
-            AssetAccessor<? extends StaticAnimation> shortHit = patch.getHitAnimation(StunType.SHORT);
-            AssetAccessor<? extends StaticAnimation> longHit = patch.getHitAnimation(StunType.LONG);
-            return !sameAnimation(neutralize, shortHit) && !sameAnimation(neutralize, longHit);
-        } catch (Throwable ignored) {
-            return false;
-        }
+        return PostureExecutionEligibility.hasDistinctNeutralize(patch);
     }
 
     private static boolean isActiveNeutralize(LivingEntityPatch<?> patch) {

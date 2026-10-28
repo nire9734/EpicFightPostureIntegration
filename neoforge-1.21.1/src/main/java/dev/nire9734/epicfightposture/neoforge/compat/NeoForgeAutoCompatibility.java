@@ -1,7 +1,11 @@
 package dev.nire9734.epicfightposture.neoforge.compat;
 
 import com.mojang.logging.LogUtils;
+import dev.nire9734.epicfightposture.compat.humanoid.RendererDiscoveryRuntime;
+import dev.nire9734.epicfightposture.compat.humanoid.RendererDiscoveryStore;
 import dev.nire9734.epicfightposture.neoforge.NeoForgeServerSettings;
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.fml.loading.FMLEnvironment;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.EntityType;
@@ -25,6 +29,7 @@ import java.util.function.Function;
 import net.minecraft.world.entity.Entity;
 import yesman.epicfight.world.capabilities.entitypatch.EntityPatch;
 import dev.nire9734.epicfightposture.neoforge.discovery.NeoForgeRendererDiscoveryServer;
+import dev.nire9734.epicfightposture.compat.humanoid.RendererDiscoveryReportProcessor;
 
 
 /**
@@ -39,6 +44,8 @@ public final class NeoForgeAutoCompatibility {
     private static final Set<EntityType<?>> SPIDER_OWNED = new HashSet<>();
     private static final Set<EntityType<?>> RUNTIME_REJECTED = new HashSet<>();
     private static final Set<EntityType<?>> EXTERNALLY_PATCHED = new HashSet<>();
+    /** Dedicated-server registrations requiring a currently conflict-free OP observation. */
+    private static final Map<EntityType<?>, RendererDiscoveryRuntime.Kind> TRUSTED_DEDICATED = new IdentityHashMap<>();
     // Exact factories installed by EFPI, retained across integrated-server
     // world switches. This distinguishes our patches from addon replacements.
     private static final Map<EntityType<?>, Set<Object>> PREVIOUS_FACTORIES = new IdentityHashMap<>();
@@ -55,18 +62,27 @@ public final class NeoForgeAutoCompatibility {
 
     @SuppressWarnings("deprecation")
     private static synchronized void onPatchRegistry(EntityPatchRegistryEvent event) {
+        if (FMLEnvironment.dist == Dist.DEDICATED_SERVER) {
+            RendererDiscoveryReportProcessor.invalidateRuntimeValidation();
+        }
         Set<EntityType<?>> previousOwned = new HashSet<>(OWNED);
         Set<EntityType<?>> previousSpiders = new HashSet<>(SPIDER_OWNED);
         Set<EntityType<?>> previousRejected = new HashSet<>(RUNTIME_REJECTED);
+        Map<EntityType<?>, RendererDiscoveryRuntime.Kind> previousTrusted =
+                new IdentityHashMap<>(TRUSTED_DEDICATED);
         OWNED.clear();
         SPIDER_OWNED.clear();
         RUNTIME_REJECTED.clear();
         EXTERNALLY_PATCHED.clear();
+        TRUSTED_DEDICATED.clear();
         EXTERNALLY_PATCHED.addAll(event.getTypeEntry().keySet());
         for (EntityType<?> type : previousOwned) {
             if (isOurFactory(type, event.getTypeEntry().get(type))) {
                 OWNED.add(type);
                 if (previousSpiders.contains(type)) SPIDER_OWNED.add(type);
+                if (previousTrusted.containsKey(type)) {
+                    TRUSTED_DEDICATED.put(type, previousTrusted.get(type));
+                }
                 EXTERNALLY_PATCHED.remove(type);
             }
         }
@@ -104,6 +120,9 @@ public final class NeoForgeAutoCompatibility {
                         && !isOurFactory(type, providers.get(type)))) continue;
                 OWNED.add(type);
                 if (previousSpiders.contains(type)) SPIDER_OWNED.add(type);
+                if (previousTrusted.containsKey(type)) {
+                    TRUSTED_DEDICATED.put(type, previousTrusted.get(type));
+                }
             } catch (ReflectiveOperationException | RuntimeException exception) {
                 LOGGER.debug("EFPI could not preserve renderer patch ownership for {}", type, exception);
             }
@@ -138,6 +157,12 @@ public final class NeoForgeAutoCompatibility {
             }
             rememberFactory(type, event.getTypeEntry().get(type));
             OWNED.add(type);
+            if (FMLEnvironment.dist == Dist.DEDICATED_SERVER) {
+                TRUSTED_DEDICATED.put(type, spider ? RendererDiscoveryRuntime.Kind.VANILLA_SPIDER
+                        : NeoForgeRendererDiscoveryServer.activeExtended().contains(id)
+                            ? RendererDiscoveryRuntime.Kind.EXTENDED_HUMANOID
+                            : RendererDiscoveryRuntime.Kind.VANILLA_HUMANOID);
+            }
             LOGGER.info("EFPI activated trusted dedicated-server {} renderer target {}",
                     spider ? "spider" : "humanoid", id);
         }
@@ -165,7 +190,27 @@ public final class NeoForgeAutoCompatibility {
     public static synchronized boolean isEnabled(EntityType<?> type) {
         ResourceLocation id = type == null ? null : BuiltInRegistries.ENTITY_TYPE.getKey(type);
         return type != null && OWNED.contains(type) && !RUNTIME_REJECTED.contains(type)
+                && (FMLEnvironment.dist != Dist.DEDICATED_SERVER
+                    || !TRUSTED_DEDICATED.containsKey(type)
+                    || RendererDiscoveryStore.isRuntimeApproved(id, TRUSTED_DEDICATED.get(type)))
                 && NeoForgeServerSettings.allows(id);
+    }
+
+    /** Applies an authenticated, conflict-free discovery on the server without replacing addon patches. */
+    public static synchronized boolean registerTrustedDedicatedTarget(
+            ResourceLocation id, RendererDiscoveryRuntime.Kind kind) {
+        if (FMLEnvironment.dist != Dist.DEDICATED_SERVER || id == null || kind == null
+                || !RendererDiscoveryStore.isRuntimeApproved(id, kind)
+                || !NeoForgeServerSettings.canRegister(id)) return false;
+        EntityType<?> type = BuiltInRegistries.ENTITY_TYPE.getOptional(id).orElse(null);
+        if (type == null || type == EntityType.PLAYER) return false;
+        RendererDiscoveryRuntime.Kind previous = TRUSTED_DEDICATED.get(type);
+        if (previous != null && previous != kind) return false;
+        boolean registered = kind == RendererDiscoveryRuntime.Kind.VANILLA_SPIDER
+                ? registerVerifiedRuntimeSpider(type)
+                : registerVerifiedRuntimeHumanoid(type);
+        if (registered) TRUSTED_DEDICATED.put(type, kind);
+        return registered;
     }
 
     /** Only EFPI-owned registrations are subject to the automatic-policy gate. */

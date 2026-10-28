@@ -22,6 +22,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 
 /** Dedicated-server persistence for trusted client renderer observations. */
 public final class RendererDiscoveryStore {
@@ -34,9 +35,14 @@ public final class RendererDiscoveryStore {
 
     private static State state = State.fresh("");
     private static Path cacheFile;
+    private static volatile long bootstrapGeneration;
+    /** Published without allocating a new set on every posture eligibility check. */
+    private static volatile Set<ResourceLocation> runtimeApproved = Set.of();
+    private static volatile ActiveTargets runtimeApprovedKinds = ActiveTargets.empty();
 
     /** Promotes the previous process's pending lists before Epic Fight patch registration. */
     public static synchronized ActiveTargets bootstrap(String serverFingerprint, Path configDirectory) {
+        bootstrapGeneration++;
         cacheFile = configDirectory.resolve("epicfight_posture_integration")
                 .resolve(CACHE_DIRECTORY).resolve(FILE_NAME);
         State loaded = load();
@@ -45,6 +51,7 @@ public final class RendererDiscoveryStore {
                 LOGGER.info("EFPI renderer discovery cache is stale after a server mod-set change; clearing it");
             }
             state = State.fresh(serverFingerprint);
+            publishRuntimeApproved();
             save();
             return ActiveTargets.empty();
         }
@@ -65,6 +72,7 @@ public final class RendererDiscoveryStore {
             );
             save();
         }
+        publishRuntimeApproved();
         return new ActiveTargets(state.activeVanilla, state.activeExtended, state.activeSpider);
     }
 
@@ -81,24 +89,20 @@ public final class RendererDiscoveryStore {
             return currentResult(false);
         }
 
-        state.reports.put(
-                environmentFingerprint,
-                new Report(
-                        new HashSet<>(inspected),
-                        new HashSet<>(vanillaHumanoid),
-                        new HashSet<>(extendedHumanoid),
-                        new HashSet<>(vanillaSpider)
-                )
-        );
+        Report existing = state.reports.get(environmentFingerprint);
+        if (existing != null && existing.matches(inspected, vanillaHumanoid, extendedHumanoid, vanillaSpider)) {
+            return currentResult(true);
+        }
+
+        state.reports.put(environmentFingerprint,
+                new Report(new HashSet<>(inspected), new HashSet<>(vanillaHumanoid),
+                        new HashSet<>(extendedHumanoid), new HashSet<>(vanillaSpider)));
         rebuildPending();
+        publishRuntimeApproved();
         save();
 
-        boolean restartRequired = !state.pendingVanilla.equals(state.activeVanilla)
-                || !state.pendingExtended.equals(state.activeExtended)
-                || !state.pendingSpider.equals(state.activeSpider);
         return new UpdateResult(
                 true,
-                restartRequired,
                 state.pendingVanilla.size(),
                 state.pendingExtended.size(),
                 state.pendingSpider.size(),
@@ -106,13 +110,50 @@ public final class RendererDiscoveryStore {
         );
     }
 
+    /**
+     * Keep one current report per trusted OP, even when multiple operators use
+     * the same mod set but different renderer resources. Otherwise the newest
+     * operator silently overwrites the earlier one's observations and can
+     * enable a patch that another connected client cannot render.
+     */
+    public static synchronized UpdateResult acceptOperatorReport(
+            UUID operatorId,
+            String environmentFingerprint,
+            Set<ResourceLocation> inspected,
+            Set<ResourceLocation> vanillaHumanoid,
+            Set<ResourceLocation> extendedHumanoid,
+            Set<ResourceLocation> vanillaSpider) {
+        if (operatorId == null || environmentFingerprint == null) {
+            return currentResult(false);
+        }
+        String suffix = "@" + operatorId;
+        String key = environmentFingerprint + suffix;
+
+        Report previous = state.reports.get(key);
+        if (previous != null && previous.matches(inspected, vanillaHumanoid, extendedHumanoid, vanillaSpider)
+                && state.reports.keySet().stream().noneMatch(stored ->
+                        !stored.equals(key) && (stored.endsWith(suffix) || stored.equals(environmentFingerprint)))) {
+            return currentResult(true);
+        }
+
+        // Include space reclaimed from this operator's last report and from the
+        // legacy environment-only entry, without altering state on rejection.
+        long obsolete = state.reports.keySet().stream()
+                .filter(stored -> stored.endsWith(suffix) || stored.equals(environmentFingerprint))
+                .count();
+        if (state.reports.size() - obsolete >= MAX_REPORT_ENVIRONMENTS) {
+            LOGGER.warn("Ignoring EFPI renderer discovery report because {} operator reports are already stored",
+                    MAX_REPORT_ENVIRONMENTS);
+            return currentResult(false);
+        }
+        state.reports.keySet().removeIf(stored -> stored.endsWith(suffix)
+                || stored.equals(environmentFingerprint));
+        return acceptReport(key, inspected, vanillaHumanoid, extendedHumanoid, vanillaSpider);
+    }
+
     private static UpdateResult currentResult(boolean accepted) {
-        boolean restartRequired = !state.pendingVanilla.equals(state.activeVanilla)
-                || !state.pendingExtended.equals(state.activeExtended)
-                || !state.pendingSpider.equals(state.activeSpider);
         return new UpdateResult(
                 accepted,
-                restartRequired,
                 state.pendingVanilla.size(),
                 state.pendingExtended.size(),
                 state.pendingSpider.size(),
@@ -127,11 +168,41 @@ public final class RendererDiscoveryStore {
         return Set.copyOf(result);
     }
 
+    /** Allows runtime optimizations to forget success from a previous server session. */
+    public static long bootstrapGeneration() {
+        return bootstrapGeneration;
+    }
+
     public static synchronized Set<ResourceLocation> pending() {
+        return runtimeApproved;
+    }
+
+    /** The currently conflict-free trusted targets, including reports accepted after startup. */
+    public static synchronized ActiveTargets pendingTargets() {
+        return new ActiveTargets(state.pendingVanilla, state.pendingExtended, state.pendingSpider);
+    }
+
+    /** Fast, fail-closed server-side gate for a previously registered EFPI patch. */
+    public static boolean isRuntimeApproved(ResourceLocation id) {
+        return id != null && runtimeApproved.contains(id);
+    }
+
+    public static boolean isRuntimeApproved(ResourceLocation id, RendererDiscoveryRuntime.Kind kind) {
+        if (id == null || kind == null) return false;
+        ActiveTargets current = runtimeApprovedKinds;
+        return switch (kind) {
+            case VANILLA_HUMANOID -> current.vanillaHumanoid().contains(id);
+            case EXTENDED_HUMANOID -> current.extendedHumanoid().contains(id);
+            case VANILLA_SPIDER -> current.vanillaSpider().contains(id);
+        };
+    }
+
+    private static void publishRuntimeApproved() {
+        runtimeApprovedKinds = new ActiveTargets(state.pendingVanilla, state.pendingExtended, state.pendingSpider);
         Set<ResourceLocation> result = new HashSet<>(state.pendingVanilla);
         result.addAll(state.pendingExtended);
         result.addAll(state.pendingSpider);
-        return Set.copyOf(result);
+        runtimeApproved = Set.copyOf(result);
     }
 
     public static synchronized Set<ResourceLocation> conflicts() {
@@ -372,7 +443,6 @@ public final class RendererDiscoveryStore {
 
     public record UpdateResult(
             boolean accepted,
-            boolean restartRequired,
             int pendingVanillaCount,
             int pendingExtendedCount,
             int pendingSpiderCount,
@@ -404,6 +474,14 @@ public final class RendererDiscoveryStore {
             this.vanillaHumanoid = vanillaHumanoid;
             this.extendedHumanoid = extendedHumanoid;
             this.vanillaSpider = vanillaSpider;
+        }
+
+        boolean matches(Set<ResourceLocation> inspected, Set<ResourceLocation> vanillaHumanoid,
+                        Set<ResourceLocation> extendedHumanoid, Set<ResourceLocation> vanillaSpider) {
+            return this.inspected.equals(inspected)
+                    && this.vanillaHumanoid.equals(vanillaHumanoid)
+                    && this.extendedHumanoid.equals(extendedHumanoid)
+                    && this.vanillaSpider.equals(vanillaSpider);
         }
     }
 
