@@ -252,6 +252,7 @@ public final class PostureServerConfig {
         return serverPolicy == null || (serverPolicy.enableVanillaHumanoidCompatibility()
                 && serverPolicy.enableExtendedHumanoidCompatibility()
                 && serverPolicy.enableVanillaSpiderCompatibility()
+                && !serverPolicy.entityBlacklist().contains(entityId)
                 && PostureConfigPolicy.allowsAutomatic(true, entityId.getNamespace(),
                         serverPolicy.modAllowlist(), serverPolicy.modDenylist()));
     }

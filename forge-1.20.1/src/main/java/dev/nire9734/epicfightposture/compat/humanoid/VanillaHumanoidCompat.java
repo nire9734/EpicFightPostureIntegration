@@ -507,7 +507,7 @@ public final class VanillaHumanoidCompat {
     private static Function<Entity, Supplier<EntityPatch<?>>> guardedHumanoidFactory() {
         return entity -> !(entity instanceof LivingEntity)
                 || !PostureServerConfig.isAutomaticCompatibilityAllowed(EntityType.getKey(entity.getType()))
-                || isLocallyExcluded(EntityType.getKey(entity.getType()))
+                || PostureServerConfig.isExplicitlyBlacklisted(EntityType.getKey(entity.getType()))
                 ? () -> null : AutomaticPatchSafety.guardedSupplier(
                 true,
                 STRUCTURAL_MULTIPART.get(entity.getClass()), entity::isMultipartEntity,
@@ -517,7 +517,7 @@ public final class VanillaHumanoidCompat {
     private static Function<Entity, Supplier<EntityPatch<?>>> guardedSpiderFactory() {
         return entity -> !(entity instanceof LivingEntity)
                 || !PostureServerConfig.isAutomaticCompatibilityAllowed(EntityType.getKey(entity.getType()))
-                || isLocallyExcluded(EntityType.getKey(entity.getType()))
+                || PostureServerConfig.isExplicitlyBlacklisted(EntityType.getKey(entity.getType()))
                 ? () -> null : AutomaticPatchSafety.guardedSupplier(
                 true,
                 STRUCTURAL_MULTIPART.get(entity.getClass()), entity::isMultipartEntity,
