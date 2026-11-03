@@ -1,5 +1,6 @@
 package dev.nire9734.epicfightposture.compat.humanoid.client;
 
+import dev.nire9734.epicfightposture.PostureClientConfig;
 import dev.nire9734.epicfightposture.compat.humanoid.HumanoidEnvironmentFingerprint;
 import dev.nire9734.epicfightposture.compat.humanoid.VanillaHumanoidCompat;
 import dev.nire9734.epicfightposture.network.BridgeNetwork;
@@ -42,7 +43,7 @@ public final class HumanoidClientDiscovery {
             }
 
             ResourceLocation id = EntityType.getKey(entityType);
-            if (id == null) {
+            if (id == null || PostureClientConfig.isLocallyExcluded(id)) {
                 continue;
             }
 

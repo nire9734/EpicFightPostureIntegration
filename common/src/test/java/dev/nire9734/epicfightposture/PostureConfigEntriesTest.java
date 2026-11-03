@@ -33,6 +33,16 @@ class PostureConfigEntriesTest {
     }
 
     @Test
+    void localSafetyExclusionsUseFullEntityIdsAndRejectWildcards() {
+        List<String> rejected = new ArrayList<>();
+        Set<String> ids = PostureConfigEntries.entityBlacklist(
+                List.of(" craft_of_the_wild:stone_talus ", "craft_of_the_wild:*", "missing space"),
+                PostureConfigEntriesTest::id, rejected::add);
+        assertEquals(Set.of("craft_of_the_wild:stone_talus"), ids);
+        assertEquals(List.of("craft_of_the_wild:*", "missing space"), rejected);
+    }
+
+    @Test
     void zeroMultiplierIsValidAndLastDuplicateWins() {
         List<String> rejected = new ArrayList<>();
         Map<String, Float> overrides = PostureConfigEntries.entityMultipliers(

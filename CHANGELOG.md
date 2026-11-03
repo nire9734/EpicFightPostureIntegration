@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- **Multipart entity safety:** prevent automatic Epic Fight living patches from attaching to Forge `PartEntity` children that share a parent mob's entity type. Multipart parents are excluded conservatively on Forge and NeoForge, avoiding unsafe construction and unsupported animations.
+- **Client safety exclusions:** add `compatibility.local_entity_blacklist` in `client.toml` for both loaders. This local-only opt-out takes effect before server configuration sync, skips model inspection/registration, and cannot override server restrictions.
+- **Fail-closed attachment:** if a mod's multipart-state method fails during entity construction, automatic patch creation is safely skipped instead of propagating the exception.
+- **Fail-closed registration:** unexpected errors while registering an automatic target now reject that target without aborting the entire Epic Fight registry event.
+- **Regression coverage:** test ordinary living entities, multipart parents, non-living child parts, and failed initialization probes.
+
 ## 3.2.0
 
 - **Epic Fight 20.15.x compatibility (Forge 1.20.1):** expanded the supported range to 20.15.1–20.15.x alongside 20.14.17–20.14.x. Epic Fight 20.15.0 is excluded because it lacks an API required by EFPI.

@@ -3,6 +3,7 @@ package dev.nire9734.epicfightposture.compat.humanoid;
 import com.mojang.logging.LogUtils;
 import dev.nire9734.epicfightposture.AutomaticPatchSafety;
 import dev.nire9734.epicfightposture.EpicFightPostureIntegration;
+import dev.nire9734.epicfightposture.PostureClientConfig;
 import dev.nire9734.epicfightposture.PostureServerConfig;
 import dev.nire9734.epicfightposture.compat.spider.LightweightSpiderPatch;
 import net.minecraft.resources.ResourceLocation;
@@ -90,7 +91,8 @@ public final class VanillaHumanoidCompat {
         for (Map.Entry<ResourceLocation, CompatibilityKind> target : cachedDetected.entrySet()) {
             ResourceLocation entityId = target.getKey();
             CompatibilityKind kind = target.getValue();
-            if (PostureServerConfig.isBlacklisted(entityId)
+            if (isLocallyExcluded(entityId)
+                    || PostureServerConfig.isBlacklisted(entityId)
                     || !PostureServerConfig.isAutomaticCompatibilityAllowed(entityId)
                     || !compatibilityKindEnabled(kind)) {
                 continue;
@@ -136,10 +138,17 @@ public final class VanillaHumanoidCompat {
                 continue;
             }
 
-            registerIntoEvent(event, entityType, kind);
-            EpicFightPatchOwnership.recordEventRegistration(
-                    entityType, event.getTypeEntry().get(entityType));
-            registeredByEfpi.put(entityId, kind);
+            try {
+                registerIntoEvent(event, entityType, kind);
+                EpicFightPatchOwnership.recordEventRegistration(
+                        entityType, event.getTypeEntry().get(entityType));
+                registeredByEfpi.put(entityId, kind);
+            } catch (RuntimeException | LinkageError exception) {
+                // A broken third-party type must not abort Epic Fight's entire
+                // registration event and prevent the world from starting.
+                event.getTypeEntry().remove(entityType);
+                LOGGER.warn("EFPI skipped unsafe automatic patch registry target {}", entityId, exception);
+            }
         }
         externallyPatched = Set.copyOf(existingPatchIds);
     }
@@ -161,7 +170,7 @@ public final class VanillaHumanoidCompat {
 
     /** Returns whether server-authoritative settings permit this EFPI-owned lightweight patch. */
     public static synchronized boolean isCompatibilityEnabled(ResourceLocation id) {
-        if (id == null || runtimeRejected.contains(id)) {
+        if (id == null || runtimeRejected.contains(id) || isLocallyExcluded(id)) {
             return false;
         }
         CompatibilityKind kind = registeredByEfpi.get(id);
@@ -217,7 +226,7 @@ public final class VanillaHumanoidCompat {
         // Client discovery happens before a multiplayer server can synchronize its
         // policy. Prepare every safe renderer target now; synchronized settings
         // decide whether the lightweight patch is allowed to act after login.
-        if (id == null || externallyPatched.contains(id)) {
+        if (id == null || isLocallyExcluded(id) || externallyPatched.contains(id)) {
             return false;
         }
 
@@ -489,17 +498,23 @@ public final class VanillaHumanoidCompat {
      * Returning a null patch makes EntityPatchProvider.hasCapability() false.
      */
     private static Function<Entity, Supplier<EntityPatch<?>>> guardedHumanoidFactory() {
-        return entity -> AutomaticPatchSafety.guardedSupplier(
+        return entity -> isLocallyExcluded(entity == null ? null : EntityType.getKey(entity.getType()))
+                ? () -> null : AutomaticPatchSafety.guardedSupplier(
                 entity instanceof LivingEntity,
                 entity == null ? null : entity::isMultipartEntity,
                 LightweightHumanoidPatch::new);
     }
 
     private static Function<Entity, Supplier<EntityPatch<?>>> guardedSpiderFactory() {
-        return entity -> AutomaticPatchSafety.guardedSupplier(
+        return entity -> isLocallyExcluded(entity == null ? null : EntityType.getKey(entity.getType()))
+                ? () -> null : AutomaticPatchSafety.guardedSupplier(
                 entity instanceof LivingEntity,
                 entity == null ? null : entity::isMultipartEntity,
                 LightweightSpiderPatch::new);
+    }
+
+    private static boolean isLocallyExcluded(ResourceLocation id) {
+        return FMLEnvironment.dist == Dist.CLIENT && PostureClientConfig.isLocallyExcluded(id);
     }
 
     private VanillaHumanoidCompat() {

@@ -59,6 +59,14 @@ mod_denylist = []
 - Regeneration starts after the last actual Posture reduction, including a parry. Guard-break recovery is separate.
 - An empty allowlist permits all mods; the denylist takes priority. These lists affect automatic compatibility, not existing Epic Fight patches.
 - Client HUD visibility and execution sound volume are configured in `config/epicfight_posture_integration/client.toml` or the in-game config screen.
+- **Local safety opt-out:** each client can additionally exclude problematic entity types from *automatic* compatibility before server settings arrive. Edit `config/epicfight_posture_integration/client.toml`:
+
+  ```toml
+  [compatibility]
+  local_entity_blacklist = ["craft_of_the_wild:stone_talus"]
+  ```
+
+  This list is additive: it cannot enable any entity disallowed by the server's `entity_blacklist` or mod denylist. Client exclusions are omitted from compatibility discovery reports. Restart the game after removing an exclusion so any previously skipped patch/renderer can be prepared again. Forge and NeoForge use the same setting.
 
 **Upgrading from 3.0.2:** Back up custom settings and regenerate `server.toml` to use the new attack/parry keys. The removed `maximum_posture_multiplier` and old per-entity multipliers are not automatically migrated. See [CHANGELOG.md](CHANGELOG.md).
 
@@ -67,6 +75,8 @@ mod_denylist = []
 **Unified diagnostic report (3.2.0):** `forge-diagnostics.tsv` / `neoforge-diagnostics.tsv` is generated under `config/epicfight_posture_integration/cache/` and overwritten during each server session. It lists registered entity types (`NOT_OBSERVED` until evaluated), client or authenticated-OP renderer discovery, installed mod versions, and server-side posture eligibility and rejection reasons. When a patch is missing, `missing_patch_stage` and `missing_patch_clue` record the available renderer evidence; model incompatibility is distinguished from preparation or registration failures. These clues do not prove why the server patch was absent. The report also counts real guard-break successes/failures and CE execution-start, confirmation and timeout events. No mobs are spawned to test compatibility. CE refusals before its execution-start event cannot be diagnosed, and `SUPPORTED` does not guarantee an execution will succeed. On dedicated servers, collect the **server-side** report for posture outcomes; a client's local report only has client-observable information. Reports do not influence gameplay or trust decisions.
 
 Automatic support depends on the mob's model, animations and other mods. A Posture bar does not guarantee that every third-party execution animation will succeed. The separate `renderer-discovery.json` under `config/epicfight_posture_integration/cache/` is a server-side compatibility cache, not an additional diagnostic report. Test guard breaks, executions, equipment and model layers in game before releasing a new modpack.
+
+**Multipart entity safety (unreleased):** automatically discovered patches are restricted to ordinary living entities. Forge `PartEntity` children can share a parent's entity type, so neither non-living parts nor multipart parents receive EFPI automatic patches. This avoids unsafe capability attachment but does not make multipart bosses eligible for EFPI guard breaks or executions. Local client safety exclusions are applied before model inspection, during patch creation, and when deciding whether a previously registered patch can act.
 
 **Dedicated servers (3.2.0):** After the first server start or a change to installed mods, an operator (OP) must join once so EFPI can receive a trusted renderer-discovery report. EFPI then immediately registers approved compatibility for new spawns **and** patches compatible mobs already loaded in the world. **No server restart, chunk reload, or entity replacement is required.** An OP's client automatically requests a new scan after a resource-pack/renderer reload (e.g., F3+T) while connected to a dedicated server. Mobs whose Epic Fight patches belong to other mods are left untouched. Reports from multiple operators are checked for conflicting renderer observations; ambiguous mobs are skipped. Only the reporting OP receives a brief notification if compatibility changes or a problem occurs; details remain in the server log.
 

@@ -1,15 +1,28 @@
 package dev.nire9734.epicfightposture.neoforge;
 
+import com.mojang.logging.LogUtils;
+import dev.nire9734.epicfightposture.PostureConfigEntries;
 import dev.nire9734.epicfightposture.client.PostureHudPolicy;
+import net.minecraft.resources.ResourceLocation;
+import net.neoforged.bus.api.IEventBus;
+import net.neoforged.fml.event.config.ModConfigEvent;
 import net.neoforged.neoforge.common.ModConfigSpec;
+import org.slf4j.Logger;
 
-/** Client-side execution sound preference; never synchronized by a server. */
+import java.util.List;
+import java.util.Set;
+
+/** Client-only presentation settings and additive compatibility safety exclusions. */
 public final class NeoForgePostureClientConfig {
+    private static final Logger LOGGER = LogUtils.getLogger();
     public static final double DEFAULT_EXECUTION_SOUND_VOLUME_MULTIPLIER = 0.70D;
 
     public static final ModConfigSpec SPEC;
     public static final ModConfigSpec.EnumValue<PostureHudPolicy.Visibility> MOB_HEALTH_BAR_VISIBILITY;
     public static final ModConfigSpec.DoubleValue EXECUTION_SOUND_VOLUME_MULTIPLIER;
+    public static final ModConfigSpec.ConfigValue<List<? extends String>> LOCAL_ENTITY_BLACKLIST;
+    private static volatile Set<ResourceLocation> localEntityBlacklist = Set.of();
+    private static boolean listenersRegistered;
 
     static {
         ModConfigSpec.Builder builder = new ModConfigSpec.Builder();
@@ -27,7 +40,42 @@ public final class NeoForgePostureClientConfig {
                 .defineInRange("execution_sound_volume_multiplier",
                         DEFAULT_EXECUTION_SOUND_VOLUME_MULTIPLIER, 0.0D, 1.0D);
         builder.pop();
+
+        builder.push("compatibility");
+        LOCAL_ENTITY_BLACKLIST = builder
+                .comment("Extra local safety exclusions for automatic Epic Fight patches.",
+                        "Entries are entity IDs such as craft_of_the_wild:stone_talus.",
+                        "These exclusions apply before server settings synchronize.",
+                        "They cannot override a server blacklist. Restart to remove existing registrations.")
+                .defineListAllowEmpty("local_entity_blacklist", List.of(), () -> "",
+                        value -> value instanceof String);
+        builder.pop();
         SPEC = builder.build();
+    }
+
+    public static synchronized void register(IEventBus modBus) {
+        if (listenersRegistered) return;
+        listenersRegistered = true;
+        modBus.addListener(NeoForgePostureClientConfig::onLoading);
+        modBus.addListener(NeoForgePostureClientConfig::onReloading);
+    }
+
+    private static void onLoading(ModConfigEvent.Loading event) {
+        if (event.getConfig().getSpec() == SPEC) refreshLocalExclusions();
+    }
+
+    private static void onReloading(ModConfigEvent.Reloading event) {
+        if (event.getConfig().getSpec() == SPEC) refreshLocalExclusions();
+    }
+
+    private static void refreshLocalExclusions() {
+        localEntityBlacklist = PostureConfigEntries.entityBlacklist(LOCAL_ENTITY_BLACKLIST.get(),
+                ResourceLocation::tryParse,
+                raw -> LOGGER.warn("Ignoring invalid local compatibility blacklist entry '{}'", raw));
+    }
+
+    public static boolean isLocallyExcluded(ResourceLocation id) {
+        return id != null && localEntityBlacklist.contains(id);
     }
 
     public static float executionSoundVolumeMultiplier() {

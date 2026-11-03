@@ -5,6 +5,7 @@ import dev.nire9734.epicfightposture.AutomaticPatchSafety;
 import dev.nire9734.epicfightposture.compat.humanoid.RendererDiscoveryRuntime;
 import dev.nire9734.epicfightposture.compat.humanoid.RendererDiscoveryStore;
 import dev.nire9734.epicfightposture.neoforge.NeoForgeServerSettings;
+import dev.nire9734.epicfightposture.neoforge.NeoForgePostureClientConfig;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.fml.loading.FMLEnvironment;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -114,7 +115,8 @@ public final class NeoForgeAutoCompatibility {
         for (EntityType<?> type : previousOwned) {
             if (OWNED.contains(type) || event.getTypeEntry().containsKey(type)
                     || datapackOverrides.containsKey(type)
-                    || !NeoForgeServerSettings.canRegister(BuiltInRegistries.ENTITY_TYPE.getKey(type))) continue;
+                    || !NeoForgeServerSettings.canRegister(BuiltInRegistries.ENTITY_TYPE.getKey(type))
+                    || isLocallyExcluded(BuiltInRegistries.ENTITY_TYPE.getKey(type))) continue;
             try {
                 Map<EntityType<?>, Function<Entity, EntityPatch<?>>> providers = providerMap("capabilities");
                 if (providers == null || (providers.containsKey(type)
@@ -144,30 +146,39 @@ public final class NeoForgeAutoCompatibility {
             if (type == null || type == EntityType.PLAYER
                     || OWNED.contains(type) || EXTERNALLY_PATCHED.contains(type)
                     || event.getTypeEntry().containsKey(type) || datapackOverrides.containsKey(type)
-                    || !NeoForgeServerSettings.canRegister(id)) continue;
-            boolean spider = NeoForgeRendererDiscoveryServer.activeSpiders().contains(id);
-            if (spider) {
-                Armatures.registerEntityTypeArmature(type, Armatures.SPIDER);
-                event.getTypeEntry().put(type, entity -> entity instanceof LivingEntity mob
-                        && AutomaticPatchSafety.canAttach(true, mob::isMultipartEntity)
-                        ? new NeoForgeLightweightSpiderPatch<>(mob) : null);
-                SPIDER_OWNED.add(type);
-            } else {
-                Armatures.registerEntityTypeArmature(type, Armatures.BIPED);
-                event.getTypeEntry().put(type, entity -> entity instanceof LivingEntity mob
-                        && AutomaticPatchSafety.canAttach(true, mob::isMultipartEntity)
-                        ? new NeoForgeLightweightHumanoidPatch<>(mob) : null);
+                    || !NeoForgeServerSettings.canRegister(id)
+                    || isLocallyExcluded(id)) continue;
+            try {
+                boolean spider = NeoForgeRendererDiscoveryServer.activeSpiders().contains(id);
+                if (spider) {
+                    Armatures.registerEntityTypeArmature(type, Armatures.SPIDER);
+                    event.getTypeEntry().put(type, entity -> entity instanceof LivingEntity mob
+                            && isSafePatchTarget(mob)
+                            ? new NeoForgeLightweightSpiderPatch<>(mob) : null);
+                    SPIDER_OWNED.add(type);
+                } else {
+                    Armatures.registerEntityTypeArmature(type, Armatures.BIPED);
+                    event.getTypeEntry().put(type, entity -> entity instanceof LivingEntity mob
+                            && isSafePatchTarget(mob)
+                            ? new NeoForgeLightweightHumanoidPatch<>(mob) : null);
+                }
+                rememberFactory(type, event.getTypeEntry().get(type));
+                OWNED.add(type);
+                if (FMLEnvironment.dist == Dist.DEDICATED_SERVER) {
+                    TRUSTED_DEDICATED.put(type, spider ? RendererDiscoveryRuntime.Kind.VANILLA_SPIDER
+                            : NeoForgeRendererDiscoveryServer.activeExtended().contains(id)
+                                ? RendererDiscoveryRuntime.Kind.EXTENDED_HUMANOID
+                                : RendererDiscoveryRuntime.Kind.VANILLA_HUMANOID);
+                }
+                LOGGER.info("EFPI activated trusted dedicated-server {} renderer target {}",
+                        spider ? "spider" : "humanoid", id);
+            } catch (RuntimeException | LinkageError exception) {
+                event.getTypeEntry().remove(type);
+                OWNED.remove(type);
+                SPIDER_OWNED.remove(type);
+                TRUSTED_DEDICATED.remove(type);
+                LOGGER.warn("EFPI skipped unsafe trusted compatibility target {}", id, exception);
             }
-            rememberFactory(type, event.getTypeEntry().get(type));
-            OWNED.add(type);
-            if (FMLEnvironment.dist == Dist.DEDICATED_SERVER) {
-                TRUSTED_DEDICATED.put(type, spider ? RendererDiscoveryRuntime.Kind.VANILLA_SPIDER
-                        : NeoForgeRendererDiscoveryServer.activeExtended().contains(id)
-                            ? RendererDiscoveryRuntime.Kind.EXTENDED_HUMANOID
-                            : RendererDiscoveryRuntime.Kind.VANILLA_HUMANOID);
-            }
-            LOGGER.info("EFPI activated trusted dedicated-server {} renderer target {}",
-                    spider ? "spider" : "humanoid", id);
         }
         RUNTIME_REJECTED.addAll(previousRejected);
         LOGGER.info("EFPI registered {} NeoForge automatic compatibility target(s)", OWNED.size());
@@ -177,24 +188,31 @@ public final class NeoForgeAutoCompatibility {
     private static <T extends Mob> void registerCandidate(EntityPatchRegistryEvent event,
                                                            EntityType<T> type, Map<?, ?> overrides) {
         ResourceLocation id = BuiltInRegistries.ENTITY_TYPE.getKey(type);
-        if (!NeoForgeServerSettings.canRegister(id)) return;
+        if (!NeoForgeServerSettings.canRegister(id) || isLocallyExcluded(id)) return;
         if (event.getTypeEntry().containsKey(type) || overrides.containsKey(type)) {
             LOGGER.debug("EFPI skipped {} because another Epic Fight patch already owns it", id);
             return;
         }
-        Armatures.registerEntityTypeArmature(type, Armatures.BIPED);
-        event.getTypeEntry().put(type, entity -> entity instanceof LivingEntity mob
-                && AutomaticPatchSafety.canAttach(true, mob::isMultipartEntity)
-                ? new NeoForgeLightweightHumanoidPatch<>(mob) : null);
-        rememberFactory(type, event.getTypeEntry().get(type));
-        OWNED.add(type);
-        LOGGER.debug("EFPI registered non-invasive NeoForge compatibility for {}", id);
+        try {
+            Armatures.registerEntityTypeArmature(type, Armatures.BIPED);
+            event.getTypeEntry().put(type, entity -> entity instanceof LivingEntity mob
+                    && isSafePatchTarget(mob)
+                    ? new NeoForgeLightweightHumanoidPatch<>(mob) : null);
+            rememberFactory(type, event.getTypeEntry().get(type));
+            OWNED.add(type);
+            LOGGER.debug("EFPI registered non-invasive NeoForge compatibility for {}", id);
+        } catch (RuntimeException | LinkageError exception) {
+            event.getTypeEntry().remove(type);
+            OWNED.remove(type);
+            LOGGER.warn("EFPI skipped unsafe automatic compatibility target {}", id, exception);
+        }
     }
 
     /** Hot-disable the EFPI-owned patch when config/blacklist changes. */
     public static synchronized boolean isEnabled(EntityType<?> type) {
         ResourceLocation id = type == null ? null : BuiltInRegistries.ENTITY_TYPE.getKey(type);
         return type != null && OWNED.contains(type) && !RUNTIME_REJECTED.contains(type)
+                && !isLocallyExcluded(id)
                 && (FMLEnvironment.dist != Dist.DEDICATED_SERVER
                     || !TRUSTED_DEDICATED.containsKey(type)
                     || RendererDiscoveryStore.isRuntimeApproved(id, TRUSTED_DEDICATED.get(type)))
@@ -243,7 +261,7 @@ public final class NeoForgeAutoCompatibility {
     public static synchronized boolean mayPrepareRenderer(EntityType<?> type) {
         if (type == null || type == EntityType.PLAYER) return false;
         ResourceLocation id = BuiltInRegistries.ENTITY_TYPE.getKey(type);
-        return NeoForgeServerSettings.canRegister(id);
+        return !isLocallyExcluded(id) && NeoForgeServerSettings.canRegister(id);
     }
 
     /** Only called on client after verifying renderer ownership and skin mesh. */
@@ -270,7 +288,7 @@ public final class NeoForgeAutoCompatibility {
                 // A renderer reload is not guaranteed when the integrated
                 // server rebuilds Epic Fight's provider registry.
                 Function<Entity, EntityPatch<?>> factory = entity -> entity instanceof LivingEntity mob
-                        && AutomaticPatchSafety.canAttach(true, mob::isMultipartEntity)
+                        && isSafePatchTarget(mob)
                         ? new NeoForgeLightweightHumanoidPatch<>(mob) : null;
                 providers.put(type, factory);
                 rememberFactory(type, factory);
@@ -304,7 +322,7 @@ public final class NeoForgeAutoCompatibility {
                 }
             } else {
                 Function<Entity, EntityPatch<?>> factory = entity -> entity instanceof LivingEntity mob
-                        && AutomaticPatchSafety.canAttach(true, mob::isMultipartEntity)
+                        && isSafePatchTarget(mob)
                         ? new NeoForgeLightweightSpiderPatch<>(mob) : null;
                 providers.put(type, factory);
                 rememberFactory(type, factory);
@@ -403,6 +421,16 @@ public final class NeoForgeAutoCompatibility {
     private static boolean isOurFactory(EntityType<?> type, Object factory) {
         return factory != null && PREVIOUS_FACTORIES.containsKey(type)
                 && PREVIOUS_FACTORIES.get(type).contains(factory);
+    }
+
+    /** A client may opt out before the server's compatibility policy is available. */
+    private static boolean isLocallyExcluded(ResourceLocation id) {
+        return FMLEnvironment.dist == Dist.CLIENT && NeoForgePostureClientConfig.isLocallyExcluded(id);
+    }
+
+    private static boolean isSafePatchTarget(LivingEntity entity) {
+        return !isLocallyExcluded(BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType()))
+                && AutomaticPatchSafety.canAttach(true, entity::isMultipartEntity);
     }
 
     @SuppressWarnings("unchecked")

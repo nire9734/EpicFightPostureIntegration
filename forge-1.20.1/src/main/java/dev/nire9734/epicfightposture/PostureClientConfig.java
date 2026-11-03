@@ -1,17 +1,33 @@
 package dev.nire9734.epicfightposture;
 
+import com.mojang.logging.LogUtils;
 import dev.nire9734.epicfightposture.client.PostureHudPolicy;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.common.ForgeConfigSpec;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.fml.common.Mod;
+import net.minecraftforge.fml.event.config.ModConfigEvent;
+import org.slf4j.Logger;
 
-/** Client-only presentation settings. These values are never synchronized by the server. */
+import java.util.List;
+import java.util.Set;
+
+/** Client-only presentation settings and additive compatibility safety exclusions. */
+@Mod.EventBusSubscriber(modid = EpicFightPostureIntegration.MODID,
+        bus = Mod.EventBusSubscriber.Bus.MOD, value = Dist.CLIENT)
 public final class PostureClientConfig {
+    private static final Logger LOGGER = LogUtils.getLogger();
     public static final double DEFAULT_EXECUTION_SOUND_VOLUME_MULTIPLIER = 0.70D;
 
     private static final ForgeConfigSpec.Builder BUILDER = new ForgeConfigSpec.Builder();
 
     public static final ForgeConfigSpec.EnumValue<PostureHudPolicy.Visibility> MOB_HEALTH_BAR_VISIBILITY;
     public static final ForgeConfigSpec.DoubleValue EXECUTION_SOUND_VOLUME_MULTIPLIER;
+    /** A local safety opt-out. It never grants compatibility against a server's policy. */
+    public static final ForgeConfigSpec.ConfigValue<List<? extends String>> LOCAL_ENTITY_BLACKLIST;
     public static final ForgeConfigSpec SPEC;
+    private static volatile Set<ResourceLocation> localEntityBlacklist = Set.of();
 
     static {
         BUILDER.push("hud");
@@ -33,7 +49,36 @@ public final class PostureClientConfig {
                         1.0D
                 );
         BUILDER.pop();
+
+        BUILDER.push("compatibility");
+        LOCAL_ENTITY_BLACKLIST = BUILDER
+                .comment("Extra local safety exclusions for automatic Epic Fight patches.",
+                        "Entries are entity IDs such as craft_of_the_wild:stone_talus.",
+                        "These exclusions apply before server settings synchronize.",
+                        "They cannot override a server blacklist. Restart to remove existing registrations.")
+                .defineListAllowEmpty("local_entity_blacklist", List.of(), value -> value instanceof String);
+        BUILDER.pop();
         SPEC = BUILDER.build();
+    }
+
+    @SubscribeEvent
+    public static void onLoading(ModConfigEvent.Loading event) {
+        if (event.getConfig().getSpec() == SPEC) refreshLocalExclusions();
+    }
+
+    @SubscribeEvent
+    public static void onReloading(ModConfigEvent.Reloading event) {
+        if (event.getConfig().getSpec() == SPEC) refreshLocalExclusions();
+    }
+
+    private static void refreshLocalExclusions() {
+        localEntityBlacklist = PostureConfigEntries.entityBlacklist(LOCAL_ENTITY_BLACKLIST.get(),
+                ResourceLocation::tryParse,
+                raw -> LOGGER.warn("Ignoring invalid local compatibility blacklist entry '{}'", raw));
+    }
+
+    public static boolean isLocallyExcluded(ResourceLocation id) {
+        return id != null && localEntityBlacklist.contains(id);
     }
 
     public static float executionSoundVolumeMultiplier() {
