@@ -1,11 +1,14 @@
 package dev.nire9734.epicfightposture.compat.humanoid;
 
 import com.mojang.logging.LogUtils;
+import dev.nire9734.epicfightposture.AutomaticPatchSafety;
 import dev.nire9734.epicfightposture.EpicFightPostureIntegration;
 import dev.nire9734.epicfightposture.PostureServerConfig;
 import dev.nire9734.epicfightposture.compat.spider.LightweightSpiderPatch;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.eventbus.api.EventPriority;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
@@ -18,12 +21,15 @@ import yesman.epicfight.api.asset.AssetAccessor;
 import yesman.epicfight.api.forgeevent.EntityPatchRegistryEvent;
 import yesman.epicfight.api.model.Armature;
 import yesman.epicfight.gameasset.Armatures;
+import yesman.epicfight.world.capabilities.entitypatch.EntityPatch;
 import yesman.epicfight.world.capabilities.provider.EntityPatchProvider;
 
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
+import java.util.function.Supplier;
 
 /** Lightweight EF patch registration for automatically detected renderer-compatible entities. */
 @Mod.EventBusSubscriber(
@@ -451,11 +457,11 @@ public final class VanillaHumanoidCompat {
                         entityType,
                         armatureOverride != null ? armatureOverride : Armatures.BIPED
                 );
-                EntityPatchProvider.putCustomEntityPatch(entityType, ignored -> LightweightHumanoidPatch::new);
+                EntityPatchProvider.putCustomEntityPatch(entityType, guardedHumanoidFactory());
             }
             case VANILLA_SPIDER -> {
                 Armatures.registerEntityTypeArmature(entityType, Armatures.SPIDER);
-                EntityPatchProvider.putCustomEntityPatch(entityType, ignored -> LightweightSpiderPatch::new);
+                EntityPatchProvider.putCustomEntityPatch(entityType, guardedSpiderFactory());
             }
         }
     }
@@ -467,13 +473,33 @@ public final class VanillaHumanoidCompat {
         switch (kind) {
             case VANILLA_HUMANOID, EXTENDED_HUMANOID -> {
                 Armatures.registerEntityTypeArmature(entityType, Armatures.BIPED);
-                event.getTypeEntry().put(entityType, ignored -> LightweightHumanoidPatch::new);
+                event.getTypeEntry().put(entityType, guardedHumanoidFactory());
             }
             case VANILLA_SPIDER -> {
                 Armatures.registerEntityTypeArmature(entityType, Armatures.SPIDER);
-                event.getTypeEntry().put(entityType, ignored -> LightweightSpiderPatch::new);
+                event.getTypeEntry().put(entityType, guardedSpiderFactory());
             }
         }
+    }
+
+    /**
+     * Epic Fight selects a provider by EntityType, but Forge PartEntity instances
+     * carry the same type as their multipart parent. Never construct a living
+     * patch for one of those children (or for an unsupported multipart parent).
+     * Returning a null patch makes EntityPatchProvider.hasCapability() false.
+     */
+    private static Function<Entity, Supplier<EntityPatch<?>>> guardedHumanoidFactory() {
+        return entity -> AutomaticPatchSafety.guardedSupplier(
+                entity instanceof LivingEntity,
+                entity == null ? null : entity::isMultipartEntity,
+                LightweightHumanoidPatch::new);
+    }
+
+    private static Function<Entity, Supplier<EntityPatch<?>>> guardedSpiderFactory() {
+        return entity -> AutomaticPatchSafety.guardedSupplier(
+                entity instanceof LivingEntity,
+                entity == null ? null : entity::isMultipartEntity,
+                LightweightSpiderPatch::new);
     }
 
     private VanillaHumanoidCompat() {

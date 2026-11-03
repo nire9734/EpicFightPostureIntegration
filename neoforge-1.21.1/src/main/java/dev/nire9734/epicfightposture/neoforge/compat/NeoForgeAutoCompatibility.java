@@ -1,6 +1,7 @@
 package dev.nire9734.epicfightposture.neoforge.compat;
 
 import com.mojang.logging.LogUtils;
+import dev.nire9734.epicfightposture.AutomaticPatchSafety;
 import dev.nire9734.epicfightposture.compat.humanoid.RendererDiscoveryRuntime;
 import dev.nire9734.epicfightposture.compat.humanoid.RendererDiscoveryStore;
 import dev.nire9734.epicfightposture.neoforge.NeoForgeServerSettings;
@@ -148,11 +149,13 @@ public final class NeoForgeAutoCompatibility {
             if (spider) {
                 Armatures.registerEntityTypeArmature(type, Armatures.SPIDER);
                 event.getTypeEntry().put(type, entity -> entity instanceof LivingEntity mob
+                        && AutomaticPatchSafety.canAttach(true, mob::isMultipartEntity)
                         ? new NeoForgeLightweightSpiderPatch<>(mob) : null);
                 SPIDER_OWNED.add(type);
             } else {
                 Armatures.registerEntityTypeArmature(type, Armatures.BIPED);
                 event.getTypeEntry().put(type, entity -> entity instanceof LivingEntity mob
+                        && AutomaticPatchSafety.canAttach(true, mob::isMultipartEntity)
                         ? new NeoForgeLightweightHumanoidPatch<>(mob) : null);
             }
             rememberFactory(type, event.getTypeEntry().get(type));
@@ -180,7 +183,9 @@ public final class NeoForgeAutoCompatibility {
             return;
         }
         Armatures.registerEntityTypeArmature(type, Armatures.BIPED);
-        event.registerEntityPatch(type, NeoForgeLightweightHumanoidPatch::new);
+        event.getTypeEntry().put(type, entity -> entity instanceof LivingEntity mob
+                && AutomaticPatchSafety.canAttach(true, mob::isMultipartEntity)
+                ? new NeoForgeLightweightHumanoidPatch<>(mob) : null);
         rememberFactory(type, event.getTypeEntry().get(type));
         OWNED.add(type);
         LOGGER.debug("EFPI registered non-invasive NeoForge compatibility for {}", id);
@@ -265,6 +270,7 @@ public final class NeoForgeAutoCompatibility {
                 // A renderer reload is not guaranteed when the integrated
                 // server rebuilds Epic Fight's provider registry.
                 Function<Entity, EntityPatch<?>> factory = entity -> entity instanceof LivingEntity mob
+                        && AutomaticPatchSafety.canAttach(true, mob::isMultipartEntity)
                         ? new NeoForgeLightweightHumanoidPatch<>(mob) : null;
                 providers.put(type, factory);
                 rememberFactory(type, factory);
@@ -298,6 +304,7 @@ public final class NeoForgeAutoCompatibility {
                 }
             } else {
                 Function<Entity, EntityPatch<?>> factory = entity -> entity instanceof LivingEntity mob
+                        && AutomaticPatchSafety.canAttach(true, mob::isMultipartEntity)
                         ? new NeoForgeLightweightSpiderPatch<>(mob) : null;
                 providers.put(type, factory);
                 rememberFactory(type, factory);
