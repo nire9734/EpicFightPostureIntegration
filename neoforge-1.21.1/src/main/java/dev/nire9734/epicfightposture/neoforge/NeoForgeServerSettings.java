@@ -59,10 +59,12 @@ public final class NeoForgeServerSettings {
     private static final Snapshot CLIENT_FAIL_CLOSED = new Snapshot(
             1.0D, 1.0D, true, false, false, false, Set.of(), Set.of(), Set.of());
     private static volatile LocalSettings local;
+    private static volatile boolean localConfigReady;
     private static volatile Snapshot remote;
 
     public static synchronized void invalidateLocal() {
         local = null;
+        localConfigReady = true;
     }
 
     public static Snapshot localSnapshot() {
@@ -121,16 +123,39 @@ public final class NeoForgeServerSettings {
     }
 
     public static boolean allows(ResourceLocation id) {
-        return effectiveSnapshot().allows(id);
+        // The remote policy is authoritative but must not undo local safety exclusions.
+        return isLocalAutomaticCompatibilityEnabled()
+                && !isLocalSafetyExcluded(id) && effectiveSnapshot().allows(id);
+    }
+
+    /** A local OFF is an opt-out even if the remote server enables automation. */
+    public static boolean isLocalAutomaticCompatibilityEnabled() {
+        if (!localConfigReady) return false;
+        try {
+            return NeoForgePostureConfig.AUTOMATIC_COMPATIBILITY.get();
+        } catch (IllegalStateException notLoaded) {
+            return false;
+        }
+    }
+
+    /** Read the single COMMON blacklist locally, before the server can synchronize policy. */
+    public static boolean isLocalSafetyExcluded(ResourceLocation id) {
+        return FMLEnvironment.dist == Dist.CLIENT && id != null
+                && localSnapshot().entityBlacklist().contains(id);
     }
 
     public static boolean hasRegistryCandidates() {
-        return FMLEnvironment.dist == Dist.CLIENT || localSnapshot().vanillaHumanoid();
+        return isLocalAutomaticCompatibilityEnabled();
     }
 
-    /** A physical client must register a superset before the server policy arrives. */
+    /** Prepare a client-side superset only until a server policy is known. */
     public static boolean canRegister(ResourceLocation id) {
-        return id != null && (FMLEnvironment.dist == Dist.CLIENT || localSnapshot().allows(id));
+        if (id == null || !isLocalAutomaticCompatibilityEnabled() || isLocalSafetyExcluded(id)) return false;
+        if (FMLEnvironment.dist == Dist.CLIENT) {
+            Snapshot serverPolicy = remote;
+            return serverPolicy == null || serverPolicy.allows(id);
+        }
+        return localSnapshot().allows(id);
     }
 
     public static void applyRemoteSnapshot(Snapshot snapshot) {

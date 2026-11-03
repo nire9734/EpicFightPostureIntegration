@@ -3,7 +3,7 @@ package dev.nire9734.epicfightposture;
 import dev.nire9734.epicfightposture.client.PostureHudPolicy;
 import net.minecraftforge.common.ForgeConfigSpec;
 
-/** Client-only presentation settings. These values are never synchronized by the server. */
+/** Client-only presentation settings. Compatibility exclusions live in server.toml. */
 public final class PostureClientConfig {
     public static final double DEFAULT_EXECUTION_SOUND_VOLUME_MULTIPLIER = 0.70D;
 
@@ -33,6 +33,7 @@ public final class PostureClientConfig {
                         1.0D
                 );
         BUILDER.pop();
+
         SPEC = BUILDER.build();
     }
 

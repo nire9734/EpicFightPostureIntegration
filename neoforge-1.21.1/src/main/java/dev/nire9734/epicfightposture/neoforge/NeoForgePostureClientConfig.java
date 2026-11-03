@@ -3,7 +3,7 @@ package dev.nire9734.epicfightposture.neoforge;
 import dev.nire9734.epicfightposture.client.PostureHudPolicy;
 import net.neoforged.neoforge.common.ModConfigSpec;
 
-/** Client-side execution sound preference; never synchronized by a server. */
+/** Client-only presentation settings. Compatibility exclusions live in server.toml. */
 public final class NeoForgePostureClientConfig {
     public static final double DEFAULT_EXECUTION_SOUND_VOLUME_MULTIPLIER = 0.70D;
 
@@ -27,6 +27,7 @@ public final class NeoForgePostureClientConfig {
                 .defineInRange("execution_sound_volume_multiplier",
                         DEFAULT_EXECUTION_SOUND_VOLUME_MULTIPLIER, 0.0D, 1.0D);
         builder.pop();
+
         SPEC = builder.build();
     }
 

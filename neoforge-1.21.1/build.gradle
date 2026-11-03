@@ -40,6 +40,7 @@ sourceSets {
             srcDir('../common/src/main/java')
             include 'dev/nire9734/epicfightposture/PostureBalance.java'
             include 'dev/nire9734/epicfightposture/CompatibilityImpactPolicy.java'
+            include 'dev/nire9734/epicfightposture/AutomaticPatchSafety.java'
             include 'dev/nire9734/epicfightposture/PostureConfigEntries.java'
             include 'dev/nire9734/epicfightposture/PostureConfigDescriptions.java'
             include 'dev/nire9734/epicfightposture/PostureConfigPolicy.java'
@@ -76,6 +77,7 @@ sourceSets {
             srcDir('src/test/java')
             include 'dev/nire9734/epicfightposture/PostureBalanceTest.java'
             include 'dev/nire9734/epicfightposture/PostureConfigEntriesTest.java'
+            include 'dev/nire9734/epicfightposture/AutomaticPatchSafetyTest.java'
             include 'dev/nire9734/epicfightposture/PostureDeathSafetyTest.java'
             include 'dev/nire9734/epicfightposture/PostureRuntimeStateTest.java'
             include 'dev/nire9734/epicfightposture/PostureCoverageReportTest.java'
