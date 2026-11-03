@@ -3,7 +3,7 @@
 ## Unreleased
 
 - **Multipart entity safety:** prevent automatic Epic Fight living patches from attaching to Forge `PartEntity` children that share a parent mob's entity type. Multipart parents are excluded conservatively on Forge and NeoForge, avoiding unsafe construction and unsupported animations.
-- **Client safety exclusions:** add `compatibility.local_entity_blacklist` in `client.toml` for both loaders. This local-only opt-out takes effect before server configuration sync, skips model inspection/registration, and cannot override server restrictions.
+- **Unified safety exclusions:** the existing `entities.entity_blacklist` in `server.toml` now also prevents client-side model inspection and automatic patch preparation before server policy synchronization. Local and remote blacklists are combined, so neither can override the other's restrictions. Both loaders use the same setting; no separate client blacklist is needed. Experimental builds using `client.toml`'s `local_entity_blacklist` should move entries to `server.toml`.
 - **Fail-closed attachment:** if a mod's multipart-state method fails during entity construction, automatic patch creation is safely skipped instead of propagating the exception.
 - **Fail-closed registration:** unexpected errors while registering an automatic target now reject that target without aborting the entire Epic Fight registry event.
 - **Regression coverage:** test ordinary living entities, multipart parents, non-living child parts, and failed initialization probes.

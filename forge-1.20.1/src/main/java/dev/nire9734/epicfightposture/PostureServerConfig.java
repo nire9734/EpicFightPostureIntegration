@@ -234,9 +234,15 @@ public final class PostureServerConfig {
             return false;
         }
         Snapshot snapshot = effectiveClientSnapshot();
-        return snapshot != null
-                ? snapshot.entityBlacklist().contains(entityId)
-                : blacklist.contains(entityId);
+        // server.toml is COMMON and is available on the physical client before
+        // the remote policy arrives. A remote server cannot lift local safety exclusions.
+        return PostureConfigPolicy.isExcluded(entityId, blacklist,
+                snapshot == null ? Set.of() : snapshot.entityBlacklist());
+    }
+
+    /** The local copy of the one blacklist, for pre-sync client renderer discovery. */
+    public static boolean isLocalSafetyExcluded(ResourceLocation entityId) {
+        return FMLEnvironment.dist == Dist.CLIENT && entityId != null && blacklist.contains(entityId);
     }
 
     /** Treat an EFPI-owned automatic compatibility target as disabled when its current policy is off. */

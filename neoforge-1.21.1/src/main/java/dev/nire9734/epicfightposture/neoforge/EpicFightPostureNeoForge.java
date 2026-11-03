@@ -33,7 +33,6 @@ public final class EpicFightPostureNeoForge {
         if (FMLEnvironment.dist == Dist.CLIENT) {
             modContainer.registerConfig(ModConfig.Type.CLIENT, NeoForgePostureClientConfig.SPEC,
                     MODID + "/client.toml");
-            NeoForgePostureClientConfig.register(modBus);
             dev.nire9734.epicfightposture.neoforge.client.NeoForgeClientConfigRegistration.register(modContainer);
         }
         modBus.addListener(NeoForgePostureNetworking::registerPayloads);

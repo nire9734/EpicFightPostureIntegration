@@ -121,7 +121,14 @@ public final class NeoForgeServerSettings {
     }
 
     public static boolean allows(ResourceLocation id) {
-        return effectiveSnapshot().allows(id);
+        // The remote policy is authoritative but must not undo local safety exclusions.
+        return !isLocalSafetyExcluded(id) && effectiveSnapshot().allows(id);
+    }
+
+    /** Read the single COMMON blacklist locally, before the server can synchronize policy. */
+    public static boolean isLocalSafetyExcluded(ResourceLocation id) {
+        return FMLEnvironment.dist == Dist.CLIENT && id != null
+                && localSnapshot().entityBlacklist().contains(id);
     }
 
     public static boolean hasRegistryCandidates() {
@@ -130,7 +137,8 @@ public final class NeoForgeServerSettings {
 
     /** A physical client must register a superset before the server policy arrives. */
     public static boolean canRegister(ResourceLocation id) {
-        return id != null && (FMLEnvironment.dist == Dist.CLIENT || localSnapshot().allows(id));
+        return id != null && !isLocalSafetyExcluded(id)
+                && (FMLEnvironment.dist == Dist.CLIENT || localSnapshot().allows(id));
     }
 
     public static void applyRemoteSnapshot(Snapshot snapshot) {

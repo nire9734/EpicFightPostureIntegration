@@ -3,7 +3,6 @@ package dev.nire9734.epicfightposture.compat.humanoid;
 import com.mojang.logging.LogUtils;
 import dev.nire9734.epicfightposture.AutomaticPatchSafety;
 import dev.nire9734.epicfightposture.EpicFightPostureIntegration;
-import dev.nire9734.epicfightposture.PostureClientConfig;
 import dev.nire9734.epicfightposture.PostureServerConfig;
 import dev.nire9734.epicfightposture.compat.spider.LightweightSpiderPatch;
 import net.minecraft.resources.ResourceLocation;
@@ -514,7 +513,7 @@ public final class VanillaHumanoidCompat {
     }
 
     private static boolean isLocallyExcluded(ResourceLocation id) {
-        return FMLEnvironment.dist == Dist.CLIENT && PostureClientConfig.isLocallyExcluded(id);
+        return PostureServerConfig.isLocalSafetyExcluded(id);
     }
 
     private VanillaHumanoidCompat() {

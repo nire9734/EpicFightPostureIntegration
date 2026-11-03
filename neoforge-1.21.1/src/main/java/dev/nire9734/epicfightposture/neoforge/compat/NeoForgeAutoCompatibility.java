@@ -5,7 +5,6 @@ import dev.nire9734.epicfightposture.AutomaticPatchSafety;
 import dev.nire9734.epicfightposture.compat.humanoid.RendererDiscoveryRuntime;
 import dev.nire9734.epicfightposture.compat.humanoid.RendererDiscoveryStore;
 import dev.nire9734.epicfightposture.neoforge.NeoForgeServerSettings;
-import dev.nire9734.epicfightposture.neoforge.NeoForgePostureClientConfig;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.fml.loading.FMLEnvironment;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -425,7 +424,7 @@ public final class NeoForgeAutoCompatibility {
 
     /** A client may opt out before the server's compatibility policy is available. */
     private static boolean isLocallyExcluded(ResourceLocation id) {
-        return FMLEnvironment.dist == Dist.CLIENT && NeoForgePostureClientConfig.isLocallyExcluded(id);
+        return NeoForgeServerSettings.isLocalSafetyExcluded(id);
     }
 
     private static boolean isSafePatchTarget(LivingEntity entity) {

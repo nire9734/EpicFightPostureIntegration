@@ -2,7 +2,7 @@ package dev.nire9734.epicfightposture.compat.humanoid.client;
 
 import com.mojang.logging.LogUtils;
 import dev.nire9734.epicfightposture.EpicFightPostureIntegration;
-import dev.nire9734.epicfightposture.PostureClientConfig;
+import dev.nire9734.epicfightposture.PostureServerConfig;
 import dev.nire9734.epicfightposture.client.ClientPostureStore;
 import dev.nire9734.epicfightposture.compat.humanoid.HumanoidDiscoveryClientBridge;
 import dev.nire9734.epicfightposture.compat.humanoid.HumanoidRenderState;
@@ -108,8 +108,8 @@ public final class VanillaHumanoidClientCompat {
             if (type == EntityType.PLAYER) continue;
             ResourceLocation id = EntityType.getKey(type);
             if (id == null) continue;
-            if (PostureClientConfig.isLocallyExcluded(id)) {
-                coverage.put(id, "excluded:client_safety_blacklist");
+            if (PostureServerConfig.isLocalSafetyExcluded(id)) {
+                coverage.put(id, "excluded:entity_blacklist");
             } else if (VanillaHumanoidCompat.isExternallyPatched(id)
                     || (alreadyPatched.contains(type)
                     && !VanillaHumanoidCompat.isRegisteredByEfpi(id))) {
