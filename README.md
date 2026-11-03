@@ -2,7 +2,7 @@
 
 Epic Fight Posture Integration (EFPI) adds a server-authoritative Posture system to compatible Epic Fight mobs, with guard breaks and Combat Evolution executions.
 
-## Supported editions (3.2.0)
+## Supported editions (3.2.1)
 
 | | Forge | NeoForge |
 | --- | --- | --- |
@@ -11,7 +11,7 @@ Epic Fight Posture Integration (EFPI) adds a server-authoritative Posture system
 | Epic Fight | 20.14.17–20.14.x or 20.15.1–20.15.x | 21.17.3.1–21.17.x |
 | Combat Evolution | 2.2.8–2.3.x | 2.3.2–2.3.x |
 | Java for building | 17 | 21 |
-| File | `epicfight-posture-integration-forge-1.20.1-3.2.0.jar` | `epicfight-posture-integration-neoforge-1.21.1-3.2.0.jar` |
+| File | `epicfight-posture-integration-forge-1.20.1-3.2.1.jar` | `epicfight-posture-integration-neoforge-1.21.1-3.2.1.jar` |
 
 Install **only the JAR matching your Minecraft version and loader**. Install EFPI and its required mods on both client and server. GeckoLib and Lionfish API are optional compatibility libraries, not EFPI hard dependencies.
 
@@ -77,7 +77,7 @@ mod_denylist = []
 
 Automatic support depends on the mob's model, animations and other mods. A Posture bar does not guarantee that every third-party execution animation will succeed. The separate `renderer-discovery.json` under `config/epicfight_posture_integration/cache/` is a server-side compatibility cache, not an additional diagnostic report. Test guard breaks, executions, equipment and model layers in game before releasing a new modpack.
 
-**Multipart entity safety (unreleased):** automatically discovered patches are restricted to ordinary living entities. Forge `PartEntity` children can share a parent's entity type, so neither non-living parts nor multipart parents receive EFPI automatic patches. In addition to checking `isMultipartEntity()`, EFPI conservatively rejects classes that override the multipart-related `isMultipartEntity` or `getParts` contract, even if an incompletely constructed mob temporarily reports no parts. This may exclude custom mobs that override those methods without using multipart entities. The unified `entity_blacklist` is checked before client model inspection, during patch creation, and when deciding whether a previously registered patch can act.
+**Multipart entity safety (3.2.1):** automatically discovered patches are restricted to ordinary living entities. Forge `PartEntity` children can share a parent's entity type, so neither non-living parts nor multipart parents receive EFPI automatic patches. In addition to checking `isMultipartEntity()`, EFPI conservatively rejects classes that override the multipart-related `isMultipartEntity` or `getParts` contract, even if an incompletely constructed mob temporarily reports no parts. This may exclude custom mobs that override those methods without using multipart entities. The unified `entity_blacklist` is checked before client model inspection, during patch creation, and when deciding whether a previously registered patch can act.
 
 **Dedicated servers (3.2.0):** After the first server start or a change to installed mods, an operator (OP) must join once so EFPI can receive a trusted renderer-discovery report. EFPI then immediately registers approved compatibility for new spawns **and** patches compatible mobs already loaded in the world. **No server restart, chunk reload, or entity replacement is required.** An OP's client automatically requests a new scan after a resource-pack/renderer reload (e.g., F3+T) while connected to a dedicated server. Mobs whose Epic Fight patches belong to other mods are left untouched. Reports from multiple operators are checked for conflicting renderer observations; ambiguous mobs are skipped. Only the reporting OP receives a brief notification if compatibility changes or a problem occurs; details remain in the server log.
 

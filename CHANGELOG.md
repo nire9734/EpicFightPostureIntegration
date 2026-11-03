@@ -1,7 +1,8 @@
 # Changelog
 
-## Unreleased
+## 3.2.1
 
+- **Craft of the Wild / Stone Talus fix:** avoid applying EFPI automatic patches to non-living multipart child entities, which could prevent Stone Talus from spawning or loading correctly. The fix is intentionally conservative and does not add Posture support to multipart bosses.
 - **Multipart entity safety:** prevent automatic Epic Fight living patches from attaching to Forge `PartEntity` children that share a parent mob's entity type. Multipart parents are excluded conservatively on Forge and NeoForge, avoiding unsafe construction and unsupported animations.
 - **Structural multipart safety:** reject mobs with custom `isMultipartEntity` or `getParts` implementations before invoking potentially uninitialized subclass methods, avoiding false negatives during construction. This intentionally favors safety over broad compatibility.
 - **Automatic compatibility OFF:** a local `automatic_compatibility = false` now stops automatic candidate registration, renderer analysis, and EFPI patch creation on both loaders. A remote server cannot override a client's local OFF, and a remote OFF prevents EFPI patch creation on a connected client after settings arrive. Existing third-party Epic Fight patches are unaffected.
