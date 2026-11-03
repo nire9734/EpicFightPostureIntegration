@@ -28,6 +28,7 @@ public final class HumanoidClientDiscovery {
     }
 
     public static ScanSnapshot scan(Map<EntityType<?>, EntityRenderer<?>> renderers) {
+        if (!PostureServerConfig.isLocalAutomaticCompatibilityEnabled()) return ScanSnapshot.empty();
         Set<ResourceLocation> inspected = new HashSet<>();
         Set<ResourceLocation> vanillaHumanoid = new HashSet<>();
         Set<ResourceLocation> vanillaSpider = new HashSet<>();
@@ -113,6 +114,7 @@ public final class HumanoidClientDiscovery {
 
     /** Called only after the renderer reload has prepared its new validated snapshot. */
     public static void requestServerRescanAfterReload() {
+        if (!PostureServerConfig.isLocalAutomaticCompatibilityEnabled()) return;
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft.getConnection() != null && !minecraft.hasSingleplayerServer()) {
             BridgeNetwork.sendToServer(new HumanoidDiscoveryRefreshPacket());
@@ -120,6 +122,7 @@ public final class HumanoidClientDiscovery {
     }
 
     public static void handleServerRequest(UUID nonce) {
+        if (!PostureServerConfig.isLocalAutomaticCompatibilityEnabled()) return;
         ScanSnapshot scan = serverReportSnapshot;
         String fingerprint = HumanoidEnvironmentFingerprint.current();
         BridgeNetwork.sendToServer(new HumanoidDiscoveryUploadPacket(

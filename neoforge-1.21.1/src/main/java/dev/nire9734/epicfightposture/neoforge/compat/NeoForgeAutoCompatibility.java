@@ -51,6 +51,11 @@ public final class NeoForgeAutoCompatibility {
     // world switches. This distinguishes our patches from addon replacements.
     private static final Map<EntityType<?>, Set<Object>> PREVIOUS_FACTORIES = new IdentityHashMap<>();
     private static final Map<EntityType<?>, AssetAccessor<? extends Armature>> RUNTIME_ARMATURES = new IdentityHashMap<>();
+    private static final ClassValue<Boolean> STRUCTURAL_MULTIPART = new ClassValue<>() {
+        @Override protected Boolean computeValue(Class<?> type) {
+            return AutomaticPatchSafety.hasCustomMultipartContract(type, Entity.class);
+        }
+    };
     private static boolean subscribed;
 
     public static synchronized void register() {
@@ -344,6 +349,7 @@ public final class NeoForgeAutoCompatibility {
 
     /** Restore only missing EFPI providers on a subsequent world join. */
     public static synchronized void recoverClientRegistrationsOnWorldJoin() {
+        if (!NeoForgeServerSettings.isLocalAutomaticCompatibilityEnabled()) return;
         int recovered = 0;
         for (EntityType<?> type : new HashSet<>(OWNED)) {
             if (RUNTIME_REJECTED.contains(type)) continue;
@@ -385,7 +391,8 @@ public final class NeoForgeAutoCompatibility {
      * have a chance to request that attachment.
      */
     public static synchronized void recoverClientProviderBeforeEntityJoin(EntityType<?> type) {
-        if (type == null || !OWNED.contains(type) || RUNTIME_REJECTED.contains(type)) return;
+        if (type == null || !NeoForgeServerSettings.isLocalAutomaticCompatibilityEnabled()
+                || !OWNED.contains(type) || RUNTIME_REJECTED.contains(type)) return;
         try {
             Map<EntityType<?>, Function<Entity, EntityPatch<?>>> providers = providerMap("capabilities");
             Map<EntityType<?>, Function<Entity, EntityPatch<?>>> datapacks = providerMap("datapackCapabilities");
@@ -428,8 +435,9 @@ public final class NeoForgeAutoCompatibility {
     }
 
     private static boolean isSafePatchTarget(LivingEntity entity) {
-        return !isLocallyExcluded(BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType()))
-                && AutomaticPatchSafety.canAttach(true, entity::isMultipartEntity);
+        return NeoForgeServerSettings.allows(BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType()))
+                && AutomaticPatchSafety.canAttach(true, STRUCTURAL_MULTIPART.get(entity.getClass()),
+                        entity::isMultipartEntity);
     }
 
     @SuppressWarnings("unchecked")

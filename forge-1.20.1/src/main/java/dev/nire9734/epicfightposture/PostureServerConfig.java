@@ -76,6 +76,7 @@ public final class PostureServerConfig {
     );
 
     private static volatile Set<ResourceLocation> blacklist = Set.of();
+    private static volatile boolean localConfigReady;
     private static volatile Map<ResourceLocation, Float> attackDamageMultipliers = Map.of();
     private static volatile Map<ResourceLocation, Float> parryDamageMultipliers = Map.of();
     private static volatile Set<String> modAllowlist = Set.of();
@@ -197,6 +198,9 @@ public final class PostureServerConfig {
     }
 
     public static boolean automaticCompatibilityEnabled() {
+        // A user's local OFF must be a real safety opt-out, even when a remote
+        // server advertises automatic compatibility as enabled.
+        if (!isLocalAutomaticCompatibilityEnabled()) return false;
         Snapshot snapshot = effectiveClientSnapshot();
         if (snapshot != null) {
             return snapshot.enableVanillaHumanoidCompatibility()
@@ -204,6 +208,16 @@ public final class PostureServerConfig {
                     && snapshot.enableVanillaSpiderCompatibility();
         }
         return AUTOMATIC_COMPATIBILITY.get();
+    }
+
+    /** Can be used before the remote server policy arrives or any renderer is inspected. */
+    public static boolean isLocalAutomaticCompatibilityEnabled() {
+        if (!localConfigReady) return false;
+        try {
+            return AUTOMATIC_COMPATIBILITY.get();
+        } catch (IllegalStateException notLoaded) {
+            return false;
+        }
     }
 
     public static boolean vanillaHumanoidCompatibilityEnabled() {
@@ -227,6 +241,19 @@ public final class PostureServerConfig {
         Set<String> allow = snapshot != null ? snapshot.modAllowlist() : modAllowlist;
         Set<String> deny = snapshot != null ? snapshot.modDenylist() : modDenylist;
         return PostureConfigPolicy.allowsAutomatic(true, entityId.getNamespace(), allow, deny);
+    }
+
+    /** Before login, safely stage renderers; after login, do not stage server-disabled targets. */
+    public static boolean mayPrepareAutomaticCompatibility(ResourceLocation entityId) {
+        if (entityId == null || !isLocalAutomaticCompatibilityEnabled()
+                || isLocalSafetyExcluded(entityId)) return false;
+        if (FMLEnvironment.dist != Dist.CLIENT) return isAutomaticCompatibilityAllowed(entityId);
+        Snapshot serverPolicy = remoteSnapshot;
+        return serverPolicy == null || (serverPolicy.enableVanillaHumanoidCompatibility()
+                && serverPolicy.enableExtendedHumanoidCompatibility()
+                && serverPolicy.enableVanillaSpiderCompatibility()
+                && PostureConfigPolicy.allowsAutomatic(true, entityId.getNamespace(),
+                        serverPolicy.modAllowlist(), serverPolicy.modDenylist()));
     }
 
     public static boolean isExplicitlyBlacklisted(ResourceLocation entityId) {
@@ -311,6 +338,7 @@ public final class PostureServerConfig {
                 "entities.parry_posture_damage_multipliers");
         modAllowlist = parseModIds(MOD_ALLOWLIST.get(), "compatibility.mod_allowlist");
         modDenylist = parseModIds(MOD_DENYLIST.get(), "compatibility.mod_denylist");
+        localConfigReady = true;
     }
 
     private static Set<ResourceLocation> parseEntityBlacklist() {

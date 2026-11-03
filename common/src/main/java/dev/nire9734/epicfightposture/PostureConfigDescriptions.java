@@ -32,7 +32,9 @@ public final class PostureConfigDescriptions {
     public static final String ENTITY_BLACKLIST_EXAMPLE =
             "Example: [\"craft_of_the_wild:stone_talus\"]";
     public static final String AUTOMATIC_COMPATIBILITY =
-            "Automatically add Posture support to compatible mobs.";
+            "Automatically add Posture support to compatible mobs."
+                    + " Setting false locally disables EFPI patch discovery and preparation,"
+                    + " even if a remote server enables it.";
     public static final String MOD_ALLOWLIST =
             "Only auto-support these mod IDs; [] allows all mods.";
     public static final String MOD_DENYLIST =

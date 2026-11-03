@@ -43,6 +43,11 @@ public final class VanillaHumanoidCompat {
     private static final Map<ResourceLocation, CompatibilityKind> registeredByEfpi = new HashMap<>();
     private static final Map<ResourceLocation, AssetAccessor<? extends Armature>> runtimeArmatures = new HashMap<>();
     private static final Set<ResourceLocation> runtimeRejected = new HashSet<>();
+    private static final ClassValue<Boolean> STRUCTURAL_MULTIPART = new ClassValue<>() {
+        @Override protected Boolean computeValue(Class<?> type) {
+            return AutomaticPatchSafety.hasCustomMultipartContract(type, Entity.class);
+        }
+    };
 
     public enum CompatibilityKind {
         VANILLA_HUMANOID,
@@ -225,7 +230,8 @@ public final class VanillaHumanoidCompat {
         // Client discovery happens before a multiplayer server can synchronize its
         // policy. Prepare every safe renderer target now; synchronized settings
         // decide whether the lightweight patch is allowed to act after login.
-        if (id == null || isLocallyExcluded(id) || externallyPatched.contains(id)) {
+        if (id == null || !PostureServerConfig.mayPrepareAutomaticCompatibility(id)
+                || isLocallyExcluded(id) || externallyPatched.contains(id)) {
             return false;
         }
 
@@ -310,7 +316,8 @@ public final class VanillaHumanoidCompat {
      * EFPI-owned provider; never replace an unknown or addon-owned one.
      */
     public static synchronized void recoverClientRegistrationsOnWorldJoin() {
-        if (FMLEnvironment.dist != Dist.CLIENT) {
+        if (FMLEnvironment.dist != Dist.CLIENT
+                || !PostureServerConfig.isLocalAutomaticCompatibilityEnabled()) {
             return;
         }
         for (Map.Entry<ResourceLocation, CompatibilityKind> entry : Map.copyOf(registeredByEfpi).entrySet()) {
@@ -344,7 +351,8 @@ public final class VanillaHumanoidCompat {
      * provider path. Newly spawned mobs with an intact provider are untouched.</p>
      */
     public static synchronized void recoverClientProviderBeforeEntityAttachment(EntityType<?> entityType) {
-        if (FMLEnvironment.dist != Dist.CLIENT || entityType == null) {
+        if (FMLEnvironment.dist != Dist.CLIENT || entityType == null
+                || !PostureServerConfig.isLocalAutomaticCompatibilityEnabled()) {
             return;
         }
         ResourceLocation id = EntityType.getKey(entityType);
@@ -497,18 +505,22 @@ public final class VanillaHumanoidCompat {
      * Returning a null patch makes EntityPatchProvider.hasCapability() false.
      */
     private static Function<Entity, Supplier<EntityPatch<?>>> guardedHumanoidFactory() {
-        return entity -> isLocallyExcluded(entity == null ? null : EntityType.getKey(entity.getType()))
+        return entity -> !(entity instanceof LivingEntity)
+                || !PostureServerConfig.isAutomaticCompatibilityAllowed(EntityType.getKey(entity.getType()))
+                || isLocallyExcluded(EntityType.getKey(entity.getType()))
                 ? () -> null : AutomaticPatchSafety.guardedSupplier(
-                entity instanceof LivingEntity,
-                entity == null ? null : entity::isMultipartEntity,
+                true,
+                STRUCTURAL_MULTIPART.get(entity.getClass()), entity::isMultipartEntity,
                 LightweightHumanoidPatch::new);
     }
 
     private static Function<Entity, Supplier<EntityPatch<?>>> guardedSpiderFactory() {
-        return entity -> isLocallyExcluded(entity == null ? null : EntityType.getKey(entity.getType()))
+        return entity -> !(entity instanceof LivingEntity)
+                || !PostureServerConfig.isAutomaticCompatibilityAllowed(EntityType.getKey(entity.getType()))
+                || isLocallyExcluded(EntityType.getKey(entity.getType()))
                 ? () -> null : AutomaticPatchSafety.guardedSupplier(
-                entity instanceof LivingEntity,
-                entity == null ? null : entity::isMultipartEntity,
+                true,
+                STRUCTURAL_MULTIPART.get(entity.getClass()), entity::isMultipartEntity,
                 LightweightSpiderPatch::new);
     }
 

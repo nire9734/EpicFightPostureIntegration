@@ -48,6 +48,14 @@ public final class VanillaHumanoidClientCompat {
         });
 
         HumanoidBackendRegistry.clear();
+        if (!PostureServerConfig.isLocalAutomaticCompatibilityEnabled()) {
+            VanillaHumanoidCompat.reconcileClientRuntimeCompatibility(Set.of());
+            VanillaHumanoidCompat.replaceDetectedCache(Set.of(), Set.of(), Set.of());
+            HumanoidClientDiscovery.updateServerReportSnapshot(HumanoidClientDiscovery.ScanSnapshot.empty());
+            ForgeRendererCoverage.write(Map.of());
+            return;
+        }
+
         HumanoidBackendRegistry.register(ModelPartHumanoidClientCompat.INSTANCE);
         if (ModList.get().isLoaded("geckolib")) {
             // The renderers (and their baked models) may have changed after F3+T.
