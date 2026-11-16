@@ -171,6 +171,18 @@ public final class NeoForgePostureServerEvents {
 
     /** Called exactly once by the Epic Fight parry event's setParried(true) hook. */
     public static void onParried(LivingEntity attacker) {
+        applyDefensivePostureDamage(attacker, 1.0F);
+    }
+
+    /** Successful normal guard; caller already excluded parry and stamina guard-break. */
+    public static void onGuarded(LivingEntity attacker) {
+        if (!NeoForgePostureConfig.GUARD_POSTURE_DAMAGE_ENABLED.get()) return;
+        applyDefensivePostureDamage(attacker,
+                NeoForgePostureConfig.GUARD_POSTURE_DAMAGE_MULTIPLIER.get().floatValue());
+    }
+
+    private static void applyDefensivePostureDamage(LivingEntity attacker, float multiplier) {
+        if (!Float.isFinite(multiplier) || multiplier <= 0.0F) return;
         if (attacker == null || !(attacker.level() instanceof ServerLevel)
                 || attacker instanceof Player
                 || !canReceive(attacker) || isBlacklisted(attacker)) return;
@@ -188,6 +200,7 @@ public final class NeoForgePostureServerEvents {
                 innateEhp, 20.0F, .7F);
         damage *= NeoForgeServerSettings.parryPostureDamageMultiplier(
                 BuiltInRegistries.ENTITY_TYPE.getKey(mob.getType()));
+        damage = PostureBalance.guardDamage(damage, multiplier);
         float resistance = PostureBalance.breakResistanceMultiplier(
                 state.completedBreaks,
                 NeoForgePostureConfig.POSTURE_BREAK_RESISTANCE_STEP.get().floatValue(),
