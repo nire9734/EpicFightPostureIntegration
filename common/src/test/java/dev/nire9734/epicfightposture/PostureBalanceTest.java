@@ -67,6 +67,17 @@ class PostureBalanceTest {
     }
 
     @Test
+    void paidNormalGuardUsesOneQuarterOfParryPressureByDefault() {
+        assertEquals(5.5F, PostureBalance.guardDamage(22.0F, 0.25F), EPS);
+        assertEquals(2.5F, PostureBalance.guardDamage(10.0F, 0.25F), EPS);
+        assertEquals(0.0F, PostureBalance.guardDamage(22.0F, 0.0F), EPS);
+        assertEquals(0.0F, PostureBalance.guardDamage(22.0F, Float.NaN), EPS);
+        assertEquals(0.0F, PostureBalance.guardDamage(Float.NaN, 0.25F), EPS);
+        assertEquals(0.0F, PostureBalance.guardDamage(-10.0F, 0.25F), EPS);
+        assertEquals(1_000_000_000.0F, PostureBalance.guardDamage(Float.MAX_VALUE, 100.0F), EPS);
+    }
+
+    @Test
     void realObservedHpLossAndOverkillAreSafe() {
         assertEquals(0.0F, PostureBalance.actualHealthLoss(100, 100), EPS);
         assertEquals(20.0F, PostureBalance.actualHealthLoss(100, 80), EPS);
