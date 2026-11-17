@@ -54,6 +54,15 @@ final class PostureBalance {
         );
     }
 
+    /** A paid normal guard inflicts this fraction of parry Posture damage. */
+    static float guardDamage(float parryPressure, float multiplier) {
+        if (!Float.isFinite(parryPressure) || parryPressure <= 0.0F
+                || !Float.isFinite(multiplier) || multiplier <= 0.0F) {
+            return 0.0F;
+        }
+        return (float) Math.min((double) parryPressure * multiplier, 1_000_000_000.0D);
+    }
+
     /**
      * Observe only real positive HP reductions; a canceled or fully capped
      * damage event may have had a positive amount before the final listeners.

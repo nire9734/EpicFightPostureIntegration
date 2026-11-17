@@ -48,6 +48,8 @@ public final class PostureServerConfig {
 
     public static final ForgeConfigSpec.DoubleValue ATTACK_POSTURE_DAMAGE_MULTIPLIER;
     public static final ForgeConfigSpec.DoubleValue PARRY_POSTURE_DAMAGE_MULTIPLIER;
+    public static final ForgeConfigSpec.BooleanValue GUARD_POSTURE_DAMAGE_ENABLED;
+    public static final ForgeConfigSpec.DoubleValue GUARD_POSTURE_DAMAGE_MULTIPLIER;
     public static final ForgeConfigSpec.DoubleValue PARRY_BASE_MAX_PERCENT;
     public static final ForgeConfigSpec.DoubleValue PARRY_BASE_MIN_PERCENT;
     public static final ForgeConfigSpec.DoubleValue POSTURE_BREAK_RESISTANCE_STEP;
@@ -91,6 +93,12 @@ public final class PostureServerConfig {
         PARRY_POSTURE_DAMAGE_MULTIPLIER = BUILDER
                 .comment(PostureConfigDescriptions.PARRY_MULTIPLIER)
                 .defineInRange("parry_posture_damage_multiplier", 1.0D, 0.0D, 100.0D);
+        GUARD_POSTURE_DAMAGE_ENABLED = BUILDER
+                .comment(PostureConfigDescriptions.GUARD_ENABLED)
+                .define("guard_posture_damage_enabled", false);
+        GUARD_POSTURE_DAMAGE_MULTIPLIER = BUILDER
+                .comment(PostureConfigDescriptions.GUARD_MULTIPLIER)
+                .defineInRange("guard_posture_damage_multiplier", 0.25D, 0.0D, 100.0D);
         PARRY_BASE_MAX_PERCENT = BUILDER
                 .comment(PostureConfigDescriptions.PARRY_BASE_MAX)
                 .defineInRange("parry_base_max_percent", 22.0D, 0.0D, 100.0D);

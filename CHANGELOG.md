@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.2.2 (unreleased)
+
+- **Optional normal guard Posture:** paid ordinary Epic Fight guards using **weapons without standard parry support** reduce the attacker's Posture with `posture.guard_posture_damage_enabled = true` (default OFF). The `guard_posture_damage_multiplier` defaults to 0.25 of equivalent parry pressure. Eligibility is based on the registered parry skill's advanced-guard support for the held weapon and style, not on which guard skill is equipped.
+- **Guard outcome filtering:** successful parries do not receive a second normal-guard reward, while stamina-driven guard breaks grant no Posture damage.
+- **Dependency pin refresh:** Forge Epic Fight 20.15.2 / Combat Evolution 2.3.6, NeoForge Epic Fight 21.17.3.1 / Combat Evolution 2.3.3.1.
+- **Tests:** check normal-guard pressure scaling, invalid values, numerical limits, and parry-capable weapon exclusion.
+
 ## 3.2.1
 
 - **Craft of the Wild / Stone Talus fix:** avoid applying EFPI automatic patches to non-living multipart child entities, which could prevent Stone Talus from spawning or loading correctly. The fix is intentionally conservative and does not add Posture support to multipart bosses.

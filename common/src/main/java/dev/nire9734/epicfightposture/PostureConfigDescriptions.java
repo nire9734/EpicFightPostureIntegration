@@ -6,6 +6,10 @@ public final class PostureConfigDescriptions {
             "Attack Posture damage multiplier (1.0 = normal, 0.0 = none).";
     public static final String PARRY_MULTIPLIER =
             "Parry Posture damage multiplier (1.0 = normal, 0.0 = none).";
+    public static final String GUARD_ENABLED =
+            "Allow successful normal Epic Fight guards to damage the attacker's Posture (default: off).";
+    public static final String GUARD_MULTIPLIER =
+            "Normal guard Posture damage relative to a parry (0.25 = 25% of parry damage).";
     public static final String PARRY_BASE_MAX =
             "Parry damage (% of max Posture) against mobs with low base health and armor.";
     public static final String PARRY_BASE_MIN =

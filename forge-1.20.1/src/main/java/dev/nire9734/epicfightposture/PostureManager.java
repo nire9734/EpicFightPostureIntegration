@@ -111,6 +111,18 @@ public final class PostureManager {
     }
 
     public static void onParried(LivingEntity target) {
+        applyDefensivePostureDamage(target, 1.0F);
+    }
+
+    /** Successful normal guard; caller already excluded parry and stamina guard-break. */
+    public static void onGuarded(LivingEntity target) {
+        if (!PostureServerConfig.GUARD_POSTURE_DAMAGE_ENABLED.get()) return;
+        applyDefensivePostureDamage(target,
+                PostureServerConfig.GUARD_POSTURE_DAMAGE_MULTIPLIER.get().floatValue());
+    }
+
+    private static void applyDefensivePostureDamage(LivingEntity target, float multiplier) {
+        if (!Float.isFinite(multiplier) || multiplier <= 0.0F) return;
         if (!canReceivePosture(target) || !RuntimeAccess.isServerEntity(target)) {
             return;
         }
@@ -137,6 +149,7 @@ public final class PostureManager {
                 (float) EHP_EXPONENT
         );
         postureDamage *= PostureServerConfig.parryPostureDamageMultiplier(entityTypeId(target));
+        postureDamage = PostureBalance.guardDamage(postureDamage, multiplier);
         float resistance = breakResistanceMultiplier(state);
         float previousPosture = state.current;
         boolean broken = state.applyDamage(postureDamage, resistance, regenDelayTicks());
