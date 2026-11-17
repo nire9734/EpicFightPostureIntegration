@@ -1,5 +1,16 @@
 # Changelog
 
+## 3.2.1
+
+- **Craft of the Wild / Stone Talus fix:** avoid applying EFPI automatic patches to non-living multipart child entities, which could prevent Stone Talus from spawning or loading correctly. The fix is intentionally conservative and does not add Posture support to multipart bosses.
+- **Multipart entity safety:** prevent automatic Epic Fight living patches from attaching to Forge `PartEntity` children that share a parent mob's entity type. Multipart parents are excluded conservatively on Forge and NeoForge, avoiding unsafe construction and unsupported animations.
+- **Structural multipart safety:** reject mobs with custom `isMultipartEntity` or `getParts` implementations before invoking potentially uninitialized subclass methods, avoiding false negatives during construction. This intentionally favors safety over broad compatibility.
+- **Automatic compatibility OFF:** a local `automatic_compatibility = false` now stops automatic candidate registration, renderer analysis, and EFPI patch creation on both loaders. A remote server cannot override a client's local OFF, and a remote OFF prevents EFPI patch creation on a connected client after settings arrive. Existing third-party Epic Fight patches are unaffected.
+- **Unified safety exclusions:** the existing `entities.entity_blacklist` in `server.toml` now also prevents client-side model inspection and automatic patch preparation before server policy synchronization. Local and remote blacklists are combined, so neither can override the other's restrictions. Both loaders use the same setting; no separate client blacklist is needed. Experimental builds using `client.toml`'s `local_entity_blacklist` should move entries to `server.toml`.
+- **Fail-closed attachment:** if a mod's multipart-state method fails during entity construction, automatic patch creation is safely skipped instead of propagating the exception.
+- **Fail-closed registration:** unexpected errors while registering an automatic target now reject that target without aborting the entire Epic Fight registry event.
+- **Regression coverage:** test ordinary living entities, multipart parents, non-living child parts, and failed initialization probes.
+
 ## 3.2.0
 
 - **Epic Fight 20.15.x compatibility (Forge 1.20.1):** expanded the supported range to 20.15.1–20.15.x alongside 20.14.17–20.14.x. Epic Fight 20.15.0 is excluded because it lacks an API required by EFPI.

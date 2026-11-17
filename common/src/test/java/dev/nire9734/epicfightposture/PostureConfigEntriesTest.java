@@ -33,6 +33,28 @@ class PostureConfigEntriesTest {
     }
 
     @Test
+    void unifiedBlacklistUsesFullEntityIdsAndRejectsWildcards() {
+        List<String> rejected = new ArrayList<>();
+        Set<String> ids = PostureConfigEntries.entityBlacklist(
+                List.of(" craft_of_the_wild:stone_talus ", "craft_of_the_wild:*", "missing space"),
+                PostureConfigEntriesTest::id, rejected::add);
+        assertEquals(Set.of("craft_of_the_wild:stone_talus"), ids);
+        assertEquals(List.of("craft_of_the_wild:*", "missing space"), rejected);
+    }
+
+    @Test
+    void serverAndLocalBlacklistsAreAdditiveDuringClientSync() {
+        Set<String> local = Set.of("craft_of_the_wild:stone_talus");
+        Set<String> server = Set.of("minecraft:creeper");
+        assertTrue(PostureConfigPolicy.isExcluded("craft_of_the_wild:stone_talus", local, server));
+        assertTrue(PostureConfigPolicy.isExcluded("minecraft:creeper", local, server));
+        assertFalse(PostureConfigPolicy.isExcluded("minecraft:zombie", local, server));
+        assertFalse(PostureConfigPolicy.isExcluded(null, local, server));
+        assertTrue(PostureConfigPolicy.isExcluded("craft_of_the_wild:stone_talus", local, Set.of()),
+                "Local safety must not disappear before server sync or after connecting to a permissive server");
+    }
+
+    @Test
     void zeroMultiplierIsValidAndLastDuplicateWins() {
         List<String> rejected = new ArrayList<>();
         Map<String, Float> overrides = PostureConfigEntries.entityMultipliers(

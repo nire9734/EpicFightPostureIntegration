@@ -1,5 +1,6 @@
 package dev.nire9734.epicfightposture.neoforge.client;
 import java.util.Set;
+import dev.nire9734.epicfightposture.neoforge.NeoForgeServerSettings;
 import dev.nire9734.epicfightposture.neoforge.discovery.NeoForgeEnvironmentFingerprint;
 import dev.nire9734.epicfightposture.neoforge.discovery.NeoForgeRendererScanReport;
 import dev.nire9734.epicfightposture.neoforge.discovery.NeoForgeRendererRescanRequest;
@@ -25,12 +26,14 @@ public final class NeoForgeRendererDiscoveryClient {
         lastScan = new Snapshot(inspected, vanilla, extended, spiders);
     }
     public static void requestServerRescanAfterReload() {
+        if (!NeoForgeServerSettings.isLocalAutomaticCompatibilityEnabled()) return;
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft.getConnection() != null && !minecraft.hasSingleplayerServer()) {
             PacketDistributor.sendToServer(new NeoForgeRendererRescanRequest());
         }
     }
     public static void replyToServer(java.util.UUID nonce) {
+        if (!NeoForgeServerSettings.isLocalAutomaticCompatibilityEnabled()) return;
         Snapshot s = lastScan;
         PacketDistributor.sendToServer(new NeoForgeRendererScanReport(
                 nonce, NeoForgeEnvironmentFingerprint.current(), s.inspected(),

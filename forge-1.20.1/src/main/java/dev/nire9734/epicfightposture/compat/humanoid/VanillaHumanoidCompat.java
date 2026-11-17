@@ -1,11 +1,14 @@
 package dev.nire9734.epicfightposture.compat.humanoid;
 
 import com.mojang.logging.LogUtils;
+import dev.nire9734.epicfightposture.AutomaticPatchSafety;
 import dev.nire9734.epicfightposture.EpicFightPostureIntegration;
 import dev.nire9734.epicfightposture.PostureServerConfig;
 import dev.nire9734.epicfightposture.compat.spider.LightweightSpiderPatch;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.eventbus.api.EventPriority;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
@@ -18,12 +21,15 @@ import yesman.epicfight.api.asset.AssetAccessor;
 import yesman.epicfight.api.forgeevent.EntityPatchRegistryEvent;
 import yesman.epicfight.api.model.Armature;
 import yesman.epicfight.gameasset.Armatures;
+import yesman.epicfight.world.capabilities.entitypatch.EntityPatch;
 import yesman.epicfight.world.capabilities.provider.EntityPatchProvider;
 
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
+import java.util.function.Supplier;
 
 /** Lightweight EF patch registration for automatically detected renderer-compatible entities. */
 @Mod.EventBusSubscriber(
@@ -37,6 +43,11 @@ public final class VanillaHumanoidCompat {
     private static final Map<ResourceLocation, CompatibilityKind> registeredByEfpi = new HashMap<>();
     private static final Map<ResourceLocation, AssetAccessor<? extends Armature>> runtimeArmatures = new HashMap<>();
     private static final Set<ResourceLocation> runtimeRejected = new HashSet<>();
+    private static final ClassValue<Boolean> STRUCTURAL_MULTIPART = new ClassValue<>() {
+        @Override protected Boolean computeValue(Class<?> type) {
+            return AutomaticPatchSafety.hasCustomMultipartContract(type, Entity.class);
+        }
+    };
 
     public enum CompatibilityKind {
         VANILLA_HUMANOID,
@@ -84,7 +95,8 @@ public final class VanillaHumanoidCompat {
         for (Map.Entry<ResourceLocation, CompatibilityKind> target : cachedDetected.entrySet()) {
             ResourceLocation entityId = target.getKey();
             CompatibilityKind kind = target.getValue();
-            if (PostureServerConfig.isBlacklisted(entityId)
+            if (isLocallyExcluded(entityId)
+                    || PostureServerConfig.isBlacklisted(entityId)
                     || !PostureServerConfig.isAutomaticCompatibilityAllowed(entityId)
                     || !compatibilityKindEnabled(kind)) {
                 continue;
@@ -130,10 +142,17 @@ public final class VanillaHumanoidCompat {
                 continue;
             }
 
-            registerIntoEvent(event, entityType, kind);
-            EpicFightPatchOwnership.recordEventRegistration(
-                    entityType, event.getTypeEntry().get(entityType));
-            registeredByEfpi.put(entityId, kind);
+            try {
+                registerIntoEvent(event, entityType, kind);
+                EpicFightPatchOwnership.recordEventRegistration(
+                        entityType, event.getTypeEntry().get(entityType));
+                registeredByEfpi.put(entityId, kind);
+            } catch (RuntimeException | LinkageError exception) {
+                // A broken third-party type must not abort Epic Fight's entire
+                // registration event and prevent the world from starting.
+                event.getTypeEntry().remove(entityType);
+                LOGGER.warn("EFPI skipped unsafe automatic patch registry target {}", entityId, exception);
+            }
         }
         externallyPatched = Set.copyOf(existingPatchIds);
     }
@@ -155,7 +174,7 @@ public final class VanillaHumanoidCompat {
 
     /** Returns whether server-authoritative settings permit this EFPI-owned lightweight patch. */
     public static synchronized boolean isCompatibilityEnabled(ResourceLocation id) {
-        if (id == null || runtimeRejected.contains(id)) {
+        if (id == null || runtimeRejected.contains(id) || isLocallyExcluded(id)) {
             return false;
         }
         CompatibilityKind kind = registeredByEfpi.get(id);
@@ -211,7 +230,8 @@ public final class VanillaHumanoidCompat {
         // Client discovery happens before a multiplayer server can synchronize its
         // policy. Prepare every safe renderer target now; synchronized settings
         // decide whether the lightweight patch is allowed to act after login.
-        if (id == null || externallyPatched.contains(id)) {
+        if (id == null || !PostureServerConfig.mayPrepareAutomaticCompatibility(id)
+                || isLocallyExcluded(id) || externallyPatched.contains(id)) {
             return false;
         }
 
@@ -296,7 +316,8 @@ public final class VanillaHumanoidCompat {
      * EFPI-owned provider; never replace an unknown or addon-owned one.
      */
     public static synchronized void recoverClientRegistrationsOnWorldJoin() {
-        if (FMLEnvironment.dist != Dist.CLIENT) {
+        if (FMLEnvironment.dist != Dist.CLIENT
+                || !PostureServerConfig.isLocalAutomaticCompatibilityEnabled()) {
             return;
         }
         for (Map.Entry<ResourceLocation, CompatibilityKind> entry : Map.copyOf(registeredByEfpi).entrySet()) {
@@ -330,7 +351,8 @@ public final class VanillaHumanoidCompat {
      * provider path. Newly spawned mobs with an intact provider are untouched.</p>
      */
     public static synchronized void recoverClientProviderBeforeEntityAttachment(EntityType<?> entityType) {
-        if (FMLEnvironment.dist != Dist.CLIENT || entityType == null) {
+        if (FMLEnvironment.dist != Dist.CLIENT || entityType == null
+                || !PostureServerConfig.isLocalAutomaticCompatibilityEnabled()) {
             return;
         }
         ResourceLocation id = EntityType.getKey(entityType);
@@ -451,11 +473,11 @@ public final class VanillaHumanoidCompat {
                         entityType,
                         armatureOverride != null ? armatureOverride : Armatures.BIPED
                 );
-                EntityPatchProvider.putCustomEntityPatch(entityType, ignored -> LightweightHumanoidPatch::new);
+                EntityPatchProvider.putCustomEntityPatch(entityType, guardedHumanoidFactory());
             }
             case VANILLA_SPIDER -> {
                 Armatures.registerEntityTypeArmature(entityType, Armatures.SPIDER);
-                EntityPatchProvider.putCustomEntityPatch(entityType, ignored -> LightweightSpiderPatch::new);
+                EntityPatchProvider.putCustomEntityPatch(entityType, guardedSpiderFactory());
             }
         }
     }
@@ -467,13 +489,43 @@ public final class VanillaHumanoidCompat {
         switch (kind) {
             case VANILLA_HUMANOID, EXTENDED_HUMANOID -> {
                 Armatures.registerEntityTypeArmature(entityType, Armatures.BIPED);
-                event.getTypeEntry().put(entityType, ignored -> LightweightHumanoidPatch::new);
+                event.getTypeEntry().put(entityType, guardedHumanoidFactory());
             }
             case VANILLA_SPIDER -> {
                 Armatures.registerEntityTypeArmature(entityType, Armatures.SPIDER);
-                event.getTypeEntry().put(entityType, ignored -> LightweightSpiderPatch::new);
+                event.getTypeEntry().put(entityType, guardedSpiderFactory());
             }
         }
+    }
+
+    /**
+     * Epic Fight selects a provider by EntityType, but Forge PartEntity instances
+     * carry the same type as their multipart parent. Never construct a living
+     * patch for one of those children (or for an unsupported multipart parent).
+     * Returning a null patch makes EntityPatchProvider.hasCapability() false.
+     */
+    private static Function<Entity, Supplier<EntityPatch<?>>> guardedHumanoidFactory() {
+        return entity -> !(entity instanceof LivingEntity)
+                || !PostureServerConfig.isAutomaticCompatibilityAllowed(EntityType.getKey(entity.getType()))
+                || PostureServerConfig.isExplicitlyBlacklisted(EntityType.getKey(entity.getType()))
+                ? () -> null : AutomaticPatchSafety.guardedSupplier(
+                true,
+                STRUCTURAL_MULTIPART.get(entity.getClass()), entity::isMultipartEntity,
+                LightweightHumanoidPatch::new);
+    }
+
+    private static Function<Entity, Supplier<EntityPatch<?>>> guardedSpiderFactory() {
+        return entity -> !(entity instanceof LivingEntity)
+                || !PostureServerConfig.isAutomaticCompatibilityAllowed(EntityType.getKey(entity.getType()))
+                || PostureServerConfig.isExplicitlyBlacklisted(EntityType.getKey(entity.getType()))
+                ? () -> null : AutomaticPatchSafety.guardedSupplier(
+                true,
+                STRUCTURAL_MULTIPART.get(entity.getClass()), entity::isMultipartEntity,
+                LightweightSpiderPatch::new);
+    }
+
+    private static boolean isLocallyExcluded(ResourceLocation id) {
+        return PostureServerConfig.isLocalSafetyExcluded(id);
     }
 
     private VanillaHumanoidCompat() {

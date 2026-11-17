@@ -2,7 +2,7 @@
 
 Epic Fight Posture Integration (EFPI) adds a server-authoritative Posture system to compatible Epic Fight mobs, with guard breaks and Combat Evolution executions.
 
-## Supported editions (3.2.0)
+## Supported editions (3.2.1)
 
 | | Forge | NeoForge |
 | --- | --- | --- |
@@ -11,7 +11,7 @@ Epic Fight Posture Integration (EFPI) adds a server-authoritative Posture system
 | Epic Fight | 20.14.17–20.14.x or 20.15.1–20.15.x | 21.17.3.1–21.17.x |
 | Combat Evolution | 2.2.8–2.3.x | 2.3.2–2.3.x |
 | Java for building | 17 | 21 |
-| File | `epicfight-posture-integration-forge-1.20.1-3.2.0.jar` | `epicfight-posture-integration-neoforge-1.21.1-3.2.0.jar` |
+| File | `epicfight-posture-integration-forge-1.20.1-3.2.1.jar` | `epicfight-posture-integration-neoforge-1.21.1-3.2.1.jar` |
 
 Install **only the JAR matching your Minecraft version and loader**. Install EFPI and its required mods on both client and server. GeckoLib and Lionfish API are optional compatibility libraries, not EFPI hard dependencies.
 
@@ -58,7 +58,16 @@ mod_denylist = []
 - Attack and parry multipliers are independent. Per-entity entries such as `["cataclysm:ignis=0.5"]` **replace** their corresponding global multiplier.
 - Regeneration starts after the last actual Posture reduction, including a parry. Guard-break recovery is separate.
 - An empty allowlist permits all mods; the denylist takes priority. These lists affect automatic compatibility, not existing Epic Fight patches.
+- **Automatic compatibility OFF:** setting `automatic_compatibility = false` stops this installation's EFPI automatic patch registration, renderer discovery and new patch construction. Existing Epic Fight/other addon patches remain untouched. A client's local OFF cannot be overridden by a remote server; an OP client with OFF cannot contribute automatic renderer discovery. When the server disables automatic compatibility, its policy also prevents the client from constructing EFPI patches after synchronization. Restart after turning this setting back ON to rebuild skipped registrations/renderers.
 - Client HUD visibility and execution sound volume are configured in `config/epicfight_posture_integration/client.toml` or the in-game config screen.
+- **Unified safety blacklist:** exclude problematic mob types from automatic patch preparation and EFPI Posture using `config/epicfight_posture_integration/server.toml`:
+
+  ```toml
+  [entities]
+  entity_blacklist = ["craft_of_the_wild:stone_talus"]
+  ```
+
+  The same setting works on Forge and NeoForge. On a client, the local copy is checked before server settings arrive; after connecting, **both** local exclusions and the server's exclusions remain in effect. On dedicated servers, set the blacklist in the server's file to enforce it for all players. Blacklisted entities are skipped during local renderer discovery and cannot be approved by that client's reports. Restart the game after removing an exclusion so previously skipped patches/renderers can be prepared again. If you used an experimental build with `client.toml`'s `local_entity_blacklist`, move those entries to `server.toml`; the old key is no longer read.
 
 **Upgrading from 3.0.2:** Back up custom settings and regenerate `server.toml` to use the new attack/parry keys. The removed `maximum_posture_multiplier` and old per-entity multipliers are not automatically migrated. See [CHANGELOG.md](CHANGELOG.md).
 
@@ -67,6 +76,8 @@ mod_denylist = []
 **Unified diagnostic report (3.2.0):** `forge-diagnostics.tsv` / `neoforge-diagnostics.tsv` is generated under `config/epicfight_posture_integration/cache/` and overwritten during each server session. It lists registered entity types (`NOT_OBSERVED` until evaluated), client or authenticated-OP renderer discovery, installed mod versions, and server-side posture eligibility and rejection reasons. When a patch is missing, `missing_patch_stage` and `missing_patch_clue` record the available renderer evidence; model incompatibility is distinguished from preparation or registration failures. These clues do not prove why the server patch was absent. The report also counts real guard-break successes/failures and CE execution-start, confirmation and timeout events. No mobs are spawned to test compatibility. CE refusals before its execution-start event cannot be diagnosed, and `SUPPORTED` does not guarantee an execution will succeed. On dedicated servers, collect the **server-side** report for posture outcomes; a client's local report only has client-observable information. Reports do not influence gameplay or trust decisions.
 
 Automatic support depends on the mob's model, animations and other mods. A Posture bar does not guarantee that every third-party execution animation will succeed. The separate `renderer-discovery.json` under `config/epicfight_posture_integration/cache/` is a server-side compatibility cache, not an additional diagnostic report. Test guard breaks, executions, equipment and model layers in game before releasing a new modpack.
+
+**Multipart entity safety (3.2.1):** automatically discovered patches are restricted to ordinary living entities. Forge `PartEntity` children can share a parent's entity type, so neither non-living parts nor multipart parents receive EFPI automatic patches. In addition to checking `isMultipartEntity()`, EFPI conservatively rejects classes that override the multipart-related `isMultipartEntity` or `getParts` contract, even if an incompletely constructed mob temporarily reports no parts. This may exclude custom mobs that override those methods without using multipart entities. The unified `entity_blacklist` is checked before client model inspection, during patch creation, and when deciding whether a previously registered patch can act.
 
 **Dedicated servers (3.2.0):** After the first server start or a change to installed mods, an operator (OP) must join once so EFPI can receive a trusted renderer-discovery report. EFPI then immediately registers approved compatibility for new spawns **and** patches compatible mobs already loaded in the world. **No server restart, chunk reload, or entity replacement is required.** An OP's client automatically requests a new scan after a resource-pack/renderer reload (e.g., F3+T) while connected to a dedicated server. Mobs whose Epic Fight patches belong to other mods are left untouched. Reports from multiple operators are checked for conflicting renderer observations; ambiguous mobs are skipped. Only the reporting OP receives a brief notification if compatibility changes or a problem occurs; details remain in the server log.
 

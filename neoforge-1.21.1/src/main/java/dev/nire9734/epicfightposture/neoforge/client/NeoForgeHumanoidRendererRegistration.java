@@ -11,6 +11,7 @@ import java.util.TreeMap;
 import net.minecraft.client.renderer.entity.EntityRenderer;
 import dev.nire9734.epicfightposture.client.ClientPostureStore;
 import dev.nire9734.epicfightposture.neoforge.mixin.NeoForgeEntityRenderDispatcherAccessor;
+import dev.nire9734.epicfightposture.neoforge.NeoForgeServerSettings;
 import dev.nire9734.epicfightposture.neoforge.compat.NeoForgeAutoCompatibility;
 import dev.nire9734.epicfightposture.neoforge.compat.NeoForgeHumanoidRenderGate;
 import dev.nire9734.epicfightposture.compat.humanoid.client.RuntimeMeshOwnership;
@@ -61,6 +62,12 @@ public final class NeoForgeHumanoidRendererRegistration {
         NeoForgeHumanoidRenderGate.startRendererReload();
         NeoForgeOptionalBackendBridge.onRendererReload();
         NeoForgeAutoCompatibility.beginClientRendererScan();
+
+        if (!NeoForgeServerSettings.isLocalAutomaticCompatibilityEnabled()) {
+            NeoForgeRendererDiscoveryClient.record(Set.of(), Set.of(), Set.of(), Set.of());
+            NeoForgeRendererCoverage.write(Map.of());
+            return;
+        }
 
         Map<EntityType<?>, EntityRenderer<?>> renderers =
                 ((NeoForgeEntityRenderDispatcherAccessor) (Object)

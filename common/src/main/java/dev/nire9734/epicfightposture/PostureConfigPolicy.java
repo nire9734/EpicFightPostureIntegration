@@ -17,5 +17,10 @@ public final class PostureConfigPolicy {
         return id != null && (blacklist.contains(id) || (efpiOwned && !automaticAllowed));
     }
 
+    /** Client safety opt-outs and server policy are additive, never overriding one another. */
+    public static <T> boolean isExcluded(T id, Set<T> localBlacklist, Set<T> serverBlacklist) {
+        return id != null && (localBlacklist.contains(id) || serverBlacklist.contains(id));
+    }
+
     private PostureConfigPolicy() {}
 }

@@ -2,6 +2,7 @@ package dev.nire9734.epicfightposture.compat.humanoid.client;
 
 import com.mojang.logging.LogUtils;
 import dev.nire9734.epicfightposture.EpicFightPostureIntegration;
+import dev.nire9734.epicfightposture.PostureServerConfig;
 import dev.nire9734.epicfightposture.compat.humanoid.VanillaHumanoidCompat;
 import dev.nire9734.epicfightposture.compat.humanoid.runtime.epicfight.HumanoidArmatureFactory;
 import dev.nire9734.epicfightposture.compat.humanoid.skeleton.HumanoidSkeletonDescriptor;
@@ -69,6 +70,10 @@ public final class HumanoidBackendRegistry {
 
             ResourceLocation entityId = EntityType.getKey(entityType);
             if (entityId == null) {
+                continue;
+            }
+            if (PostureServerConfig.isLocalSafetyExcluded(entityId)) {
+                REJECTIONS.put(entityId, "excluded:entity_blacklist");
                 continue;
             }
 
