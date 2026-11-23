@@ -65,6 +65,12 @@ CI (`.github/workflows/build-neoforge-port.yml`) runs on pull requests, on pushe
 - **Guard breaks** apply Epic Fight's `NEUTRALIZE` stun; only a confirmed break counts toward guard break resistance.
 - **States** are kept per entity in weak maps. A state that has fully regenerated and was never guard broken is dropped after one final sync.
 
+### Crash safety
+
+- Every special-state renderer runs through `SpecialRenderGuard`: a failure is logged once, the PoseStack is restored, and that entity type renders normally (`SpecialRenderFailures`) until renderers are rebuilt.
+- Event handlers and mixin hooks run through `HookGuard`, which logs each hook's first failure and skips it. Fatal JVM errors are never caught.
+- Wrap any new render path or hook the same way: Epic Fight and Minecraft call them without catching exceptions.
+
 ### Networking
 
 - **Protocol identifier:** `NetworkProtocol.VERSION` (currently `mod 3.3.0 or later`) is the channel version on both loaders. NeoForge prints it on its mismatch screen; Forge's screen shows mod versions instead. **Change it only when the wire format changes**, to the first release with the new format.

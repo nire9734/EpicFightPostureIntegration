@@ -1,5 +1,6 @@
 package dev.nire9734.epicfightposture.mixin;
 
+import dev.nire9734.epicfightposture.HookGuard;
 import dev.nire9734.epicfightposture.PostureManager;
 import dev.nire9734.epicfightposture.GuardPosturePolicy;
 import net.minecraft.world.entity.Entity;
@@ -42,7 +43,7 @@ public abstract class NormalGuardDetectionMixin {
 
         Entity attacker = GuardSkill.getOffender(event.getDamageSource());
         if (attacker instanceof LivingEntity mob) {
-            PostureManager.onGuarded(mob, event.getDamageSource());
+            HookGuard.run("normal guard", () -> PostureManager.onGuarded(mob, event.getDamageSource()));
         }
         return blockType;
     }

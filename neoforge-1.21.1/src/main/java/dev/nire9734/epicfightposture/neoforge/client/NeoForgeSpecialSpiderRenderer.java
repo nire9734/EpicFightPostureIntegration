@@ -1,4 +1,6 @@
 package dev.nire9734.epicfightposture.neoforge.client;
+
+import dev.nire9734.epicfightposture.client.SpecialRenderGuard;
 import com.mojang.blaze3d.vertex.PoseStack;
 import dev.nire9734.epicfightposture.neoforge.compat.NeoForgeLightweightSpiderPatch;
 import dev.nire9734.epicfightposture.neoforge.mixin.NeoForgeLivingRendererScaleInvoker;
@@ -21,7 +23,16 @@ public final class NeoForgeSpecialSpiderRenderer extends PatchedLivingEntityRend
     public NeoForgeSpecialSpiderRenderer(EntityRendererProvider.Context context, EntityType<?> type) {
         super(context, type);
     }
-    @Override public void render(LivingEntity entity, NeoForgeLightweightSpiderPatch<LivingEntity> patch,
+    @Override
+    public void render(LivingEntity entity, NeoForgeLightweightSpiderPatch<LivingEntity> patch,
+                       LivingEntityRenderer<LivingEntity, SpiderModel<LivingEntity>> renderer,
+                       MultiBufferSource buffer, PoseStack pose, int light, float ticks) {
+        SpecialRenderGuard.render(entity, pose,
+                () -> this.renderUnguarded(entity, patch, renderer, buffer, pose, light, ticks));
+    }
+
+    /** The original render body; only called through {@link SpecialRenderGuard}. */
+    private void renderUnguarded(LivingEntity entity, NeoForgeLightweightSpiderPatch<LivingEntity> patch,
                        LivingEntityRenderer<LivingEntity, SpiderModel<LivingEntity>> renderer,
                        MultiBufferSource buffer, PoseStack pose, int light, float ticks) {
         source = renderer;

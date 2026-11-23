@@ -2,6 +2,7 @@ package dev.nire9734.epicfightposture.neoforge.network;
 
 import java.util.Map;
 import java.util.WeakHashMap;
+import dev.nire9734.epicfightposture.HookGuard;
 import dev.nire9734.epicfightposture.NeoForgePostureServerEvents;
 import dev.nire9734.epicfightposture.PostureTuning;
 import dev.nire9734.epicfightposture.client.ClientPostureStore;
@@ -29,7 +30,8 @@ public final class NeoForgePostureSync {
     public static synchronized void register() {
         if (registered) return;
         registered = true;
-        NeoForge.EVENT_BUS.addListener(NeoForgePostureSync::onStartTracking);
+        NeoForge.EVENT_BUS.addListener(PlayerEvent.StartTracking.class,
+                event -> HookGuard.run("start tracking", () -> onStartTracking(event)));
         NeoForge.EVENT_BUS.addListener(NeoForgePostureSync::onLeave);
     }
 

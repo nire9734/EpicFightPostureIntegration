@@ -43,6 +43,19 @@ public abstract class BridgeHealthBarMixin extends EntityUI {
 
     /** Only EFPI-owned bars use this setting. CE and ordinary Epic Fight bars
      * retain their original visibility and rendering behavior. */
+    @Unique
+    private static boolean efpi$hudFailureLogged;
+
+    /** The HUD must never crash rendering: log the first failure and skip the bar. */
+    @Unique
+    private static void efpi$hudFailed(Throwable failure) {
+        if (!efpi$hudFailureLogged) {
+            efpi$hudFailureLogged = true;
+            org.slf4j.LoggerFactory.getLogger("Epic Fight Posture Integration")
+                    .error("The posture HUD failed to render and was skipped", failure);
+        }
+    }
+
     @Inject(method = "shouldDraw", at = @At("RETURN"), cancellable = true)
     private void efpi$applyOwnHudVisibility(
             LivingEntity entity,
@@ -51,42 +64,46 @@ public abstract class BridgeHealthBarMixin extends EntityUI {
             float partialTicks,
             CallbackInfoReturnable<Boolean> cir
     ) {
-        if (entity instanceof Player || entityPatch instanceof CEHumanoidPatch) {
-            return;
-        }
+        try {
+            if (entity instanceof Player || entityPatch instanceof CEHumanoidPatch) {
+                return;
+            }
 
-        ClientPostureStore.Entry posture = ClientPostureStore.get(entity.getId(), entity.getUUID());
-        if (posture == null || !efpi$canRenderPosture(entityPatch, playerPatch)) {
-            return;
-        }
+            ClientPostureStore.Entry posture = ClientPostureStore.get(entity.getId(), entity.getUUID());
+            if (posture == null || !efpi$canRenderPosture(entityPatch, playerPatch)) {
+                return;
+            }
 
-        boolean postureDamaged = posture.current < posture.max || posture.broken;
-        if (!PostureHudPolicy.shouldDisplay(PostureClientConfig.mobHealthBarVisibility(),
-                entity.getHealth(), entity.getMaxHealth(), entity.hurtTime, postureDamaged)) {
-            cir.setReturnValue(false);
-            return;
-        }
+            boolean postureDamaged = posture.current < posture.max || posture.broken;
+            if (!PostureHudPolicy.shouldDisplay(PostureClientConfig.mobHealthBarVisibility(),
+                    entity.getHealth(), entity.getMaxHealth(), entity.hurtTime, postureDamaged)) {
+                cir.setReturnValue(false);
+                return;
+            }
 
-        if (entity.isRemoved() || playerPatch == null) {
-            cir.setReturnValue(false);
-            return;
-        }
+            if (entity.isRemoved() || playerPatch == null) {
+                cir.setReturnValue(false);
+                return;
+            }
 
-        Player localPlayer = (Player) playerPatch.getOriginal();
-        if (entity.isInvisibleTo(localPlayer) || entity == localPlayer.getVehicle()) {
-            cir.setReturnValue(false);
-            return;
-        }
+            Player localPlayer = (Player) playerPatch.getOriginal();
+            if (entity.isInvisibleTo(localPlayer) || entity == localPlayer.getVehicle()) {
+                cir.setReturnValue(false);
+                return;
+            }
 
-        if (Minecraft.getInstance().getCameraEntity() == null
-                || entity.distanceToSqr(Minecraft.getInstance().getCameraEntity()) >= 400.0D) {
-            cir.setReturnValue(false);
-            return;
-        }
+            if (Minecraft.getInstance().getCameraEntity() == null
+                    || entity.distanceToSqr(Minecraft.getInstance().getCameraEntity()) >= 400.0D) {
+                cir.setReturnValue(false);
+                return;
+            }
 
-        // EFPI draws its own bar (also for bosses), independently of Epic
-        // Fight's HURT/TARGET/NONE options. All other entities use native EF.
-        cir.setReturnValue(true);
+            // EFPI draws its own bar (also for bosses), independently of Epic
+            // Fight's HURT/TARGET/NONE options. All other entities use native EF.
+            cir.setReturnValue(true);
+        } catch (RuntimeException | LinkageError failure) {
+            efpi$hudFailed(failure);
+        }
     }
 
     @Inject(method = "draw", at = @At("HEAD"), cancellable = true)
@@ -99,41 +116,45 @@ public abstract class BridgeHealthBarMixin extends EntityUI {
             float partialTicks,
             CallbackInfo ci
     ) {
-        // Combat Evolution owns its own CEHumanoidPatch HUD; do not replace it.
-        if (entityPatch instanceof CEHumanoidPatch) {
-            return;
+        try {
+            // Combat Evolution owns its own CEHumanoidPatch HUD; do not replace it.
+            if (entityPatch instanceof CEHumanoidPatch) {
+                return;
+            }
+
+            int entityId = RuntimeAccess.entityId(entity);
+            UUID uuid = RuntimeAccess.entityUuid(entity);
+            ClientPostureStore.Entry posture = ClientPostureStore.get(entityId, uuid);
+            if (posture == null || !efpi$canRenderPosture(entityPatch, playerPatch)) {
+                // Preserve Epic Fight's normal health bar for targets without
+                // a currently valid neutralize/execution contract.
+                return;
+            }
+
+            ci.cancel();
+
+            Matrix4f matrix = this.getModelViewMatrixAlignedToCamera(
+                    poseStack,
+                    entity,
+                    0.0F,
+                    RuntimeAccess.bbHeight(entity) + 0.25F,
+                    0.0F,
+                    true,
+                    partialTicks
+            );
+
+            efpb$drawEffects(entity, playerPatch, matrix, buffer);
+
+            float maxHealth = Math.max(RuntimeAccess.maxHealth(entity), 1.0E-4F);
+            PostureHudGeometry.Layout hud = PostureHudGeometry.layout(
+                    RuntimeAccess.health(entity) / maxHealth, posture.percent(), posture.broken);
+            efpb$drawQuad(matrix, buffer, hud.healthBackground());
+            efpb$drawQuad(matrix, buffer, hud.healthFill());
+            efpb$drawQuad(matrix, buffer, hud.postureBackground());
+            efpb$drawQuad(matrix, buffer, hud.postureFill());
+        } catch (RuntimeException | LinkageError failure) {
+            efpi$hudFailed(failure);
         }
-
-        int entityId = RuntimeAccess.entityId(entity);
-        UUID uuid = RuntimeAccess.entityUuid(entity);
-        ClientPostureStore.Entry posture = ClientPostureStore.get(entityId, uuid);
-        if (posture == null || !efpi$canRenderPosture(entityPatch, playerPatch)) {
-            // Preserve Epic Fight's normal health bar for targets without
-            // a currently valid neutralize/execution contract.
-            return;
-        }
-
-        ci.cancel();
-
-        Matrix4f matrix = this.getModelViewMatrixAlignedToCamera(
-                poseStack,
-                entity,
-                0.0F,
-                RuntimeAccess.bbHeight(entity) + 0.25F,
-                0.0F,
-                true,
-                partialTicks
-        );
-
-        efpb$drawEffects(entity, playerPatch, matrix, buffer);
-
-        float maxHealth = Math.max(RuntimeAccess.maxHealth(entity), 1.0E-4F);
-        PostureHudGeometry.Layout hud = PostureHudGeometry.layout(
-                RuntimeAccess.health(entity) / maxHealth, posture.percent(), posture.broken);
-        efpb$drawQuad(matrix, buffer, hud.healthBackground());
-        efpb$drawQuad(matrix, buffer, hud.healthFill());
-        efpb$drawQuad(matrix, buffer, hud.postureBackground());
-        efpb$drawQuad(matrix, buffer, hud.postureFill());
     }
 
     @Unique

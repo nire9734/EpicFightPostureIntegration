@@ -20,18 +20,22 @@ public final class CommonEvents {
     // Without receiveCanceled, events canceled earlier never reach this handler.
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public static void onLivingDamage(LivingDamageEvent event) {
-        LivingEntity target = event.getEntity();
-        Entity offender = GuardSkill.getOffender(event.getSource());
-        boolean playerHit = offender instanceof Player && target != offender;
-        PostureManager.observeDamageEvent(target, event.getAmount(), event.getSource(), playerHit);
+        HookGuard.run("damage", () -> {
+            LivingEntity target = event.getEntity();
+            Entity offender = GuardSkill.getOffender(event.getSource());
+            boolean playerHit = offender instanceof Player && target != offender;
+            PostureManager.observeDamageEvent(target, event.getAmount(), event.getSource(), playerHit);
+        });
     }
 
     @SubscribeEvent
     public static void onLivingTick(LivingEvent.LivingTickEvent event) {
-        LivingEntity entity = event.getEntity();
-        if (PostureManager.tick(entity)) {
-            PostureSyncEvents.syncPeriodic(entity);
-        }
+        HookGuard.run("tick", () -> {
+            LivingEntity entity = event.getEntity();
+            if (PostureManager.tick(entity)) {
+                PostureSyncEvents.syncPeriodic(entity);
+            }
+        });
     }
 
     @SubscribeEvent
@@ -39,10 +43,12 @@ public final class CommonEvents {
         if (event.isCanceled()) {
             return;
         }
-        Object original = event.getTarget().getOriginal();
-        if (original instanceof LivingEntity target) {
-            PostureManager.onExecutionStart(target, event.getTarget());
-        }
+        HookGuard.run("execution start", () -> {
+            Object original = event.getTarget().getOriginal();
+            if (original instanceof LivingEntity target) {
+                PostureManager.onExecutionStart(target, event.getTarget());
+            }
+        });
     }
 
     private CommonEvents() {

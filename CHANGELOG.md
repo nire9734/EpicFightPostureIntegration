@@ -20,6 +20,10 @@ Each release lists **Added**, **Changed**, **Fixed** and **Removed** items. A **
 - Forge and NeoForge share the Posture math, constants and network fields. Default balance is unchanged.
 
 ### Fixed
+- A failure while drawing a guard broken mob (for example a GeckoLib model or a third-party render layer error) no longer crashes the game. That mob type falls back to normal rendering until resources are reloaded, and the error is logged once.
+- An error inside a third-party render layer can no longer leave the render matrix stack unbalanced ("Pose stack not empty" crash).
+- Errors in the Posture HUD or in server-side Posture hooks (damage, tick, parry, guard, execution start) are logged once and skipped instead of crashing.
+- NeoForge now declares the supported GeckoLib range (4.5 to below 5); an incompatible GeckoLib is refused at startup instead of crashing during rendering.
 - Operators on modpacks with many entity types could be disconnected by an oversized renderer report; reports are now split into chunks.
 - NeoForge: players who start watching a mob during an execution now receive its Posture state.
 - A reversed parry range no longer gives weak mobs less parry damage.

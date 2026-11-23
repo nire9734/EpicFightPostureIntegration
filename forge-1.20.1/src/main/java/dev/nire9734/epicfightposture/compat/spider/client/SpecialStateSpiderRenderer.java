@@ -1,5 +1,6 @@
 package dev.nire9734.epicfightposture.compat.spider.client;
 
+import dev.nire9734.epicfightposture.client.SpecialRenderGuard;
 import com.mojang.blaze3d.vertex.PoseStack;
 import dev.nire9734.epicfightposture.compat.spider.LightweightSpiderPatch;
 import dev.nire9734.epicfightposture.mixin.client.LivingEntityRendererScaleInvoker;
@@ -34,6 +35,19 @@ public final class SpecialStateSpiderRenderer extends PatchedLivingEntityRendere
 
     @Override
     public void render(
+            LivingEntity entity,
+            LightweightSpiderPatch entitypatch,
+            LivingEntityRenderer<LivingEntity, SpiderModel<LivingEntity>> renderer,
+            MultiBufferSource buffer,
+            PoseStack poseStack,
+            int packedLight,
+            float partialTicks) {
+        SpecialRenderGuard.render(entity, poseStack,
+                () -> this.renderUnguarded(entity, entitypatch, renderer, buffer, poseStack, packedLight, partialTicks));
+    }
+
+    /** The original render body; only called through {@link SpecialRenderGuard}. */
+    private void renderUnguarded(
             LivingEntity entity,
             LightweightSpiderPatch entitypatch,
             LivingEntityRenderer<LivingEntity, SpiderModel<LivingEntity>> renderer,

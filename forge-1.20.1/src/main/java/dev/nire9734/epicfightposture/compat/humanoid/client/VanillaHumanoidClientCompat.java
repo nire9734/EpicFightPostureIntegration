@@ -3,6 +3,7 @@ package dev.nire9734.epicfightposture.compat.humanoid.client;
 import com.mojang.logging.LogUtils;
 import dev.nire9734.epicfightposture.EpicFightPostureIntegration;
 import dev.nire9734.epicfightposture.PostureServerConfig;
+import dev.nire9734.epicfightposture.SpecialRenderFailures;
 import dev.nire9734.epicfightposture.client.ClientPostureStore;
 import dev.nire9734.epicfightposture.compat.humanoid.HumanoidDiscoveryClientBridge;
 import dev.nire9734.epicfightposture.compat.humanoid.HumanoidRenderState;
@@ -56,6 +57,8 @@ public final class VanillaHumanoidClientCompat {
             return;
         }
 
+        // Rebuilt renderers get a fresh chance after an earlier render failure.
+        SpecialRenderFailures.clear();
         HumanoidBackendRegistry.register(ModelPartHumanoidClientCompat.INSTANCE);
         if (ModList.get().isLoaded("geckolib")) {
             // The renderers (and their baked models) may have changed after F3+T.

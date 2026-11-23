@@ -1,5 +1,6 @@
 package dev.nire9734.epicfightposture.neoforge.client;
 
+import dev.nire9734.epicfightposture.client.SpecialRenderGuard;
 import com.mojang.blaze3d.vertex.PoseStack;
 import dev.nire9734.epicfightposture.neoforge.compat.NeoForgeLightweightHumanoidPatch;
 import dev.nire9734.epicfightposture.neoforge.mixin.NeoForgeLivingRendererScaleInvoker;
@@ -61,6 +62,14 @@ public final class NeoForgeSpecialHumanoidRenderer extends PatchedLivingEntityRe
 
     @Override
     public void render(LivingEntity entity, NeoForgeLightweightHumanoidPatch<LivingEntity> entitypatch,
+                       LivingEntityRenderer<LivingEntity, HumanoidModel<LivingEntity>> source,
+                       MultiBufferSource buffer, PoseStack stack, int packedLight, float partialTicks) {
+        SpecialRenderGuard.render(entity, stack,
+                () -> this.renderUnguarded(entity, entitypatch, source, buffer, stack, packedLight, partialTicks));
+    }
+
+    /** The original render body; only called through {@link SpecialRenderGuard}. */
+    private void renderUnguarded(LivingEntity entity, NeoForgeLightweightHumanoidPatch<LivingEntity> entitypatch,
                        LivingEntityRenderer<LivingEntity, HumanoidModel<LivingEntity>> source,
                        MultiBufferSource buffer, PoseStack stack, int packedLight, float partialTicks) {
         activeSourceRenderer = source;

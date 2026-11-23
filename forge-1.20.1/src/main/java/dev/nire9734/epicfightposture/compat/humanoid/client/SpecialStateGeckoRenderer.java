@@ -1,5 +1,6 @@
 package dev.nire9734.epicfightposture.compat.humanoid.client;
 
+import dev.nire9734.epicfightposture.client.SpecialRenderGuard;
 import com.mojang.blaze3d.vertex.PoseStack;
 import dev.nire9734.epicfightposture.EpicFightPostureIntegration;
 import dev.nire9734.epicfightposture.compat.humanoid.LightweightHumanoidPatch;
@@ -72,6 +73,19 @@ public final class SpecialStateGeckoRenderer extends PatchedEntityRenderer<
 
     @Override
     public void render(
+            LivingEntity entity,
+            LivingEntityPatch<LivingEntity> entitypatch,
+            EntityRenderer<LivingEntity> renderer,
+            MultiBufferSource buffer,
+            PoseStack poseStack,
+            int packedLight,
+            float partialTicks) {
+        SpecialRenderGuard.render(entity, poseStack,
+                () -> this.renderUnguarded(entity, entitypatch, renderer, buffer, poseStack, packedLight, partialTicks));
+    }
+
+    /** The original render body; only called through {@link SpecialRenderGuard}. */
+    private void renderUnguarded(
             LivingEntity entity,
             LivingEntityPatch<LivingEntity> entitypatch,
             EntityRenderer<LivingEntity> renderer,

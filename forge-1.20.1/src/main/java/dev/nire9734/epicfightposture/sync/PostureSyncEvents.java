@@ -1,6 +1,7 @@
 package dev.nire9734.epicfightposture.sync;
 
 import dev.nire9734.epicfightposture.EpicFightPostureIntegration;
+import dev.nire9734.epicfightposture.HookGuard;
 import dev.nire9734.epicfightposture.PostureManager;
 import dev.nire9734.epicfightposture.PostureTuning;
 import dev.nire9734.epicfightposture.network.BridgeNetwork;
@@ -82,10 +83,12 @@ public final class PostureSyncEvents {
         }
         // Initialize the client's HUD even before the first attack. The
         // pristine snapshot does not create a ticking server combat state.
-        Snapshot snapshot = snapshot(livingEntity, true);
-        if (snapshot != null) {
-            BridgeNetwork.sendPlayer(player, packet(livingEntity, snapshot, true));
-        }
+        HookGuard.run("start tracking", () -> {
+            Snapshot snapshot = snapshot(livingEntity, true);
+            if (snapshot != null) {
+                BridgeNetwork.sendPlayer(player, packet(livingEntity, snapshot, true));
+            }
+        });
     }
 
     @SubscribeEvent

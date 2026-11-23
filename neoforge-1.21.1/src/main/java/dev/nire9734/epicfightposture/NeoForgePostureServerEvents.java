@@ -49,9 +49,14 @@ public final class NeoForgePostureServerEvents {
     public static synchronized void register() {
         if (registered) return;
         registered = true;
-        NeoForge.EVENT_BUS.addListener(NeoForgePostureServerEvents::onDamage);
-        NeoForge.EVENT_BUS.addListener(NeoForgePostureServerEvents::onTick);
-        NeoForge.EVENT_BUS.addListener(NeoForgePostureServerEvents::onExecutionStart);
+        // Every server-side hook runs behind HookGuard: a failure skips Posture
+        // for that event instead of crashing the server tick.
+        NeoForge.EVENT_BUS.addListener(LivingDamageEvent.Post.class,
+                event -> HookGuard.run("damage", () -> onDamage(event)));
+        NeoForge.EVENT_BUS.addListener(EntityTickEvent.Post.class,
+                event -> HookGuard.run("tick", () -> onTick(event)));
+        NeoForge.EVENT_BUS.addListener(OnExecutionStartEvent.class,
+                event -> HookGuard.run("execution start", () -> onExecutionStart(event)));
         NeoForgePostureSync.register();
         NeoForgePostureCoverage.register();
     }

@@ -1,5 +1,6 @@
 package dev.nire9734.epicfightposture.neoforge.compat;
 
+import dev.nire9734.epicfightposture.SpecialRenderFailures;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -21,6 +22,7 @@ public final class NeoForgeHumanoidRenderGate {
 
     public static void startRendererReload() {
         VERIFIED.clear();
+        SpecialRenderFailures.clear();
     }
 
     public static void verified(EntityType<?> type) {
@@ -28,7 +30,8 @@ public final class NeoForgeHumanoidRenderGate {
     }
 
     public static boolean shouldOverride(LivingEntity mob) {
-        return mob != null && NeoForgeSpecialRenderPolicy.shouldOverride(
+        return mob != null && !SpecialRenderFailures.isDisabled(mob.getType())
+                && NeoForgeSpecialRenderPolicy.shouldOverride(
                 mob.level().isClientSide(),
                 NeoForgeAutoCompatibility.isEnabled(mob.getType()),
                 VERIFIED.contains(mob.getType()),

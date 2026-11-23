@@ -41,43 +41,60 @@ public abstract class NeoForgeHealthBarMixin {
     private static final ResourceLocation EFPI$HEALTH_BAR = ResourceLocation.fromNamespaceAndPath(
             "combat_evolution", "textures/gui/bossbar/ce_health_bar.png");
 
+    @Unique
+    private static boolean efpi$hudFailureLogged;
+
+    /** The HUD must never crash rendering: log the first failure and skip the bar. */
+    @Unique
+    private static void efpi$hudFailed(Throwable failure) {
+        if (!efpi$hudFailureLogged) {
+            efpi$hudFailureLogged = true;
+            org.slf4j.LoggerFactory.getLogger("Epic Fight Posture Integration")
+                    .error("The posture HUD failed to render and was skipped", failure);
+        }
+    }
+
     @Inject(method = "shouldDraw", at = @At("RETURN"), cancellable = true)
     private void efpi$applyOwnHudVisibility(LivingEntity entity, LivingEntityPatch<?> patch,
                                          LocalPlayerPatch playerPatch, float partialTicks,
                                          CallbackInfoReturnable<Boolean> result) {
-        // CE-patched mobs always keep CE/Epic Fight's own visibility behavior.
-        if (entity instanceof Player || patch instanceof CEHumanoidPatch) return;
+        try {
+            // CE-patched mobs always keep CE/Epic Fight's own visibility behavior.
+            if (entity instanceof Player || patch instanceof CEHumanoidPatch) return;
 
-        ClientPostureStore.Entry state = ClientPostureStore.get(entity.getId(), entity.getUUID());
-        if (state == null || !efpi$eligible(patch, playerPatch)) return;
+            ClientPostureStore.Entry state = ClientPostureStore.get(entity.getId(), entity.getUUID());
+            if (state == null || !efpi$eligible(patch, playerPatch)) return;
 
-        boolean postureDamaged = state.current < state.max || state.broken;
-        if (!PostureHudPolicy.shouldDisplay(NeoForgePostureClientConfig.mobHealthBarVisibility(),
-                entity.getHealth(), entity.getMaxHealth(), entity.hurtTime, postureDamaged)) {
-            result.setReturnValue(false);
-            return;
+            boolean postureDamaged = state.current < state.max || state.broken;
+            if (!PostureHudPolicy.shouldDisplay(NeoForgePostureClientConfig.mobHealthBarVisibility(),
+                    entity.getHealth(), entity.getMaxHealth(), entity.hurtTime, postureDamaged)) {
+                result.setReturnValue(false);
+                return;
+            }
+
+            if (entity.isRemoved() || playerPatch == null) {
+                result.setReturnValue(false);
+                return;
+            }
+
+            Player player = playerPatch.getOriginal();
+            if (entity.isInvisibleTo(player) || entity == player.getVehicle()) {
+                result.setReturnValue(false);
+                return;
+            }
+            Minecraft minecraft = Minecraft.getInstance();
+            if (minecraft.getCameraEntity() == null
+                    || entity.distanceToSqr(minecraft.getCameraEntity()) >= 400.0D) {
+                result.setReturnValue(false);
+                return;
+            }
+
+            // EFPI draws its own bar (also for bosses), independently of Epic
+            // Fight's HURT/TARGET/NONE options. All other entities use native EF.
+            result.setReturnValue(true);
+        } catch (RuntimeException | LinkageError failure) {
+            efpi$hudFailed(failure);
         }
-
-        if (entity.isRemoved() || playerPatch == null) {
-            result.setReturnValue(false);
-            return;
-        }
-
-        Player player = playerPatch.getOriginal();
-        if (entity.isInvisibleTo(player) || entity == player.getVehicle()) {
-            result.setReturnValue(false);
-            return;
-        }
-        Minecraft minecraft = Minecraft.getInstance();
-        if (minecraft.getCameraEntity() == null
-                || entity.distanceToSqr(minecraft.getCameraEntity()) >= 400.0D) {
-            result.setReturnValue(false);
-            return;
-        }
-
-        // EFPI draws its own bar (also for bosses), independently of Epic
-        // Fight's HURT/TARGET/NONE options. All other entities use native EF.
-        result.setReturnValue(true);
     }
 
     @Inject(method = "draw", at = @At("HEAD"), cancellable = true)
@@ -85,28 +102,32 @@ public abstract class NeoForgeHealthBarMixin {
                                           LocalPlayerPatch playerPatch, PoseStack poseStack,
                                           MultiBufferSource buffers, float partialTicks,
                                           CallbackInfo ci) {
-        if (!efpi$eligible(patch, playerPatch)) return;
-        ClientPostureStore.Entry posture = ClientPostureStore.get(entity.getId(), entity.getUUID());
-        if (posture == null) return;
-
-        // For bosses, Epic Fight's shouldDraw() doesn't create its health
-        // tracker, so its native draw() cannot be called after our override.
-        ci.cancel();
-        poseStack.pushPose();
         try {
-            EntityUI.setupPoseStack(poseStack, entity,
-                    0.0F, entity.getBbHeight() + 0.25F, 0.0F, true, partialTicks);
-            efpi$drawEffects(entity, playerPatch, poseStack, buffers);
+            if (!efpi$eligible(patch, playerPatch)) return;
+            ClientPostureStore.Entry posture = ClientPostureStore.get(entity.getId(), entity.getUUID());
+            if (posture == null) return;
 
-            PostureHudGeometry.Layout hud = PostureHudGeometry.layout(
-                    entity.getHealth() / Math.max(entity.getMaxHealth(), 1.0E-4F),
-                    posture.percent(), posture.broken);
-            efpi$drawQuad(poseStack, buffers, hud.healthBackground());
-            efpi$drawQuad(poseStack, buffers, hud.healthFill());
-            efpi$drawQuad(poseStack, buffers, hud.postureBackground());
-            efpi$drawQuad(poseStack, buffers, hud.postureFill());
-        } finally {
-            poseStack.popPose();
+            // For bosses, Epic Fight's shouldDraw() doesn't create its health
+            // tracker, so its native draw() cannot be called after our override.
+            ci.cancel();
+            poseStack.pushPose();
+            try {
+                EntityUI.setupPoseStack(poseStack, entity,
+                        0.0F, entity.getBbHeight() + 0.25F, 0.0F, true, partialTicks);
+                efpi$drawEffects(entity, playerPatch, poseStack, buffers);
+
+                PostureHudGeometry.Layout hud = PostureHudGeometry.layout(
+                        entity.getHealth() / Math.max(entity.getMaxHealth(), 1.0E-4F),
+                        posture.percent(), posture.broken);
+                efpi$drawQuad(poseStack, buffers, hud.healthBackground());
+                efpi$drawQuad(poseStack, buffers, hud.healthFill());
+                efpi$drawQuad(poseStack, buffers, hud.postureBackground());
+                efpi$drawQuad(poseStack, buffers, hud.postureFill());
+            } finally {
+                poseStack.popPose();
+            }
+        } catch (RuntimeException | LinkageError failure) {
+            efpi$hudFailed(failure);
         }
     }
 

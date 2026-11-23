@@ -1,5 +1,6 @@
 package dev.nire9734.epicfightposture.mixin;
 
+import dev.nire9734.epicfightposture.HookGuard;
 import dev.nire9734.epicfightposture.PostureManager;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
@@ -34,6 +35,6 @@ public abstract class ParryDetectionMixin {
         }
 
         this.efpi$parryHandled = true;
-        PostureManager.onParried(livingEntity, event.getDamageSource());
+        HookGuard.run("parry", () -> PostureManager.onParried(livingEntity, event.getDamageSource()));
     }
 }

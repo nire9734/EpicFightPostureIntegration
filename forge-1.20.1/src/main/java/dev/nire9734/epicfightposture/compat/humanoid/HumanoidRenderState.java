@@ -1,5 +1,7 @@
 package dev.nire9734.epicfightposture.compat.humanoid;
 
+import dev.nire9734.epicfightposture.SpecialRenderFailures;
+
 import net.minecraft.world.entity.LivingEntity;
 
 import java.util.UUID;
@@ -12,6 +14,7 @@ public final class HumanoidRenderState {
     public static boolean shouldOverride(LivingEntity entity) {
         return entity != null
                 && entity.level().isClientSide()
+                && !SpecialRenderFailures.isDisabled(entity.getType())
                 && clientResolver.test(entity.getId(), entity.getUUID());
     }
 

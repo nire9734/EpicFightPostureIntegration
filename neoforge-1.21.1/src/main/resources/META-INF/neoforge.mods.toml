@@ -43,3 +43,13 @@ type="required"
 versionRange="[2.3.2,2.4)"
 ordering="AFTER"
 side="BOTH"
+
+# Optional. GeckoLib compatibility relies on GeckoLib 4.x internals (armor
+# layer and armor renderer methods); a GeckoLib outside this range is refused
+# at startup instead of failing when armor is first rendered.
+[[dependencies.${mod_id}]]
+modId="geckolib"
+type="optional"
+versionRange="[4.5,5)"
+ordering="AFTER"
+side="BOTH"

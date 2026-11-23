@@ -1,5 +1,6 @@
 package dev.nire9734.epicfightposture.neoforge.mixin;
 
+import dev.nire9734.epicfightposture.HookGuard;
 import dev.nire9734.epicfightposture.NeoForgePostureServerEvents;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
@@ -26,6 +27,6 @@ public abstract class ParryDetectionMixin {
         Entity attacker = GuardSkill.getOffender(event.getDamageSource());
         if (!(attacker instanceof LivingEntity living)) return;
         this.efpi$parryHandled = true;
-        NeoForgePostureServerEvents.onParried(living, event.getDamageSource());
+        HookGuard.run("parry", () -> NeoForgePostureServerEvents.onParried(living, event.getDamageSource()));
     }
 }
