@@ -11,8 +11,8 @@ import net.minecraftforge.network.PacketDistributor;
 import net.minecraftforge.network.simple.SimpleChannel;
 
 public final class BridgeNetwork {
-    // Names the first mod version speaking this protocol; Forge's mismatch
-    // screen shows the installed mod versions on both sides.
+    // Shared protocol identifier ("mod 3.3.0 or later"); Forge's mismatch
+    // screen shows the installed mod versions on both sides instead.
     private static final String VERSION = NetworkProtocol.VERSION;
     private static SimpleChannel channel;
     private static boolean initialized;

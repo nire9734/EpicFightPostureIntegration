@@ -21,8 +21,8 @@ import dev.nire9734.epicfightposture.neoforge.client.NeoForgeRendererDiscoveryCl
  */
 public final class NeoForgePostureNetworking {
     public static void registerPayloads(RegisterPayloadHandlersEvent event) {
-        // Names the first mod version speaking this protocol, so NeoForge's
-        // mismatch screen shows e.g. "3.3.0+" rather than an opaque number.
+        // NeoForge prints this on its mismatch screen, e.g. "the server wants
+        // it to be version: mod 3.3.0 or later!", instead of an opaque number.
         PayloadRegistrar registrar = event.registrar(NetworkProtocol.VERSION);
         registrar.playToClient(
                 NeoForgeServerVersionPayload.TYPE, NeoForgeServerVersionPayload.STREAM_CODEC,
