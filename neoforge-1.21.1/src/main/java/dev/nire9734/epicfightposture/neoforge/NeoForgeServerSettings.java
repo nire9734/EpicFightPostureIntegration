@@ -21,10 +21,8 @@ import org.slf4j.Logger;
  */
 public final class NeoForgeServerSettings {
     private static final Logger LOGGER = LogUtils.getLogger();
+    /** Server policy synchronized to clients (protocol 4): compatibility switches and filters only. */
     public record Snapshot(
-            double globalMultiplier,
-            double minimumPosture,
-            boolean useArmorScaling,
             boolean vanillaHumanoid,
             boolean extendedHumanoid,
             boolean vanillaSpider,
@@ -32,8 +30,6 @@ public final class NeoForgeServerSettings {
             Set<String> modAllowlist,
             Set<String> modDenylist) {
         public Snapshot {
-            if (!Double.isFinite(globalMultiplier) || globalMultiplier <= 0.0D) globalMultiplier = 1.0D;
-            if (!Double.isFinite(minimumPosture) || minimumPosture <= 0.0D) minimumPosture = 1.0D;
             entityBlacklist = entityBlacklist == null ? Set.of() : Set.copyOf(entityBlacklist);
             modAllowlist = modAllowlist == null ? Set.of() : Set.copyOf(modAllowlist);
             modDenylist = modDenylist == null ? Set.of() : Set.copyOf(modDenylist);
@@ -57,7 +53,7 @@ public final class NeoForgeServerSettings {
                                  Map<ResourceLocation, Float> parryDamageMultipliers) {}
 
     private static final Snapshot CLIENT_FAIL_CLOSED = new Snapshot(
-            1.0D, 1.0D, true, false, false, false, Set.of(), Set.of(), Set.of());
+            false, false, false, Set.of(), Set.of(), Set.of());
     private static volatile LocalSettings local;
     private static volatile boolean localConfigReady;
     private static volatile Snapshot remote;
@@ -107,8 +103,7 @@ public final class NeoForgeServerSettings {
                 if (result == null) {
                     boolean automatic = NeoForgePostureConfig.AUTOMATIC_COMPATIBILITY.get();
                     Snapshot snapshot = new Snapshot(
-                            1.0D, // Legacy network field; maximum Posture is fixed at multiplier 1.0.
-                            1.0D, true, automatic, automatic, automatic,
+                            automatic, automatic, automatic,
                             PostureConfigEntries.entityBlacklist(NeoForgePostureConfig.ENTITY_BLACKLIST.get(),
                                     ResourceLocation::tryParse,
                                     raw -> LOGGER.warn("Ignoring invalid entity ID '{}' in entities.entity_blacklist", raw)),

@@ -7,6 +7,7 @@ import dev.nire9734.epicfightposture.compat.humanoid.RendererDiscoverySessions;
 import dev.nire9734.epicfightposture.compat.humanoid.RendererDiscoveryReportProcessor;
 import dev.nire9734.epicfightposture.compat.humanoid.RendererDiscoveryShared;
 import dev.nire9734.epicfightposture.compat.humanoid.RendererDiscoveryStore;
+import dev.nire9734.epicfightposture.compat.humanoid.RendererDiscoveryUpload;
 import dev.nire9734.epicfightposture.compat.humanoid.RendererDiscoveryRuntime;
 import dev.nire9734.epicfightposture.neoforge.compat.NeoForgeAutoCompatibility;
 import dev.nire9734.epicfightposture.neoforge.compat.NeoForgeExistingPatchRefresh;
@@ -33,6 +34,8 @@ public final class NeoForgeRendererDiscoveryServer {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final int REQUIRED_PERMISSIONS = 2;
     private static final RendererDiscoverySessions SESSIONS = new RendererDiscoverySessions();
+    private static final RendererDiscoveryUpload.Assembler<ResourceLocation> UPLOADS =
+            new RendererDiscoveryUpload.Assembler<>();
     private static volatile Set<ResourceLocation> active = Set.of();
     private static volatile Set<ResourceLocation> extended = Set.of();
     private static volatile Set<ResourceLocation> spiders = Set.of();
@@ -78,6 +81,7 @@ public final class NeoForgeRendererDiscoveryServer {
     private static synchronized void onLogout(PlayerEvent.PlayerLoggedOutEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
             SESSIONS.clear(player.getUUID());
+            UPLOADS.clear(player.getUUID());
         }
     }
 
@@ -100,17 +104,32 @@ public final class NeoForgeRendererDiscoveryServer {
         PacketDistributor.sendToPlayer(player, new NeoForgeRendererScanRequest(nonce));
     }
 
-    public static synchronized void acceptReport(ServerPlayer player, NeoForgeRendererScanReport report) {
+    /** Buffers one chunk; the report is processed once every chunk for the nonce has arrived. */
+    public static synchronized void acceptReport(ServerPlayer player, NeoForgeRendererScanReport packet) {
         if (FMLEnvironment.dist != Dist.DEDICATED_SERVER || player == null
                 || !player.hasPermissions(REQUIRED_PERMISSIONS)) return;
-        if (!SESSIONS.consume(player.getUUID(), report.nonce())) {
+        // Only a nonce this server issued may buffer data.
+        if (!SESSIONS.isPending(player.getUUID(), packet.nonce())) {
             LOGGER.warn("EFPI ignored unexpected or expired renderer discovery from {}",
                     player.getGameProfile().getName());
             return;
         }
+        RendererDiscoveryUpload.Chunk<ResourceLocation> chunk = packet.chunk();
+        RendererDiscoveryUpload.Result<ResourceLocation> upload = UPLOADS.accept(
+                player.getUUID(), packet.nonce(), packet.fingerprint(), chunk.index(), chunk.count(),
+                chunk.inspected(), chunk.vanillaHumanoid(), chunk.extendedHumanoid(), chunk.vanillaSpider());
+        if (upload.status() == RendererDiscoveryUpload.Status.INCOMPLETE) return;
+        SESSIONS.consume(player.getUUID(), packet.nonce());
+        if (upload.status() == RendererDiscoveryUpload.Status.REJECTED) {
+            LOGGER.warn("EFPI rejected renderer discovery from {}: {}",
+                    player.getGameProfile().getName(), upload.rejection());
+            player.sendSystemMessage(Component.literal(RendererDiscoveryShared.reportErrorNotice()));
+            return;
+        }
+        RendererDiscoveryUpload.Report<ResourceLocation> report = upload.report();
         RendererDiscoveryReportProcessor.Outcome outcome = RendererDiscoveryReportProcessor.process(
                 player.getUUID(), report.fingerprint(), report.inspected(),
-                report.vanillaHumanoids(), report.extendedHumanoids(), report.spiders(),
+                report.vanillaHumanoid(), report.extendedHumanoid(), report.vanillaSpider(),
                 id -> {
                     EntityType<?> type = BuiltInRegistries.ENTITY_TYPE.getOptional(id).orElse(null);
                     return type != null && type != EntityType.PLAYER;

@@ -27,13 +27,9 @@ public final class ServerSettingsSyncPacket {
 
     public static void encode(ServerSettingsSyncPacket packet, FriendlyByteBuf buf) {
         PostureServerConfig.Snapshot snapshot = packet.snapshot;
-        buf.writeDouble(snapshot.globalMultiplier());
-        buf.writeDouble(snapshot.minimumPosture());
-        buf.writeBoolean(snapshot.useArmorScaling());
         buf.writeBoolean(snapshot.enableVanillaHumanoidCompatibility());
         buf.writeBoolean(snapshot.enableExtendedHumanoidCompatibility());
         buf.writeBoolean(snapshot.enableVanillaSpiderCompatibility());
-        buf.writeEnum(snapshot.compatibilityFilterMode());
 
         Set<ResourceLocation> blacklist = snapshot.entityBlacklist();
         if (blacklist.size() > MAX_BLACKLIST_IDS) {
@@ -49,14 +45,9 @@ public final class ServerSettingsSyncPacket {
     }
 
     public static ServerSettingsSyncPacket decode(FriendlyByteBuf buf) {
-        double globalMultiplier = buf.readDouble();
-        double minimumPosture = buf.readDouble();
-        boolean useArmorScaling = buf.readBoolean();
         boolean vanillaHumanoid = buf.readBoolean();
         boolean extendedHumanoid = buf.readBoolean();
         boolean vanillaSpider = buf.readBoolean();
-        PostureServerConfig.CompatibilityFilterMode filterMode =
-                buf.readEnum(PostureServerConfig.CompatibilityFilterMode.class);
 
         int blacklistCount = buf.readVarInt();
         if (blacklistCount < 0 || blacklistCount > MAX_BLACKLIST_IDS) {
@@ -71,14 +62,10 @@ public final class ServerSettingsSyncPacket {
         Set<String> denylist = readModIds(buf, "denylist");
 
         return new ServerSettingsSyncPacket(new PostureServerConfig.Snapshot(
-                globalMultiplier,
-                minimumPosture,
-                useArmorScaling,
                 Set.copyOf(blacklist),
                 vanillaHumanoid,
                 extendedHumanoid,
                 vanillaSpider,
-                filterMode,
                 allowlist,
                 denylist
         ));
@@ -108,7 +95,8 @@ public final class ServerSettingsSyncPacket {
 
     public static void handle(ServerSettingsSyncPacket packet, Supplier<NetworkEvent.Context> contextSupplier) {
         NetworkEvent.Context context = contextSupplier.get();
-        context.enqueueWork(() -> PostureServerConfig.applyRemoteSnapshot(packet.snapshot));
+        // Registered with consumerMainThread: already on the game thread.
+        PostureServerConfig.applyRemoteSnapshot(packet.snapshot);
         context.setPacketHandled(true);
     }
 }

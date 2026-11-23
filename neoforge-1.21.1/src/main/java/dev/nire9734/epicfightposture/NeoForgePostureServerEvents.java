@@ -13,6 +13,8 @@ import dev.nire9734.epicfightposture.neoforge.compat.NeoForgeSpiderExecutionSupp
 import dev.nire9734.epicfightposture.neoforge.network.NeoForgePostureSync;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.tags.DamageTypeTags;
+import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
@@ -23,6 +25,7 @@ import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.DefaultAttributes;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.entity.projectile.Projectile;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.entity.living.LivingDamageEvent;
 import net.neoforged.neoforge.event.tick.EntityTickEvent;
@@ -165,21 +168,39 @@ public final class NeoForgePostureServerEvents {
             }
         } else if (state.postureState == PostureState.NORMAL) {
             state.advanceRegeneration(NeoForgePostureConfig.REGEN_PERCENT_PER_SECOND.get().floatValue() / 100.0F);
+            if (state.isDisposable()) {
+                // As in Forge: send the final full snapshot, then stop ticking.
+                // The client keeps the full bar; the next hit recreates a fresh state.
+                NeoForgePostureSync.syncNow(mob, stateForSync(mob));
+                STATES.remove(mob);
+                return;
+            }
         }
         NeoForgePostureSync.syncPeriodic(mob, stateForSync(mob));
     }
 
 
     /** Called exactly once by the Epic Fight parry event's setParried(true) hook. */
-    public static void onParried(LivingEntity attacker) {
-        applyDefensivePostureDamage(attacker, 1.0F);
+    public static void onParried(LivingEntity attacker, DamageSource source) {
+        applyDefensivePostureDamage(attacker, defenseMultiplier(1.0F, source));
     }
 
     /** Successful normal guard; caller already excluded parry and stamina guard-break. */
-    public static void onGuarded(LivingEntity attacker) {
+    public static void onGuarded(LivingEntity attacker, DamageSource source) {
         if (!NeoForgePostureConfig.GUARD_POSTURE_DAMAGE_ENABLED.get()) return;
-        applyDefensivePostureDamage(attacker,
-                NeoForgePostureConfig.GUARD_POSTURE_DAMAGE_MULTIPLIER.get().floatValue());
+        applyDefensivePostureDamage(attacker, defenseMultiplier(
+                NeoForgePostureConfig.GUARD_POSTURE_DAMAGE_MULTIPLIER.get().floatValue(), source));
+    }
+
+    private static float defenseMultiplier(float multiplier, DamageSource source) {
+        return GuardPosturePolicy.defenseMultiplier(multiplier, isProjectile(source),
+                NeoForgePostureConfig.PROJECTILE_DEFENSE_POSTURE_MULTIPLIER.get().floatValue());
+    }
+
+    /** Vanilla and modded ranged attacks: the projectile tag, or a projectile direct entity. */
+    private static boolean isProjectile(DamageSource source) {
+        return source != null && (source.is(DamageTypeTags.IS_PROJECTILE)
+                || source.getDirectEntity() instanceof Projectile);
     }
 
     private static void applyDefensivePostureDamage(LivingEntity attacker, float multiplier) {

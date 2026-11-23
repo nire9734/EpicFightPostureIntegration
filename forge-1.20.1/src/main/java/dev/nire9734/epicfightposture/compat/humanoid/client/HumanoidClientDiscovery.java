@@ -1,7 +1,9 @@
 package dev.nire9734.epicfightposture.compat.humanoid.client;
 
 import dev.nire9734.epicfightposture.PostureServerConfig;
+import com.mojang.logging.LogUtils;
 import dev.nire9734.epicfightposture.compat.humanoid.HumanoidEnvironmentFingerprint;
+import dev.nire9734.epicfightposture.compat.humanoid.RendererDiscoveryUpload;
 import dev.nire9734.epicfightposture.compat.humanoid.VanillaHumanoidCompat;
 import dev.nire9734.epicfightposture.network.BridgeNetwork;
 import dev.nire9734.epicfightposture.network.HumanoidDiscoveryUploadPacket;
@@ -13,14 +15,17 @@ import net.minecraft.client.renderer.entity.EntityRenderer;
 import net.minecraft.client.renderer.entity.LivingEntityRenderer;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.EntityType;
+import org.slf4j.Logger;
 
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
 /** Client-only renderer inspection used by local auto-compat and dedicated-server reports. */
 public final class HumanoidClientDiscovery {
+    private static final Logger LOGGER = LogUtils.getLogger();
     private static volatile ScanSnapshot serverReportSnapshot = ScanSnapshot.empty();
 
     public static ScanSnapshot scanCurrent() {
@@ -125,14 +130,18 @@ public final class HumanoidClientDiscovery {
         if (!PostureServerConfig.isLocalAutomaticCompatibilityEnabled()) return;
         ScanSnapshot scan = serverReportSnapshot;
         String fingerprint = HumanoidEnvironmentFingerprint.current();
-        BridgeNetwork.sendToServer(new HumanoidDiscoveryUploadPacket(
-                nonce,
-                fingerprint,
-                scan.inspected(),
-                scan.vanillaHumanoid(),
-                scan.extendedHumanoid(),
-                scan.vanillaSpider()
-        ));
+        List<RendererDiscoveryUpload.Chunk<ResourceLocation>> chunks;
+        try {
+            chunks = RendererDiscoveryUpload.split(scan.inspected(), scan.vanillaHumanoid(),
+                    scan.extendedHumanoid(), scan.vanillaSpider(), ResourceLocation::toString,
+                    RendererDiscoveryUpload.CHUNK_ID_BYTE_BUDGET);
+        } catch (IllegalArgumentException tooLarge) {
+            LOGGER.warn("EFPI could not send its renderer discovery report: {}", tooLarge.getMessage());
+            return;
+        }
+        for (RendererDiscoveryUpload.Chunk<ResourceLocation> chunk : chunks) {
+            BridgeNetwork.sendToServer(new HumanoidDiscoveryUploadPacket(nonce, fingerprint, chunk));
+        }
     }
 
     private static void collectOverlap(

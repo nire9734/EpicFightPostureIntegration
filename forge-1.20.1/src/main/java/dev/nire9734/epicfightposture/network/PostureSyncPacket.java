@@ -47,13 +47,12 @@ public final class PostureSyncPacket {
 
     public static void handle(PostureSyncPacket packet, Supplier<NetworkEvent.Context> contextSupplier) {
         NetworkEvent.Context context = contextSupplier.get();
-        context.enqueueWork(() -> {
-            if (packet.present) {
-                ClientPostureStore.update(packet.entityId, packet.uuid, packet.current, packet.max, packet.broken);
-            } else {
-                ClientPostureStore.remove(packet.entityId, packet.uuid);
-            }
-        });
+        // Registered with consumerMainThread: already on the game thread.
+        if (packet.present) {
+            ClientPostureStore.update(packet.entityId, packet.uuid, packet.current, packet.max, packet.broken);
+        } else {
+            ClientPostureStore.remove(packet.entityId, packet.uuid);
+        }
         context.setPacketHandled(true);
     }
 }

@@ -42,7 +42,7 @@ public abstract class NormalGuardDetectionMixin {
 
         Entity attacker = GuardSkill.getOffender(event.getDamageSource());
         if (attacker instanceof LivingEntity mob) {
-            PostureManager.onGuarded(mob);
+            PostureManager.onGuarded(mob, event.getDamageSource());
         }
         return blockType;
     }

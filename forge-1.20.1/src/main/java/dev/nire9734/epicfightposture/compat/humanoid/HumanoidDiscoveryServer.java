@@ -27,6 +27,8 @@ public final class HumanoidDiscoveryServer {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final int REQUIRED_PERMISSION_LEVEL = 2;
     private static final RendererDiscoverySessions SESSIONS = new RendererDiscoverySessions();
+    private static final RendererDiscoveryUpload.Assembler<ResourceLocation> UPLOADS =
+            new RendererDiscoveryUpload.Assembler<>();
 
     @SubscribeEvent
     public static void onPlayerLogin(PlayerEvent.PlayerLoggedInEvent event) {
@@ -58,6 +60,7 @@ public final class HumanoidDiscoveryServer {
     public static synchronized void onPlayerLogout(PlayerEvent.PlayerLoggedOutEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
             SESSIONS.clear(player.getUUID());
+            UPLOADS.clear(player.getUUID());
         }
     }
 
@@ -80,25 +83,49 @@ public final class HumanoidDiscoveryServer {
         BridgeNetwork.sendPlayer(player, new HumanoidDiscoveryRequestPacket(nonce));
     }
 
+    /** Buffers one chunk; the report is processed once every chunk for the nonce has arrived. */
     public static synchronized void handleUpload(
             ServerPlayer sender,
             UUID nonce,
             String environmentFingerprint,
-            Set<ResourceLocation> inspected,
-            Set<ResourceLocation> vanillaHumanoid,
-            Set<ResourceLocation> extendedHumanoid,
-            Set<ResourceLocation> vanillaSpider) {
+            RendererDiscoveryUpload.Chunk<ResourceLocation> chunk) {
         if (FMLEnvironment.dist != Dist.DEDICATED_SERVER
                 || sender == null
                 || !sender.hasPermissions(REQUIRED_PERMISSION_LEVEL)) {
             return;
         }
 
-        if (!SESSIONS.consume(sender.getUUID(), nonce)) {
+        // Only a nonce this server issued may buffer data.
+        if (!SESSIONS.isPending(sender.getUUID(), nonce)) {
             LOGGER.warn("EFPI ignored an unexpected or expired renderer discovery reply from {}",
                     sender.getGameProfile().getName());
             return;
         }
+        RendererDiscoveryUpload.Result<ResourceLocation> upload = UPLOADS.accept(
+                sender.getUUID(), nonce, environmentFingerprint, chunk.index(), chunk.count(),
+                chunk.inspected(), chunk.vanillaHumanoid(), chunk.extendedHumanoid(), chunk.vanillaSpider());
+        if (upload.status() == RendererDiscoveryUpload.Status.INCOMPLETE) {
+            return;
+        }
+        SESSIONS.consume(sender.getUUID(), nonce);
+        if (upload.status() == RendererDiscoveryUpload.Status.REJECTED) {
+            LOGGER.warn("EFPI rejected renderer discovery reply from {}: {}",
+                    sender.getGameProfile().getName(), upload.rejection());
+            sender.sendSystemMessage(Component.literal(RendererDiscoveryShared.reportErrorNotice()));
+            return;
+        }
+        RendererDiscoveryUpload.Report<ResourceLocation> report = upload.report();
+        processReport(sender, report.fingerprint(), report.inspected(), report.vanillaHumanoid(),
+                report.extendedHumanoid(), report.vanillaSpider());
+    }
+
+    private static void processReport(
+            ServerPlayer sender,
+            String environmentFingerprint,
+            Set<ResourceLocation> inspected,
+            Set<ResourceLocation> vanillaHumanoid,
+            Set<ResourceLocation> extendedHumanoid,
+            Set<ResourceLocation> vanillaSpider) {
 
         RendererDiscoveryReportProcessor.Outcome outcome = RendererDiscoveryReportProcessor.process(
                 sender.getUUID(), environmentFingerprint, inspected,

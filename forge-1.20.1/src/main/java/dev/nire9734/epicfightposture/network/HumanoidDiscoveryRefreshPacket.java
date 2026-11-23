@@ -2,7 +2,6 @@ package dev.nire9734.epicfightposture.network;
 
 import dev.nire9734.epicfightposture.compat.humanoid.HumanoidDiscoveryServer;
 import net.minecraft.network.FriendlyByteBuf;
-import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.network.NetworkEvent;
 
 import java.util.function.Supplier;
@@ -20,8 +19,8 @@ public final class HumanoidDiscoveryRefreshPacket {
     public static void handle(HumanoidDiscoveryRefreshPacket packet,
                               Supplier<NetworkEvent.Context> contextSupplier) {
         NetworkEvent.Context context = contextSupplier.get();
-        ServerPlayer sender = context.getSender();
-        context.enqueueWork(() -> HumanoidDiscoveryServer.requestReloadScan(sender));
+        // Registered with consumerMainThread: already on the game thread.
+        HumanoidDiscoveryServer.requestReloadScan(context.getSender());
         context.setPacketHandled(true);
     }
 }

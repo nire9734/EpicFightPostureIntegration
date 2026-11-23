@@ -34,6 +34,6 @@ public abstract class ParryDetectionMixin {
         }
 
         this.efpi$parryHandled = true;
-        PostureManager.onParried(livingEntity);
+        PostureManager.onParried(livingEntity, event.getDamageSource());
     }
 }

@@ -16,6 +16,7 @@ public final class NeoForgePostureConfig {
     public static final ModConfigSpec.DoubleValue PARRY_POSTURE_DAMAGE_MULTIPLIER;
     public static final ModConfigSpec.BooleanValue GUARD_POSTURE_DAMAGE_ENABLED;
     public static final ModConfigSpec.DoubleValue GUARD_POSTURE_DAMAGE_MULTIPLIER;
+    public static final ModConfigSpec.DoubleValue PROJECTILE_DEFENSE_POSTURE_MULTIPLIER;
     public static final ModConfigSpec.DoubleValue PARRY_BASE_MAX_PERCENT;
     public static final ModConfigSpec.DoubleValue PARRY_BASE_MIN_PERCENT;
     public static final ModConfigSpec.DoubleValue POSTURE_BREAK_RESISTANCE_STEP;
@@ -45,6 +46,9 @@ public final class NeoForgePostureConfig {
         GUARD_POSTURE_DAMAGE_MULTIPLIER = builder
                 .comment(PostureConfigDescriptions.GUARD_MULTIPLIER)
                 .defineInRange("guard_posture_damage_multiplier", 0.25D, 0.0D, 100.0D);
+        PROJECTILE_DEFENSE_POSTURE_MULTIPLIER = builder
+                .comment(PostureConfigDescriptions.PROJECTILE_DEFENSE_MULTIPLIER)
+                .defineInRange("projectile_defense_posture_multiplier", 0.0D, 0.0D, 100.0D);
         PARRY_BASE_MAX_PERCENT = builder
                 .comment(PostureConfigDescriptions.PARRY_BASE_MAX)
                 .defineInRange("parry_base_max_percent", 22.0D, 0.0D, 100.0D);

@@ -27,7 +27,8 @@ public final class HumanoidDiscoveryRequestPacket {
             HumanoidDiscoveryRequestPacket packet,
             Supplier<NetworkEvent.Context> contextSupplier) {
         NetworkEvent.Context context = contextSupplier.get();
-        context.enqueueWork(() -> HumanoidDiscoveryClientBridge.handle(packet.nonce));
+        // Registered with consumerMainThread: already on the game thread.
+        HumanoidDiscoveryClientBridge.handle(packet.nonce);
         context.setPacketHandled(true);
     }
 }

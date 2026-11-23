@@ -39,7 +39,7 @@ public abstract class NormalGuardDetectionMixin {
 
         Entity attacker = GuardSkill.getOffender(event.getDamageSource());
         if (attacker instanceof LivingEntity mob) {
-            NeoForgePostureServerEvents.onGuarded(mob);
+            NeoForgePostureServerEvents.onGuarded(mob, event.getDamageSource());
         }
         return blockType;
     }

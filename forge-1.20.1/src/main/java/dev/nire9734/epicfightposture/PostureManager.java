@@ -9,6 +9,7 @@ import dev.nire9734.epicfightposture.sync.PostureSyncEvents;
 import dev.nire9734.epicfightposture.sync.RuntimeAccess;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.tags.DamageTypeTags;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
@@ -18,6 +19,7 @@ import net.minecraft.world.entity.ai.attributes.Attribute;
 import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.entity.projectile.Projectile;
 import net.shelmarow.combat_evolution.ai.CEHumanoidPatch;
 import net.shelmarow.combat_evolution.ai.iml.CustomExecuteEntity;
 import net.shelmarow.combat_evolution.execution.ExecutionHandler;
@@ -103,15 +105,26 @@ public final class PostureManager {
         damagePosture(target, patch, postureDamage);
     }
 
-    public static void onParried(LivingEntity target) {
-        applyDefensivePostureDamage(target, 1.0F);
+    public static void onParried(LivingEntity target, DamageSource source) {
+        applyDefensivePostureDamage(target, defenseMultiplier(1.0F, source));
     }
 
     /** Successful normal guard; caller already excluded parry and stamina guard-break. */
-    public static void onGuarded(LivingEntity target) {
+    public static void onGuarded(LivingEntity target, DamageSource source) {
         if (!PostureServerConfig.GUARD_POSTURE_DAMAGE_ENABLED.get()) return;
-        applyDefensivePostureDamage(target,
-                PostureServerConfig.GUARD_POSTURE_DAMAGE_MULTIPLIER.get().floatValue());
+        applyDefensivePostureDamage(target, defenseMultiplier(
+                PostureServerConfig.GUARD_POSTURE_DAMAGE_MULTIPLIER.get().floatValue(), source));
+    }
+
+    private static float defenseMultiplier(float multiplier, DamageSource source) {
+        return GuardPosturePolicy.defenseMultiplier(multiplier, isProjectile(source),
+                PostureServerConfig.PROJECTILE_DEFENSE_POSTURE_MULTIPLIER.get().floatValue());
+    }
+
+    /** Vanilla and modded ranged attacks: the projectile tag, or a projectile direct entity. */
+    private static boolean isProjectile(DamageSource source) {
+        return source != null && (source.is(DamageTypeTags.IS_PROJECTILE)
+                || source.getDirectEntity() instanceof Projectile);
     }
 
     private static void applyDefensivePostureDamage(LivingEntity target, float multiplier) {
@@ -237,6 +250,13 @@ public final class PostureManager {
             return true;
         }
         state.advanceRegeneration(PostureServerConfig.postureRegenFractionPerSecond());
+        if (state.isDisposable()) {
+            // Send the final full snapshot, then stop ticking. The client keeps
+            // the full bar; the next hit recreates an identical fresh state.
+            PostureSyncEvents.syncNow(entity);
+            STATES.remove(entity);
+            return false;
+        }
         return true;
     }
 
@@ -463,9 +483,8 @@ public final class PostureManager {
      */
     private static float baseEffectiveHealth(LivingEntity entity) {
         float health = baseAttribute(entity, Attributes.MAX_HEALTH, entity.getMaxHealth());
-        boolean useArmor = PostureServerConfig.useArmorScaling();
-        float armor = useArmor ? baseAttribute(entity, Attributes.ARMOR, 0.0F) : 0.0F;
-        float toughness = useArmor ? baseAttribute(entity, Attributes.ARMOR_TOUGHNESS, 0.0F) : 0.0F;
+        float armor = baseAttribute(entity, Attributes.ARMOR, 0.0F);
+        float toughness = baseAttribute(entity, Attributes.ARMOR_TOUGHNESS, 0.0F);
         return PostureBalance.referenceEffectiveHealth(health, armor, toughness);
     }
 
@@ -490,13 +509,12 @@ public final class PostureManager {
 
     /** Live attribute inputs for maximum Posture, read through the 1.20.1 attribute API. */
     private static PostureInputs liveInputs(LivingEntity entity) {
-        boolean useArmor = PostureServerConfig.useArmorScaling();
         return PostureInputs.of(
                 entity.getMaxHealth(),
-                useArmor ? (float) entity.getAttributeValue(Attributes.ARMOR) : 0.0F,
-                useArmor ? (float) entity.getAttributeValue(Attributes.ARMOR_TOUGHNESS) : 0.0F,
-                PostureServerConfig.minimumPosture(),
-                useArmor);
+                (float) entity.getAttributeValue(Attributes.ARMOR),
+                (float) entity.getAttributeValue(Attributes.ARMOR_TOUGHNESS),
+                PostureTuning.MINIMUM_POSTURE,
+                true);
     }
 
     /** Terminal health states must not schedule or play a new posture-break animation. */

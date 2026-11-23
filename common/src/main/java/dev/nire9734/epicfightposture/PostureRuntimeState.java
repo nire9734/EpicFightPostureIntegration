@@ -51,6 +51,18 @@ final class PostureRuntimeState {
         return postureState == PostureState.NORMAL;
     }
 
+    /**
+     * A fully regenerated state that has never been guard-broken carries no
+     * information beyond a fresh state, so the server may stop ticking it.
+     * States with completed breaks are kept: they hold the break resistance.
+     */
+    boolean isDisposable() {
+        return postureState == PostureState.NORMAL
+                && completedBreaks == 0
+                && regenDelay <= 0
+                && !(current < max);
+    }
+
     boolean isBrokenForHud() {
         return isLocked();
     }

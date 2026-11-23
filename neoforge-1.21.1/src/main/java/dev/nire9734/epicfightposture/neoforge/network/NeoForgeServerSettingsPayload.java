@@ -8,7 +8,7 @@ import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
 
-/** NeoForge counterpart of Forge 3.0.2's authoritative settings packet. */
+/** NeoForge counterpart of Forge's authoritative settings packet (same fields since 3.3.0). */
 public record NeoForgeServerSettingsPayload(NeoForgeServerSettings.Snapshot snapshot)
         implements CustomPacketPayload {
     private static final int MAX_BLACKLIST_IDS = 8192;
@@ -22,14 +22,9 @@ public record NeoForgeServerSettingsPayload(NeoForgeServerSettings.Snapshot snap
 
     private static void encode(RegistryFriendlyByteBuf buf, NeoForgeServerSettingsPayload payload) {
         NeoForgeServerSettings.Snapshot settings = payload.snapshot();
-        buf.writeDouble(settings.globalMultiplier());
-        buf.writeDouble(settings.minimumPosture());
-        buf.writeBoolean(settings.useArmorScaling());
         buf.writeBoolean(settings.vanillaHumanoid());
         buf.writeBoolean(settings.extendedHumanoid());
         buf.writeBoolean(settings.vanillaSpider());
-        // Matches the Forge packet's allowlist/denylist mode (derived from the allowlist).
-        buf.writeBoolean(!settings.modAllowlist().isEmpty());
         if (settings.entityBlacklist().size() > MAX_BLACKLIST_IDS) {
             throw new IllegalArgumentException("EFPI entity blacklist exceeds network limit");
         }
@@ -40,13 +35,9 @@ public record NeoForgeServerSettingsPayload(NeoForgeServerSettings.Snapshot snap
     }
 
     private static NeoForgeServerSettingsPayload decode(RegistryFriendlyByteBuf buf) {
-        double multiplier = buf.readDouble();
-        double minimum = buf.readDouble();
-        boolean armor = buf.readBoolean();
         boolean vanilla = buf.readBoolean();
         boolean extended = buf.readBoolean();
         boolean spider = buf.readBoolean();
-        boolean allowlistMode = buf.readBoolean();
 
         int count = buf.readVarInt();
         if (count < 0 || count > MAX_BLACKLIST_IDS) {
@@ -57,13 +48,8 @@ public record NeoForgeServerSettingsPayload(NeoForgeServerSettings.Snapshot snap
 
         Set<String> allow = readNamespaces(buf);
         Set<String> deny = readNamespaces(buf);
-        // Mode exists for Forge wire-format parity; the list itself remains authoritative.
-        if (allowlistMode != !allow.isEmpty()) {
-            throw new IllegalArgumentException("Inconsistent EFPI compatibility filter mode");
-        }
         return new NeoForgeServerSettingsPayload(new NeoForgeServerSettings.Snapshot(
-                multiplier, minimum, armor, vanilla, extended, spider,
-                blacklist, allow, deny));
+                vanilla, extended, spider, blacklist, allow, deny));
     }
 
     private static void writeNamespaces(RegistryFriendlyByteBuf buf, Set<String> ids) {

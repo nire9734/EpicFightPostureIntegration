@@ -19,7 +19,8 @@ import dev.nire9734.epicfightposture.neoforge.client.NeoForgeRendererDiscoveryCl
  */
 public final class NeoForgePostureNetworking {
     public static void registerPayloads(RegisterPayloadHandlersEvent event) {
-        PayloadRegistrar registrar = event.registrar("3");
+        // Protocol 4 (3.3.0): chunked renderer reports and trimmed settings payload.
+        PayloadRegistrar registrar = event.registrar("4");
         registrar.playToClient(
                 PostureStatePayload.TYPE, PostureStatePayload.STREAM_CODEC,
                 NeoForgePostureNetworking::receiveOnClient);

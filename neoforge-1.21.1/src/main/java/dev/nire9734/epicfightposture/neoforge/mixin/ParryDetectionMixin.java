@@ -26,6 +26,6 @@ public abstract class ParryDetectionMixin {
         Entity attacker = GuardSkill.getOffender(event.getDamageSource());
         if (!(attacker instanceof LivingEntity living)) return;
         this.efpi$parryHandled = true;
-        NeoForgePostureServerEvents.onParried(living);
+        NeoForgePostureServerEvents.onParried(living, event.getDamageSource());
     }
 }

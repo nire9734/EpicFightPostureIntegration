@@ -10,6 +10,8 @@ public final class PostureConfigDescriptions {
             "Allow successful normal Epic Fight guards to damage the attacker's Posture (default: off).";
     public static final String GUARD_MULTIPLIER =
             "Normal guard Posture damage relative to a parry (0.25 = 25% of parry damage).";
+    public static final String PROJECTILE_DEFENSE_MULTIPLIER =
+            "Posture damage from parrying or guarding projectiles, relative to melee (0.0 = none, default).";
     public static final String PARRY_BASE_MAX =
             "Parry damage (% of max Posture) against mobs with low base health and armor.";
     public static final String PARRY_BASE_MIN =

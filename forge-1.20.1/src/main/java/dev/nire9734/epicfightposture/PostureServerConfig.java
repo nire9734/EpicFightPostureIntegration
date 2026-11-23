@@ -34,22 +34,12 @@ public final class PostureServerConfig {
      * coefficient (PostureTuning) and public multiplier defaulting to 1.0.
      */
     private static final float BASE_ATTACK_POSTURE_COEFFICIENT = PostureTuning.BASE_ATTACK_POSTURE_COEFFICIENT;
-    private static final float MINIMUM_POSTURE = PostureTuning.MINIMUM_POSTURE;
-    private static final boolean USE_ARMOR_SCALING = true;
-
-    /**
-     * Retained as an internal network representation for protocol 3. The public
-     * config no longer exposes a filter mode; an empty allowlist means unrestricted.
-     */
-    public enum CompatibilityFilterMode {
-        DENYLIST,
-        ALLOWLIST
-    }
 
     public static final ForgeConfigSpec.DoubleValue ATTACK_POSTURE_DAMAGE_MULTIPLIER;
     public static final ForgeConfigSpec.DoubleValue PARRY_POSTURE_DAMAGE_MULTIPLIER;
     public static final ForgeConfigSpec.BooleanValue GUARD_POSTURE_DAMAGE_ENABLED;
     public static final ForgeConfigSpec.DoubleValue GUARD_POSTURE_DAMAGE_MULTIPLIER;
+    public static final ForgeConfigSpec.DoubleValue PROJECTILE_DEFENSE_POSTURE_MULTIPLIER;
     public static final ForgeConfigSpec.DoubleValue PARRY_BASE_MAX_PERCENT;
     public static final ForgeConfigSpec.DoubleValue PARRY_BASE_MIN_PERCENT;
     public static final ForgeConfigSpec.DoubleValue POSTURE_BREAK_RESISTANCE_STEP;
@@ -65,14 +55,10 @@ public final class PostureServerConfig {
     public static final ForgeConfigSpec SPEC;
 
     private static final Snapshot CLIENT_FAIL_CLOSED_DEFAULTS = new Snapshot(
-            1.0D,
-            (double) MINIMUM_POSTURE,
-            USE_ARMOR_SCALING,
             Set.of(),
             false,
             false,
             false,
-            CompatibilityFilterMode.DENYLIST,
             Set.of(),
             Set.of()
     );
@@ -99,6 +85,9 @@ public final class PostureServerConfig {
         GUARD_POSTURE_DAMAGE_MULTIPLIER = BUILDER
                 .comment(PostureConfigDescriptions.GUARD_MULTIPLIER)
                 .defineInRange("guard_posture_damage_multiplier", 0.25D, 0.0D, 100.0D);
+        PROJECTILE_DEFENSE_POSTURE_MULTIPLIER = BUILDER
+                .comment(PostureConfigDescriptions.PROJECTILE_DEFENSE_MULTIPLIER)
+                .defineInRange("projectile_defense_posture_multiplier", 0.0D, 0.0D, 100.0D);
         PARRY_BASE_MAX_PERCENT = BUILDER
                 .comment(PostureConfigDescriptions.PARRY_BASE_MAX)
                 .defineInRange("parry_base_max_percent", 22.0D, 0.0D, 100.0D);
@@ -195,16 +184,6 @@ public final class PostureServerConfig {
         return REGEN_RATE_PERCENT.get().floatValue() / 100.0F;
     }
 
-    public static float minimumPosture() {
-        Snapshot snapshot = effectiveClientSnapshot();
-        return snapshot != null ? snapshot.minimumPosture().floatValue() : MINIMUM_POSTURE;
-    }
-
-    public static boolean useArmorScaling() {
-        Snapshot snapshot = effectiveClientSnapshot();
-        return snapshot != null ? snapshot.useArmorScaling() : USE_ARMOR_SCALING;
-    }
-
     public static boolean automaticCompatibilityEnabled() {
         // A user's local OFF must be a real safety opt-out, even when a remote
         // server advertises automatic compatibility as enabled.
@@ -297,14 +276,10 @@ public final class PostureServerConfig {
     public static Snapshot localSnapshot() {
         boolean automatic = AUTOMATIC_COMPATIBILITY.get();
         return new Snapshot(
-                1.0D, // Legacy wire-format field; maximum Posture is always unmultiplied.
-                (double) MINIMUM_POSTURE,
-                USE_ARMOR_SCALING,
                 blacklist,
                 automatic,
                 automatic,
                 automatic,
-                modAllowlist.isEmpty() ? CompatibilityFilterMode.DENYLIST : CompatibilityFilterMode.ALLOWLIST,
                 modAllowlist,
                 modDenylist
         );
@@ -421,24 +396,16 @@ public final class PostureServerConfig {
         return snapshot != null ? snapshot : CLIENT_FAIL_CLOSED_DEFAULTS;
     }
 
+    /** Server policy synchronized to clients (protocol 5): compatibility switches and filters only. */
     public record Snapshot(
-            Double globalMultiplier,
-            Double minimumPosture,
-            boolean useArmorScaling,
             Set<ResourceLocation> entityBlacklist,
             boolean enableVanillaHumanoidCompatibility,
             boolean enableExtendedHumanoidCompatibility,
             boolean enableVanillaSpiderCompatibility,
-            CompatibilityFilterMode compatibilityFilterMode,
             Set<String> modAllowlist,
             Set<String> modDenylist) {
         public Snapshot {
-            globalMultiplier = globalMultiplier == null ? 1.0D : globalMultiplier;
-            minimumPosture = minimumPosture == null ? (double) MINIMUM_POSTURE : minimumPosture;
             entityBlacklist = entityBlacklist == null ? Set.of() : Set.copyOf(entityBlacklist);
-            compatibilityFilterMode = compatibilityFilterMode == null
-                    ? CompatibilityFilterMode.DENYLIST
-                    : compatibilityFilterMode;
             modAllowlist = modAllowlist == null ? Set.of() : Set.copyOf(modAllowlist);
             modDenylist = modDenylist == null ? Set.of() : Set.copyOf(modDenylist);
         }

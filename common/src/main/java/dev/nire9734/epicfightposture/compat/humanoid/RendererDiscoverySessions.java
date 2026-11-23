@@ -27,6 +27,12 @@ public final class RendererDiscoverySessions {
         return issue(operator);
     }
 
+    /** True while this nonce is the operator's outstanding request; does not consume it. */
+    public synchronized boolean isPending(UUID operator, UUID nonce) {
+        UUID expected = pending.get(operator);
+        return expected != null && expected.equals(nonce);
+    }
+
     /** A nonce can only be consumed once and belongs to exactly one operator. */
     public synchronized boolean consume(UUID operator, UUID nonce) {
         UUID expected = pending.remove(operator);

@@ -127,4 +127,51 @@ class PostureRuntimeStateTest {
         state.updateMaximum(800.0F);
         assertEquals(previous * 2.0F, state.current, EPS);
     }
+
+    @Test void freshAndFullyRegeneratedStatesAreDisposable() {
+        PostureRuntimeState state = new PostureRuntimeState(100.0F);
+        assertTrue(state.isDisposable());
+
+        state.applyDamage(30.0F, 1.0F, 20);
+        assertFalse(state.isDisposable(), "damaged posture is not disposable");
+        for (int i = 0; i < 20; i++) state.advanceRegeneration(.5F);
+        assertEquals(0, state.regenDelay);
+        assertFalse(state.isDisposable(), "regeneration has not refilled yet");
+        while (state.current < state.max) state.advanceRegeneration(.5F);
+        assertTrue(state.isDisposable());
+    }
+
+    @Test void brokenRecoveringAndExecutingStatesAreNotDisposable() {
+        PostureRuntimeState broken = new PostureRuntimeState(100.0F);
+        broken.prepareBreak(0);
+        broken.confirmBreak();
+        assertFalse(broken.isDisposable());
+
+        PostureRuntimeState recovering = new PostureRuntimeState(100.0F);
+        recovering.beginRecovery(60);
+        assertFalse(recovering.isDisposable());
+
+        PostureRuntimeState executing = new PostureRuntimeState(100.0F);
+        executing.startExecution();
+        assertFalse(executing.isDisposable());
+    }
+
+    @Test void statesWithBreakResistanceAreKeptAfterFullRecovery() {
+        PostureRuntimeState state = new PostureRuntimeState(100.0F);
+        state.prepareBreak(0);
+        state.confirmBreak();
+        state.beginRecovery(3);
+        while (!state.advanceRecovery(3)) { }
+        assertEquals(100.0F, state.current, EPS);
+        assertEquals(1, state.completedBreaks);
+        assertFalse(state.isDisposable(), "break resistance must survive full recovery");
+    }
+
+    @Test void executionWithoutBreakBecomesDisposableAfterRecovery() {
+        PostureRuntimeState state = new PostureRuntimeState(100.0F);
+        state.startExecution();
+        state.beginRecovery(2);
+        while (!state.advanceRecovery(2)) { }
+        assertTrue(state.isDisposable());
+    }
 }
