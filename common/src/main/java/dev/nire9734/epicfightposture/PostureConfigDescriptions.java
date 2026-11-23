@@ -33,13 +33,13 @@ public final class PostureConfigDescriptions {
     public static final String PARRY_ENTITY_EXAMPLE =
             "Example: [\"cataclysm:ignis=0.5\"] (multiplier: 0.0-100.0).";
     public static final String ENTITY_BLACKLIST =
-            "Exclude mob types from EFPI Posture, automatic patches and its HUD."
+            "Exclude mob types from Posture, automatic patches and the health/Posture HUD."
                     + " On clients this also prevents unsafe patch preparation before server sync.";
     public static final String ENTITY_BLACKLIST_EXAMPLE =
             "Example: [\"craft_of_the_wild:stone_talus\"]";
     public static final String AUTOMATIC_COMPATIBILITY =
             "Automatically add Posture support to compatible mobs."
-                    + " Setting false locally disables EFPI patch discovery and preparation,"
+                    + " Setting false locally disables this mod's patch discovery and preparation,"
                     + " even if a remote server enables it.";
     public static final String MOD_ALLOWLIST =
             "Only auto-support these mod IDs; [] allows all mods.";
