@@ -54,12 +54,9 @@ public final class NeoForgePostureNetworking {
     private static void receiveOnClient(PostureStatePayload payload, IPayloadContext context) {
         // NeoForge's default payload handler thread is the logical main thread.
         if (payload.present()) {
-            if (payload.uuid() != null
-                    && Float.isFinite(payload.current()) && Float.isFinite(payload.max())
-                    && payload.max() > 0.0F) {
-                ClientPostureStore.update(payload.entityId(), payload.uuid(),
-                        payload.current(), payload.max(), payload.broken());
-            }
+            // ClientPostureStore drops malformed snapshots for both loaders.
+            ClientPostureStore.update(payload.entityId(), payload.uuid(),
+                    payload.current(), payload.max(), payload.broken());
         } else {
             ClientPostureStore.remove(payload.entityId(), payload.uuid());
         }

@@ -309,7 +309,22 @@ public final class RendererDiscoveryStore {
             return loaded;
         } catch (Exception exception) {
             LOGGER.warn("Failed to read EFPI dedicated-server renderer discovery cache {}; starting empty", path, exception);
+            backupUnreadableCache(path);
             return State.fresh("");
+        }
+    }
+
+    /**
+     * Keep an unreadable cache for diagnosis before the empty state replaces
+     * it. The cache is only a performance hint, so a failed copy is not fatal.
+     */
+    private static void backupUnreadableCache(Path path) {
+        Path backup = path.resolveSibling(path.getFileName() + ".bak");
+        try {
+            Files.copy(path, backup, StandardCopyOption.REPLACE_EXISTING);
+            LOGGER.warn("Saved the unreadable EFPI renderer discovery cache as {}", backup);
+        } catch (IOException | RuntimeException exception) {
+            LOGGER.warn("Failed to back up the unreadable EFPI renderer discovery cache {}", path, exception);
         }
     }
 

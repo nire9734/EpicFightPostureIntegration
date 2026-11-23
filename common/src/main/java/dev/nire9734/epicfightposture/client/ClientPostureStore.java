@@ -7,12 +7,20 @@ import java.util.concurrent.ConcurrentMap;
 public final class ClientPostureStore {
     private static final ConcurrentMap<Integer, Entry> STATES = new ConcurrentHashMap<>();
 
+    /**
+     * Stores a server snapshot. Malformed values (missing UUID, non-finite
+     * numbers or a non-positive maximum) are dropped without touching the
+     * existing entry; both loaders route their sync packets through here.
+     */
     public static void update(int entityId, UUID uuid, float current, float max, boolean broken) {
-        if (uuid == null || max <= 0.0F) {
-            STATES.remove(entityId);
+        if (!isValid(uuid, current, max)) {
             return;
         }
         STATES.put(entityId, new Entry(uuid, current, max, broken));
+    }
+
+    static boolean isValid(UUID uuid, float current, float max) {
+        return uuid != null && Float.isFinite(current) && Float.isFinite(max) && max > 0.0F;
     }
 
     public static void remove(int entityId, UUID uuid) {

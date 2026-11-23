@@ -46,6 +46,22 @@ class RendererDiscoveryStoreTest {
     }
 
     @Test
+    void unreadableCacheIsBackedUpBeforeBeingReplaced() throws Exception {
+        Path cache = configDirectory.resolve("epicfight_posture_integration/cache/renderer-discovery.json");
+        Files.createDirectories(cache.getParent());
+        // A truncated write, as left behind by a crash or a full disk.
+        String corrupt = "{\"schema\": 2, \"server_fingerprint\": \"ser";
+        Files.writeString(cache, corrupt);
+
+        assertTrue(RendererDiscoveryStore.bootstrap("server", configDirectory).vanillaHumanoid().isEmpty());
+
+        Path backup = cache.resolveSibling("renderer-discovery.json.bak");
+        assertTrue(Files.isRegularFile(backup));
+        assertEquals(corrupt, Files.readString(backup));
+        assertNotEquals(corrupt, Files.readString(cache));
+    }
+
+    @Test
     void conflictingObservationsAreNotActivated() {
         RendererDiscoveryStore.bootstrap("server", configDirectory);
         ResourceLocation id = ResourceLocation.tryParse("example:armored_mob");
