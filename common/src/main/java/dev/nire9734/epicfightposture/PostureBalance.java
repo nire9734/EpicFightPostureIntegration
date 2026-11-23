@@ -2,8 +2,8 @@ package dev.nire9734.epicfightposture;
 
 /** Pure balance math shared by the server posture runtime and unit tests. */
 final class PostureBalance {
-    private static final float DEFAULT_PARRY_EHP_EXPONENT = 0.7F;
-    private static final float DEFAULT_EHP_REFERENCE = 20.0F;
+    private static final float DEFAULT_PARRY_EHP_EXPONENT = (float) PostureTuning.EHP_EXPONENT;
+    private static final float DEFAULT_EHP_REFERENCE = PostureTuning.EHP_REFERENCE_HEALTH;
 
     /**
      * Two anchored parry fractions: maxBaseFraction at innate EHP <= reference
@@ -19,8 +19,12 @@ final class PostureBalance {
             float effectiveHealth,
             float referenceEffectiveHealth,
             float scalingExponent) {
-        float maxBase = sanitizeFraction(maxBaseFraction);
-        float minBase = sanitizeFraction(minBaseFraction);
+        // An inverted configuration (min > max) is treated as the same range
+        // in the intended order, so weak mobs never take less parry pressure.
+        float first = sanitizeFraction(maxBaseFraction);
+        float second = sanitizeFraction(minBaseFraction);
+        float maxBase = Math.max(first, second);
+        float minBase = Math.min(first, second);
         float reference = sanitizePositive(referenceEffectiveHealth, DEFAULT_EHP_REFERENCE);
         float ehp = sanitizePositive(effectiveHealth, reference);
         float exponent = Float.isFinite(scalingExponent)
@@ -129,6 +133,38 @@ final class PostureBalance {
         float armorPoints = clamp(armor - referenceDamage / divisor, armor * 0.2F, 20.0F);
         float receivedFraction = clamp(1.0F - armorPoints / 25.0F, 0.2F, 1.0F);
         return health / Math.max(receivedFraction, 1.0E-4F);
+    }
+
+    /**
+     * Effective health against the reference hit, with non-positive or
+     * non-finite inputs replaced by the reference mob values.
+     */
+    static float referenceEffectiveHealth(float maxHealth, float armor, float toughness) {
+        float health = Float.isFinite(maxHealth) && maxHealth > 0.0F
+                ? maxHealth : PostureTuning.EHP_REFERENCE_HEALTH;
+        float safeArmor = Float.isFinite(armor) ? armor : 0.0F;
+        float safeToughness = Float.isFinite(toughness) ? toughness : 0.0F;
+        float value = effectiveHealth(health, safeArmor, safeToughness, PostureTuning.EHP_REFERENCE_DAMAGE);
+        return Float.isFinite(value) && value > 0.0F ? value : PostureTuning.EHP_REFERENCE_HEALTH;
+    }
+
+    /** Sub-linear EHP Posture scale, bounded but not floored by the minimum Posture. */
+    static float basePosture(float effectiveHealth) {
+        float ehp = Float.isFinite(effectiveHealth) && effectiveHealth > 0.0F
+                ? effectiveHealth : PostureTuning.EHP_REFERENCE_HEALTH;
+        float ratio = Math.max(PostureTuning.MIN_EHP_RATIO, ehp / PostureTuning.EHP_REFERENCE_HEALTH);
+        float posture = PostureTuning.EHP_REFERENCE_POSTURE
+                * (float) Math.pow(ratio, PostureTuning.EHP_EXPONENT);
+        if (!Float.isFinite(posture) || posture <= 0.0F) {
+            posture = PostureTuning.EHP_REFERENCE_POSTURE;
+        }
+        return clamp(posture, PostureTuning.MIN_SAFE_POSTURE, PostureTuning.MAX_SAFE_POSTURE);
+    }
+
+    /** Maximum Posture: the EHP scale floored by the minimum Posture. */
+    static float maximumPosture(float effectiveHealth, float minimum) {
+        return clamp(Math.max(minimum, basePosture(effectiveHealth)),
+                PostureTuning.MIN_SAFE_POSTURE, PostureTuning.MAX_SAFE_POSTURE);
     }
 
     /**

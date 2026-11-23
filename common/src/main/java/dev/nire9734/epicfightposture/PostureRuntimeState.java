@@ -16,16 +16,30 @@ final class PostureRuntimeState {
     int completedBreaks;
     PostureState postureState = PostureState.NORMAL;
 
-    boolean inputsInitialized;
-    float lastMaxHealth;
-    float lastArmor;
-    float lastToughness;
-    float lastMinimum;
-    boolean lastUseArmorScaling;
+    /** Inputs of the last maximum-Posture evaluation; null when created from a raw value. */
+    PostureInputs lastInputs;
 
     PostureRuntimeState(float max) {
         this.max = max;
         this.current = max;
+    }
+
+    /** Full-Posture state whose maximum is derived from, and remembers, these inputs. */
+    PostureRuntimeState(PostureInputs inputs) {
+        this(inputs.maximumPosture());
+        this.lastInputs = inputs;
+    }
+
+    /**
+     * Re-evaluates maximum Posture only when its inputs changed, and applies
+     * the result only when it moved by a meaningful amount.
+     */
+    void refreshMaximum(PostureInputs inputs) {
+        if (inputs.equals(lastInputs)) return;
+        lastInputs = inputs;
+        float newMax = inputs.maximumPosture();
+        if (Math.abs(newMax - max) < PostureTuning.MAX_POSTURE_CHANGE_EPSILON) return;
+        updateMaximum(newMax);
     }
 
     boolean isLocked() {

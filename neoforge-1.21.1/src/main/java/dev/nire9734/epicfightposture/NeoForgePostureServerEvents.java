@@ -8,6 +8,9 @@ import dev.nire9734.epicfightposture.neoforge.NeoForgePostureConfig;
 import dev.nire9734.epicfightposture.neoforge.NeoForgePostureCoverage;
 import dev.nire9734.epicfightposture.neoforge.NeoForgeServerSettings;
 import dev.nire9734.epicfightposture.neoforge.compat.NeoForgeAutoCompatibility;
+import dev.nire9734.epicfightposture.neoforge.compat.NeoForgeLightweightSpiderPatch;
+import dev.nire9734.epicfightposture.neoforge.compat.NeoForgeSpiderExecutionSupport;
+import dev.nire9734.epicfightposture.neoforge.network.NeoForgePostureSync;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
@@ -23,8 +26,6 @@ import net.minecraft.world.entity.player.Player;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.entity.living.LivingDamageEvent;
 import net.neoforged.neoforge.event.tick.EntityTickEvent;
-import yesman.epicfight.api.animation.types.StaticAnimation;
-import yesman.epicfight.api.asset.AssetAccessor;
 import yesman.epicfight.world.capabilities.EpicFightCapabilities;
 import yesman.epicfight.world.capabilities.entitypatch.LivingEntityPatch;
 import yesman.epicfight.world.damagesource.StunType;
@@ -32,13 +33,12 @@ import net.shelmarow.combat_evolution.ai.CEHumanoidPatch;
 import net.shelmarow.combat_evolution.ai.iml.CustomExecuteEntity;
 import net.shelmarow.combat_evolution.api.event.OnExecutionStartEvent;
 import net.shelmarow.combat_evolution.execution.ExecutionHandler;
-import yesman.epicfight.model.armature.HumanoidArmature;
 import yesman.epicfight.skill.guard.GuardSkill;
 
 /** NeoForge server adapter for the shared posture balance and runtime state. */
 public final class NeoForgePostureServerEvents {
     private static final Logger LOGGER = LogUtils.getLogger();
-    private static final int RECOVERY_TICKS = 60;
+    private static final int RECOVERY_TICKS = PostureTuning.BREAK_RECOVERY_TICKS;
     private static final Map<LivingEntity, PostureRuntimeState> STATES = new WeakHashMap<>();
     private static final Map<LivingEntity, Integer> PENDING_EXECUTION_START = new WeakHashMap<>();
     private static boolean registered;
@@ -49,7 +49,7 @@ public final class NeoForgePostureServerEvents {
         NeoForge.EVENT_BUS.addListener(NeoForgePostureServerEvents::onDamage);
         NeoForge.EVENT_BUS.addListener(NeoForgePostureServerEvents::onTick);
         NeoForge.EVENT_BUS.addListener(NeoForgePostureServerEvents::onExecutionStart);
-        dev.nire9734.epicfightposture.neoforge.network.NeoForgePostureSync.register();
+        NeoForgePostureSync.register();
         NeoForgePostureCoverage.register();
     }
 
@@ -69,14 +69,14 @@ public final class NeoForgePostureServerEvents {
         float impact = NeoForgeCompatibilityDamage.calculateBaseImpact(event.getSource(), loss);
         if (!Float.isFinite(impact) || impact <= 0.0F) return;
         PostureRuntimeState state = STATES.computeIfAbsent(mob,
-                target -> new PostureRuntimeState(maximumPosture(target)));
+                target -> new PostureRuntimeState(liveInputs(target)));
         if (!state.acceptsPostureDamage()) return;
 
         float maxHealth = mob.getMaxHealth();
         float before = Math.min(maxHealth, mob.getHealth() + loss);
         float pressure = PostureBalance.attackPostureDamage(
-                basePosture(mob), maxHealth, before, loss, impact,
-                .75F * NeoForgeServerSettings.attackPostureDamageMultiplier(
+                liveInputs(mob).basePosture(), maxHealth, before, loss, impact,
+                PostureTuning.BASE_ATTACK_POSTURE_COEFFICIENT * NeoForgeServerSettings.attackPostureDamageMultiplier(
                         BuiltInRegistries.ENTITY_TYPE.getKey(mob.getType())));
         if (!Float.isFinite(pressure) || pressure <= 0.0F) return;
 
@@ -91,7 +91,7 @@ public final class NeoForgePostureServerEvents {
             breakPosture(mob, patch, state, delay);
         }
         if (!(state.current < previousPosture)) return;
-        dev.nire9734.epicfightposture.neoforge.network.NeoForgePostureSync.syncNow(mob, stateForSync(mob));
+        NeoForgePostureSync.syncNow(mob, stateForSync(mob));
     }
 
     private static void onTick(EntityTickEvent.Post event) {
@@ -102,7 +102,7 @@ public final class NeoForgePostureServerEvents {
             if (PostureDeathSafety.shouldForgetDeadState(
                     mob.isAlive(), mob.getHealth(), isExecuting(mob))) {
                 if (STATES.remove(mob) != null) {
-                    dev.nire9734.epicfightposture.neoforge.network.NeoForgePostureSync.removeNow(mob);
+                    NeoForgePostureSync.removeNow(mob);
                 }
                 PENDING_EXECUTION_START.remove(mob);
             }
@@ -113,13 +113,14 @@ public final class NeoForgePostureServerEvents {
         if (isBlacklisted(mob)) {
             STATES.remove(mob);
             PENDING_EXECUTION_START.remove(mob);
-            dev.nire9734.epicfightposture.neoforge.network.NeoForgePostureSync.removeNow(mob);
+            NeoForgePostureSync.removeNow(mob);
             return;
         }
-        // Distribute the ten-tick refresh across entity IDs, as in Forge.
-        if (Math.floorMod(mob.tickCount + mob.getId(), 10) == 0) {
-            float max = maximumPosture(mob);
-            if (Math.abs(max - state.max) >= .01F) state.updateMaximum(max);
+        // Distribute the ten-tick refresh across entity IDs, and recalculate
+        // only when the attribute inputs changed, as in Forge.
+        if (Math.floorMod(mob.tickCount + mob.getId(),
+                PostureTuning.MAX_POSTURE_REFRESH_INTERVAL_TICKS) == 0) {
+            state.refreshMaximum(liveInputs(mob));
         }
         if (state.postureState == PostureState.BROKEN || state.postureState == PostureState.EXECUTING) {
             if (isExecuting(mob)) {
@@ -129,7 +130,7 @@ public final class NeoForgePostureServerEvents {
                 }
                 if (state.postureState != PostureState.EXECUTING) {
                     state.enterExecution();
-                    dev.nire9734.epicfightposture.neoforge.network.NeoForgePostureSync.syncNow(mob, stateForSync(mob));
+                    NeoForgePostureSync.syncNow(mob, stateForSync(mob));
                 } else {
                     state.current = 0.0F;
                 }
@@ -146,7 +147,7 @@ public final class NeoForgePostureServerEvents {
                     NeoForgePostureCoverage.observeExecution(mob, "TIMEOUT");
                 }
                 state.beginRecovery(RECOVERY_TICKS);
-                dev.nire9734.epicfightposture.neoforge.network.NeoForgePostureSync.syncNow(mob, stateForSync(mob));
+                NeoForgePostureSync.syncNow(mob, stateForSync(mob));
                 return;
             }
             LivingEntityPatch<?> patch = EpicFightCapabilities.getEntityPatch(mob, LivingEntityPatch.class);
@@ -154,18 +155,18 @@ public final class NeoForgePostureServerEvents {
                 state.brokenTicks++;
             } else {
                 state.beginRecovery(RECOVERY_TICKS);
-                dev.nire9734.epicfightposture.neoforge.network.NeoForgePostureSync.syncNow(mob, stateForSync(mob));
+                NeoForgePostureSync.syncNow(mob, stateForSync(mob));
                 return;
             }
         } else if (state.postureState == PostureState.RECOVERING) {
             if (state.advanceRecovery(RECOVERY_TICKS)) {
-                dev.nire9734.epicfightposture.neoforge.network.NeoForgePostureSync.syncNow(mob, stateForSync(mob));
+                NeoForgePostureSync.syncNow(mob, stateForSync(mob));
                 return;
             }
         } else if (state.postureState == PostureState.NORMAL) {
             state.advanceRegeneration(NeoForgePostureConfig.REGEN_PERCENT_PER_SECOND.get().floatValue() / 100.0F);
         }
-        dev.nire9734.epicfightposture.neoforge.network.NeoForgePostureSync.syncPeriodic(mob, stateForSync(mob));
+        NeoForgePostureSync.syncPeriodic(mob, stateForSync(mob));
     }
 
 
@@ -191,13 +192,13 @@ public final class NeoForgePostureServerEvents {
         if (!isEligiblePostureEntity(mob, patch)) return;
 
         PostureRuntimeState state = STATES.computeIfAbsent(mob,
-                target -> new PostureRuntimeState(maximumPosture(target)));
+                target -> new PostureRuntimeState(liveInputs(target)));
         if (!state.acceptsPostureDamage()) return;
         float innateEhp = innateEhp(mob);
         float damage = PostureBalance.parryDamage(state.max,
                 NeoForgePostureConfig.PARRY_BASE_MAX_PERCENT.get().floatValue() / 100.0F,
                 NeoForgePostureConfig.PARRY_BASE_MIN_PERCENT.get().floatValue() / 100.0F,
-                innateEhp, 20.0F, .7F);
+                innateEhp, PostureTuning.EHP_REFERENCE_HEALTH, (float) PostureTuning.EHP_EXPONENT);
         damage *= NeoForgeServerSettings.parryPostureDamageMultiplier(
                 BuiltInRegistries.ENTITY_TYPE.getKey(mob.getType()));
         damage = PostureBalance.guardDamage(damage, multiplier);
@@ -212,7 +213,7 @@ public final class NeoForgePostureServerEvents {
             breakPosture(mob, patch, state, delay);
         }
         if (!(state.current < previousPosture)) return;
-        dev.nire9734.epicfightposture.neoforge.network.NeoForgePostureSync.syncNow(mob, stateForSync(mob));
+        NeoForgePostureSync.syncNow(mob, stateForSync(mob));
     }
 
     /**
@@ -259,13 +260,13 @@ public final class NeoForgePostureServerEvents {
         // skipped those targets entirely, so no EXECUTING snapshot reached
         // the client and the special renderer stayed disabled.
         PostureRuntimeState state = STATES.computeIfAbsent(mob,
-                target -> new PostureRuntimeState(maximumPosture(target)));
+                target -> new PostureRuntimeState(liveInputs(target)));
         mob.stopUsingItem();
         state.startExecution();
         NeoForgePostureCoverage.observeExecution(mob, "STARTED");
         PENDING_EXECUTION_START.put(mob,
                 mob.tickCount + PostureRuntimeState.EXECUTION_START_GRACE_TICKS);
-        dev.nire9734.epicfightposture.neoforge.network.NeoForgePostureSync.syncNow(mob, stateForSync(mob));
+        NeoForgePostureSync.syncNow(mob, stateForSync(mob));
     }
 
     @SuppressWarnings("unchecked")
@@ -280,7 +281,7 @@ public final class NeoForgePostureServerEvents {
         float hp = baseline(mob, defaults, Attributes.MAX_HEALTH, mob.getMaxHealth());
         float armor = baseline(mob, defaults, Attributes.ARMOR, 0.0F);
         float toughness = baseline(mob, defaults, Attributes.ARMOR_TOUGHNESS, 0.0F);
-        return PostureBalance.effectiveHealth(hp > 0.0F ? hp : 20.0F, armor, toughness, 8.0F);
+        return PostureBalance.referenceEffectiveHealth(hp, armor, toughness);
     }
 
     private static float baseline(LivingEntity mob, AttributeSupplier defaults,
@@ -307,17 +308,20 @@ public final class NeoForgePostureServerEvents {
      * per-tick posture updates merely because their HUD is visible.
      */
     public static SyncState stateForTracking(LivingEntity mob) {
-        if (!(mob.level() instanceof ServerLevel) || !canReceive(mob)) {
+        if (!(mob.level() instanceof ServerLevel)) {
             return null;
         }
+        // An existing state is sent even during death, as in Forge: a Combat
+        // Evolution execution may outlive the killing blow, and a viewer that
+        // starts tracking mid-execution still needs the EXECUTING snapshot.
         SyncState existing = stateForSync(mob);
         if (existing != null) return existing;
-        if (isBlacklisted(mob)) return null;
+        if (!canReceive(mob) || isBlacklisted(mob)) return null;
 
         LivingEntityPatch<?> patch = EpicFightCapabilities.getEntityPatch(mob, LivingEntityPatch.class);
         if (!isEligiblePostureEntity(mob, patch)) return null;
 
-        float max = maximumPosture(mob);
+        float max = liveInputs(mob).maximumPosture();
         return new SyncState(max, max, false);
     }
 
@@ -346,8 +350,8 @@ public final class NeoForgePostureServerEvents {
             if (exclusion == null && patch != null) {
                 NeoForgeMissingHumanoidNeutralize.installIfNeeded(patch);
             }
-            boolean spiderCompatible = !(patch instanceof dev.nire9734.epicfightposture.neoforge.compat.NeoForgeLightweightSpiderPatch<?>)
-                    || dev.nire9734.epicfightposture.neoforge.compat.NeoForgeSpiderExecutionSupport.isCompatible(patch);
+            boolean spiderCompatible = !(patch instanceof NeoForgeLightweightSpiderPatch<?>)
+                    || NeoForgeSpiderExecutionSupport.isCompatible(patch);
             PostureExecutionEligibility.Result result = PostureExecutionEligibility.evaluate(
                     patch, patch != null && !patch.uninitialized(),
                     patch instanceof CustomExecuteEntity, exclusion, spiderCompatible);
@@ -381,15 +385,8 @@ public final class NeoForgePostureServerEvents {
                 id, NeoForgeAutoCompatibility.isOwnedByEfpi(mob.getType()));
     }
 
-    private static float basePosture(LivingEntity mob) {
-        float ehp = NeoForgeEntityAttributeAdapter.liveEffectiveHealth(mob);
-        float ratio = Math.max(.01F, ehp / 20.0F);
-        return Math.max(.1F, Math.min(1_000_000.0F,
-                3.2F * (float) Math.pow(ratio, .7D)));
-    }
-
-    private static float maximumPosture(LivingEntity mob) {
-        return Math.max(1.0F, basePosture(mob));
+    private static PostureInputs liveInputs(LivingEntity mob) {
+        return NeoForgeEntityAttributeAdapter.liveInputs(mob);
     }
 
     private static boolean hasDistinctNeutralize(LivingEntityPatch<?> patch) {
@@ -404,17 +401,6 @@ public final class NeoForgePostureServerEvents {
             var current = patch.getAnimator().getPlayerFor(null);
             return current != null && current.getRealAnimation() == patch.getHitAnimation(StunType.NEUTRALIZE);
         } catch (Throwable exception) {
-            return false;
-        }
-    }
-
-    private static boolean sameAnimation(AssetAccessor<?> first, AssetAccessor<?> second) {
-        if (first == second) return true;
-        if (first == null || second == null) return false;
-        try {
-            ResourceLocation a = first.registryName(), b = second.registryName();
-            return a != null && a.equals(b);
-        } catch (Throwable ignored) {
             return false;
         }
     }

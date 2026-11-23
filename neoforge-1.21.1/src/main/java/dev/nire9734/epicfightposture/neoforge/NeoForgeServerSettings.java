@@ -65,6 +65,20 @@ public final class NeoForgeServerSettings {
     public static synchronized void invalidateLocal() {
         local = null;
         localConfigReady = true;
+        warnIfParryRangeInverted();
+    }
+
+    /** Diagnostics only: a failed read must never interrupt config loading. */
+    private static void warnIfParryRangeInverted() {
+        try {
+            double max = NeoForgePostureConfig.PARRY_BASE_MAX_PERCENT.get();
+            double min = NeoForgePostureConfig.PARRY_BASE_MIN_PERCENT.get();
+            if (PostureConfigPolicy.isParryRangeInverted(max, min)) {
+                LOGGER.warn(PostureConfigPolicy.INVERTED_PARRY_RANGE_WARNING, min, max);
+            }
+        } catch (RuntimeException ignored) {
+            // The balance math already orders the range; the warning is optional.
+        }
     }
 
     public static Snapshot localSnapshot() {

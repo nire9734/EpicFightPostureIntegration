@@ -3,6 +3,7 @@ package dev.nire9734.epicfightposture.neoforge.network;
 import java.util.Map;
 import java.util.WeakHashMap;
 import dev.nire9734.epicfightposture.NeoForgePostureServerEvents;
+import dev.nire9734.epicfightposture.PostureTuning;
 import dev.nire9734.epicfightposture.client.ClientPostureStore;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.LivingEntity;
@@ -33,11 +34,18 @@ public final class NeoForgePostureSync {
     }
 
     public static void syncPeriodic(LivingEntity mob, NeoForgePostureServerEvents.SyncState state) {
-        if (Math.floorMod(mob.tickCount + mob.getId(), 4) == 0) syncNow(mob, state);
+        if (Math.floorMod(mob.tickCount + mob.getId(), PostureTuning.SYNC_INTERVAL_TICKS) != 0) return;
+        if (state == null) {
+            // As in Forge: a state that became unavailable clears the client HUD entry.
+            removeNow(mob);
+            return;
+        }
+        syncNow(mob, state);
     }
 
+    /** A null state (blacklisted or untracked mob) has nothing to send. */
     public static void syncNow(LivingEntity mob, NeoForgePostureServerEvents.SyncState state) {
-        if (mob.level().isClientSide()) return;
+        if (state == null || mob.level().isClientSide()) return;
         Snapshot next = new Snapshot(state.current(), state.max(), state.broken());
         if (next.same(LAST.get(mob))) return;
         LAST.put(mob, next);

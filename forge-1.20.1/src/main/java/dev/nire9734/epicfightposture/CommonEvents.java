@@ -17,13 +17,13 @@ public final class CommonEvents {
     // Forge 1.20.1 ends at LOWEST; MONITOR does not exist.
     // Record the attack, but wait until HP actually changes before giving posture:
     // same-priority KubeJS damage caps can still run after this callback.
+    // Without receiveCanceled, events canceled earlier never reach this handler.
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public static void onLivingDamage(LivingDamageEvent event) {
         LivingEntity target = event.getEntity();
         Entity offender = GuardSkill.getOffender(event.getSource());
         boolean playerHit = offender instanceof Player && target != offender;
-        PostureManager.observeDamageEvent(
-                target, event.getAmount(), event.getSource(), playerHit && !event.isCanceled());
+        PostureManager.observeDamageEvent(target, event.getAmount(), event.getSource(), playerHit);
     }
 
     @SubscribeEvent

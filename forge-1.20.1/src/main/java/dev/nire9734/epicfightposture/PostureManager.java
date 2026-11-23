@@ -1,6 +1,9 @@
 package dev.nire9734.epicfightposture;
 
 import com.mojang.logging.LogUtils;
+import dev.nire9734.epicfightposture.compat.humanoid.MissingHumanoidNeutralize;
+import dev.nire9734.epicfightposture.compat.spider.LightweightSpiderPatch;
+import dev.nire9734.epicfightposture.compat.spider.SpiderExecutionSupport;
 import dev.nire9734.epicfightposture.sync.ForgePostureCoverage;
 import dev.nire9734.epicfightposture.sync.PostureSyncEvents;
 import dev.nire9734.epicfightposture.sync.RuntimeAccess;
@@ -20,7 +23,6 @@ import net.shelmarow.combat_evolution.ai.iml.CustomExecuteEntity;
 import net.shelmarow.combat_evolution.execution.ExecutionHandler;
 import yesman.epicfight.api.animation.types.StaticAnimation;
 import yesman.epicfight.api.asset.AssetAccessor;
-import yesman.epicfight.model.armature.HumanoidArmature;
 import yesman.epicfight.world.capabilities.EpicFightCapabilities;
 import yesman.epicfight.world.capabilities.entitypatch.LivingEntityPatch;
 import yesman.epicfight.world.damagesource.StunType;
@@ -32,15 +34,6 @@ import org.slf4j.Logger;
 /** Owns server-authoritative posture state for eligible Epic Fight entity patches. */
 public final class PostureManager {
     private static final Logger LOGGER = LogUtils.getLogger();
-    private static final int MAX_POSTURE_REFRESH_INTERVAL_TICKS = 10;
-    private static final int BREAK_RECOVERY_TICKS = 60;
-
-    private static final float EHP_REFERENCE_DAMAGE = 8.0F;
-    private static final float EHP_REFERENCE_HEALTH = 20.0F;
-    private static final float EHP_REFERENCE_POSTURE = 3.2F;
-    private static final double EHP_EXPONENT = 0.7D;
-    private static final float MAX_SAFE_POSTURE = 1_000_000.0F;
-
     private static final Map<LivingEntity, PostureRuntimeState> STATES = new WeakHashMap<>();
     private static final Map<LivingEntity, Integer> PENDING_EXECUTION_START = new WeakHashMap<>();
     /** One in-flight LivingDamageEvent per target, resolved after vanilla actually changes HP. */
@@ -100,7 +93,7 @@ public final class PostureManager {
             return;
         }
         float postureDamage = PostureBalance.attackPostureDamage(
-                calculateBasePosture(target),
+                liveInputs(target).basePosture(),
                 pending.maxHealth(),
                 pending.healthBefore(),
                 actualLoss,
@@ -145,8 +138,8 @@ public final class PostureManager {
                 PostureServerConfig.parryBaseMaxFraction(),
                 PostureServerConfig.parryBaseMinFraction(),
                 innateEhp,
-                EHP_REFERENCE_HEALTH,
-                (float) EHP_EXPONENT
+                PostureTuning.EHP_REFERENCE_HEALTH,
+                (float) PostureTuning.EHP_EXPONENT
         );
         postureDamage *= PostureServerConfig.parryPostureDamageMultiplier(entityTypeId(target));
         postureDamage = PostureBalance.guardDamage(postureDamage, multiplier);
@@ -192,8 +185,9 @@ public final class PostureManager {
         }
 
         // Spread attribute reads over ten server ticks and only recalculate when inputs changed.
-        if (Math.floorMod(entity.tickCount + entity.getId(), MAX_POSTURE_REFRESH_INTERVAL_TICKS) == 0) {
-            refreshMaxPosture(entity, state);
+        if (Math.floorMod(entity.tickCount + entity.getId(),
+                PostureTuning.MAX_POSTURE_REFRESH_INTERVAL_TICKS) == 0) {
+            state.refreshMaximum(liveInputs(entity));
         }
 
         if (state.postureState == PostureState.BROKEN || state.postureState == PostureState.EXECUTING) {
@@ -237,7 +231,7 @@ public final class PostureManager {
         }
 
         if (state.postureState == PostureState.RECOVERING) {
-            if (state.advanceRecovery(BREAK_RECOVERY_TICKS)) {
+            if (state.advanceRecovery(PostureTuning.BREAK_RECOVERY_TICKS)) {
                 PostureSyncEvents.syncNow(entity);
             }
             return true;
@@ -281,7 +275,7 @@ public final class PostureManager {
             if (!isEligiblePostureEntity(entity, patch)) {
                 return null;
             }
-            float max = calculateMaxPosture(entity);
+            float max = liveInputs(entity).maximumPosture();
             return new SyncState(max, max, false);
         }
         return state == null ? null : new SyncState(state.current, state.max, state.isBrokenForHud());
@@ -378,10 +372,10 @@ public final class PostureManager {
         }
         try {
             if (exclusion == null && targetPatch != null) {
-                dev.nire9734.epicfightposture.compat.humanoid.MissingHumanoidNeutralize.installIfNeeded(targetPatch);
+                MissingHumanoidNeutralize.installIfNeeded(targetPatch);
             }
-            boolean spiderCompatible = !(targetPatch instanceof dev.nire9734.epicfightposture.compat.spider.LightweightSpiderPatch)
-                    || dev.nire9734.epicfightposture.compat.spider.SpiderExecutionSupport.isCompatible(targetPatch);
+            boolean spiderCompatible = !(targetPatch instanceof LightweightSpiderPatch)
+                    || SpiderExecutionSupport.isCompatible(targetPatch);
             PostureExecutionEligibility.Result result = PostureExecutionEligibility.evaluate(
                     targetPatch, targetPatch != null && targetPatch.isInitialized(),
                     targetPatch instanceof CustomExecuteEntity, exclusion, spiderCompatible);
@@ -413,7 +407,7 @@ public final class PostureManager {
         // Repair the Epic Fight datapack provider before testing eligibility.
         // The provider, not a return-value Mixin, is the canonical source read
         // by applyStun and Combat Evolution.
-        dev.nire9734.epicfightposture.compat.humanoid.MissingHumanoidNeutralize.installIfNeeded(patch);
+        MissingHumanoidNeutralize.installIfNeeded(patch);
         return PostureExecutionEligibility.hasDistinctNeutralize(patch);
     }
 
@@ -434,93 +428,18 @@ public final class PostureManager {
         }
     }
 
-    private static boolean sameAnimation(
-            AssetAccessor<? extends StaticAnimation> first,
-            AssetAccessor<? extends StaticAnimation> second) {
-        if (first == second) {
-            return true;
-        }
-        if (first == null || second == null) {
-            return false;
-        }
-        try {
-            ResourceLocation firstName = first.registryName();
-            ResourceLocation secondName = second.registryName();
-            // Distinct unregistered accessors may both expose a null name.
-            return firstName != null && firstName.equals(secondName);
-        } catch (Throwable ignored) {
-            return false;
-        }
-    }
-
     private static PostureRuntimeState state(LivingEntity entity) {
         PostureRuntimeState existing = STATES.get(entity);
         if (existing != null) {
             return existing;
         }
-        PostureRuntimeState created = new PostureRuntimeState(calculateMaxPosture(entity));
-        captureInputs(entity, created);
+        PostureRuntimeState created = new PostureRuntimeState(liveInputs(entity));
         STATES.put(entity, created);
         return created;
     }
 
-    private static void refreshMaxPosture(LivingEntity entity, PostureRuntimeState state) {
-        float maxHealth = finiteOr(entity.getMaxHealth(), EHP_REFERENCE_HEALTH);
-        boolean useArmor = PostureServerConfig.useArmorScaling();
-        float armor = useArmor ? finiteOr((float) entity.getAttributeValue(Attributes.ARMOR), 0.0F) : 0.0F;
-        float toughness = useArmor ? finiteOr((float) entity.getAttributeValue(Attributes.ARMOR_TOUGHNESS), 0.0F) : 0.0F;
-        float minimum = finiteOr(PostureServerConfig.minimumPosture(), 1.0F);
-
-        if (state.inputsInitialized
-                && Float.floatToIntBits(state.lastMaxHealth) == Float.floatToIntBits(maxHealth)
-                && Float.floatToIntBits(state.lastArmor) == Float.floatToIntBits(armor)
-                && Float.floatToIntBits(state.lastToughness) == Float.floatToIntBits(toughness)
-                && Float.floatToIntBits(state.lastMinimum) == Float.floatToIntBits(minimum)
-                && state.lastUseArmorScaling == useArmor) {
-            return;
-        }
-
-        captureInputs(maxHealth, armor, toughness, minimum, useArmor, state);
-        float newMax = calculateMaxPosture(maxHealth, armor, toughness, minimum);
-        if (Math.abs(newMax - state.max) < 0.01F) {
-            return;
-        }
-
-        state.updateMaximum(newMax);
-    }
-
-    private static void captureInputs(LivingEntity entity, PostureRuntimeState state) {
-        boolean useArmor = PostureServerConfig.useArmorScaling();
-        float maxHealth = finiteOr(entity.getMaxHealth(), EHP_REFERENCE_HEALTH);
-        float armor = useArmor ? finiteOr((float) entity.getAttributeValue(Attributes.ARMOR), 0.0F) : 0.0F;
-        float toughness = useArmor ? finiteOr((float) entity.getAttributeValue(Attributes.ARMOR_TOUGHNESS), 0.0F) : 0.0F;
-        captureInputs(
-                maxHealth,
-                armor,
-                toughness,
-                finiteOr(PostureServerConfig.minimumPosture(), 1.0F),
-                useArmor,
-                state
-        );
-    }
-
-    private static void captureInputs(
-            float maxHealth,
-            float armor,
-            float toughness,
-            float minimum,
-            boolean useArmor,
-            PostureRuntimeState state) {
-        state.lastMaxHealth = maxHealth;
-        state.lastArmor = armor;
-        state.lastToughness = toughness;
-        state.lastMinimum = minimum;
-        state.lastUseArmorScaling = useArmor;
-        state.inputsInitialized = true;
-    }
-
     private static void startRecovering(PostureRuntimeState state) {
-        state.beginRecovery(BREAK_RECOVERY_TICKS);
+        state.beginRecovery(PostureTuning.BREAK_RECOVERY_TICKS);
     }
 
     public static void stopUsingItem(LivingEntity entity) {
@@ -537,14 +456,6 @@ public final class PostureManager {
         }
     }
 
-    /** Live, unmultipled max posture used to normalize attack-derived pressure. */
-    private static float calculateBasePosture(LivingEntity entity) {
-        float effective = targetEffectiveHealth(entity);
-        return clamp(EHP_REFERENCE_POSTURE
-                * (float) Math.pow(Math.max(0.01F, effective / EHP_REFERENCE_HEALTH), EHP_EXPONENT),
-                0.1F, MAX_SAFE_POSTURE);
-    }
-
     /**
      * EHP classification uses the EntityType's registered default attributes,
      * not mutable instance base values (which level mods may rewrite).
@@ -552,15 +463,10 @@ public final class PostureManager {
      */
     private static float baseEffectiveHealth(LivingEntity entity) {
         float health = baseAttribute(entity, Attributes.MAX_HEALTH, entity.getMaxHealth());
-        if (health <= 0.0F) {
-            health = EHP_REFERENCE_HEALTH;
-        }
-        float armor = PostureServerConfig.useArmorScaling()
-                ? baseAttribute(entity, Attributes.ARMOR, 0.0F) : 0.0F;
-        float toughness = PostureServerConfig.useArmorScaling()
-                ? baseAttribute(entity, Attributes.ARMOR_TOUGHNESS, 0.0F) : 0.0F;
-        float value = PostureBalance.effectiveHealth(health, armor, toughness, EHP_REFERENCE_DAMAGE);
-        return Float.isFinite(value) && value > 0.0F ? value : EHP_REFERENCE_HEALTH;
+        boolean useArmor = PostureServerConfig.useArmorScaling();
+        float armor = useArmor ? baseAttribute(entity, Attributes.ARMOR, 0.0F) : 0.0F;
+        float toughness = useArmor ? baseAttribute(entity, Attributes.ARMOR_TOUGHNESS, 0.0F) : 0.0F;
+        return PostureBalance.referenceEffectiveHealth(health, armor, toughness);
     }
 
     @SuppressWarnings("unchecked")
@@ -582,37 +488,15 @@ public final class PostureManager {
         return PostureBalance.innateAttributeValue(typeDefault, instanceBase, fallback);
     }
 
-    private static float calculateMaxPosture(LivingEntity entity) {
+    /** Live attribute inputs for maximum Posture, read through the 1.20.1 attribute API. */
+    private static PostureInputs liveInputs(LivingEntity entity) {
         boolean useArmor = PostureServerConfig.useArmorScaling();
-        float maxHealth = finiteOr(entity.getMaxHealth(), EHP_REFERENCE_HEALTH);
-        float armor = useArmor ? finiteOr((float) entity.getAttributeValue(Attributes.ARMOR), 0.0F) : 0.0F;
-        float toughness = useArmor ? finiteOr((float) entity.getAttributeValue(Attributes.ARMOR_TOUGHNESS), 0.0F) : 0.0F;
-        return calculateMaxPosture(
-                maxHealth,
-                armor,
-                toughness,
-                finiteOr(PostureServerConfig.minimumPosture(), 1.0F)
-        );
-    }
-
-    private static float calculateMaxPosture(
-            float maxHealth,
-            float armor,
-            float toughness,
-            float minimum) {
-        if (maxHealth <= 0.0F) {
-            maxHealth = EHP_REFERENCE_HEALTH;
-        }
-        float effectiveHealth = PostureBalance.effectiveHealth(maxHealth, armor, toughness, EHP_REFERENCE_DAMAGE);
-        if (!Float.isFinite(effectiveHealth) || effectiveHealth <= 0.0F) {
-            effectiveHealth = EHP_REFERENCE_HEALTH;
-        }
-        float ratio = Math.max(0.01F, effectiveHealth / EHP_REFERENCE_HEALTH);
-        float posture = EHP_REFERENCE_POSTURE * (float) Math.pow(ratio, EHP_EXPONENT);
-        if (!Float.isFinite(posture) || posture <= 0.0F) {
-            posture = EHP_REFERENCE_POSTURE;
-        }
-        return clamp(Math.max(minimum, posture), 0.1F, MAX_SAFE_POSTURE);
+        return PostureInputs.of(
+                entity.getMaxHealth(),
+                useArmor ? (float) entity.getAttributeValue(Attributes.ARMOR) : 0.0F,
+                useArmor ? (float) entity.getAttributeValue(Attributes.ARMOR_TOUGHNESS) : 0.0F,
+                PostureServerConfig.minimumPosture(),
+                useArmor);
     }
 
     /** Terminal health states must not schedule or play a new posture-break animation. */
@@ -635,29 +519,6 @@ public final class PostureManager {
 
     private static int regenDelayTicks() {
         return PostureBalance.regenDelayTicks(PostureServerConfig.postureRegenDelaySeconds());
-    }
-
-    private static float targetEffectiveHealth(LivingEntity entity) {
-        float maxHealth = finiteOr(entity.getMaxHealth(), EHP_REFERENCE_HEALTH);
-        if (maxHealth <= 0.0F) {
-            maxHealth = EHP_REFERENCE_HEALTH;
-        }
-
-        boolean useArmor = PostureServerConfig.useArmorScaling();
-        float armor = useArmor ? finiteOr((float) entity.getAttributeValue(Attributes.ARMOR), 0.0F) : 0.0F;
-        float toughness = useArmor ? finiteOr((float) entity.getAttributeValue(Attributes.ARMOR_TOUGHNESS), 0.0F) : 0.0F;
-        float targetEffectiveHealth = PostureBalance.effectiveHealth(maxHealth, armor, toughness, EHP_REFERENCE_DAMAGE);
-        return Float.isFinite(targetEffectiveHealth) && targetEffectiveHealth > 0.0F
-                ? targetEffectiveHealth
-                : EHP_REFERENCE_HEALTH;
-    }
-
-    private static float finiteOr(float value, float fallback) {
-        return Float.isFinite(value) ? value : fallback;
-    }
-
-    private static float clamp(float value, float min, float max) {
-        return Math.max(min, Math.min(max, value));
     }
 
     private PostureManager() {

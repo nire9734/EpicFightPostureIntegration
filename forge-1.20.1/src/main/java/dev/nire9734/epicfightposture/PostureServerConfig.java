@@ -30,11 +30,11 @@ public final class PostureServerConfig {
     private static final ForgeConfigSpec.Builder BUILDER = new ForgeConfigSpec.Builder();
 
     /*
-     * Normal attacks use observed HP depletion with an internal 0.75
-     * attack coefficient and public multiplier defaulting to 1.0.
+     * Normal attacks use observed HP depletion with an internal attack
+     * coefficient (PostureTuning) and public multiplier defaulting to 1.0.
      */
-    private static final float BASE_ATTACK_POSTURE_COEFFICIENT = 0.75F;
-    private static final float MINIMUM_POSTURE = 1.0F;
+    private static final float BASE_ATTACK_POSTURE_COEFFICIENT = PostureTuning.BASE_ATTACK_POSTURE_COEFFICIENT;
+    private static final float MINIMUM_POSTURE = PostureTuning.MINIMUM_POSTURE;
     private static final boolean USE_ARMOR_SCALING = true;
 
     /**
@@ -347,7 +347,21 @@ public final class PostureServerConfig {
                 "entities.parry_posture_damage_multipliers");
         modAllowlist = parseModIds(MOD_ALLOWLIST.get(), "compatibility.mod_allowlist");
         modDenylist = parseModIds(MOD_DENYLIST.get(), "compatibility.mod_denylist");
+        warnIfParryRangeInverted();
         localConfigReady = true;
+    }
+
+    /** Diagnostics only: a failed read must never interrupt config loading. */
+    private static void warnIfParryRangeInverted() {
+        try {
+            double max = PARRY_BASE_MAX_PERCENT.get();
+            double min = PARRY_BASE_MIN_PERCENT.get();
+            if (PostureConfigPolicy.isParryRangeInverted(max, min)) {
+                LOGGER.warn(PostureConfigPolicy.INVERTED_PARRY_RANGE_WARNING, min, max);
+            }
+        } catch (RuntimeException ignored) {
+            // The balance math already orders the range; the warning is optional.
+        }
     }
 
     private static Set<ResourceLocation> parseEntityBlacklist() {

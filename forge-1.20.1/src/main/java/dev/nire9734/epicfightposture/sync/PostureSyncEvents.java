@@ -2,6 +2,7 @@ package dev.nire9734.epicfightposture.sync;
 
 import dev.nire9734.epicfightposture.EpicFightPostureIntegration;
 import dev.nire9734.epicfightposture.PostureManager;
+import dev.nire9734.epicfightposture.PostureTuning;
 import dev.nire9734.epicfightposture.network.BridgeNetwork;
 import dev.nire9734.epicfightposture.network.PostureSyncPacket;
 import net.minecraft.server.level.ServerPlayer;
@@ -18,7 +19,7 @@ import java.util.WeakHashMap;
 /** Synchronizes server posture state to tracking clients. */
 @Mod.EventBusSubscriber(modid = EpicFightPostureIntegration.MODID, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public final class PostureSyncEvents {
-    private static final int SYNC_INTERVAL_TICKS = 4;
+    private static final int SYNC_INTERVAL_TICKS = PostureTuning.SYNC_INTERVAL_TICKS;
     private static final Map<LivingEntity, Snapshot> LAST_SENT = new WeakHashMap<>();
 
     /** Called from the single living-tick handler; does nothing for entities without posture state. */
