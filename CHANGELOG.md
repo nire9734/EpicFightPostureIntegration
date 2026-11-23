@@ -1,8 +1,18 @@
 # Changelog
 
-## 3.2.3 (unreleased)
+## 3.3.0 (unreleased)
 
-Internal cleanup and Forge/NeoForge consistency. Default gameplay balance is unchanged on both loaders.
+**Network protocol change:** 3.3.0 servers and clients only connect to each other. Update EFPI on the server and every client together.
+
+- **Projectile parry/guard Posture (default OFF):** parrying or guarding a projectile no longer damages the shooter's Posture by default, so ranged mobs are not guard-broken from a distance. The new `posture.projectile_defense_posture_multiplier` (default `0.0`) scales parry and normal-guard Posture against projectiles; `1.0` restores the previous behavior. Melee parries/guards and the player's own direct hits (including arrows) are unchanged.
+- **Idle Posture states are released:** a mob that fully regenerates and has never been guard-broken stops being tracked server-side. Its HUD bar stays full, and the next hit starts from the same fresh state. Mobs with guard-break resistance keep their state, so resistance is unchanged.
+- **Large modpack renderer reports:** an operator's renderer-discovery report is now sent in chunks below Minecraft's 32767-byte serverbound payload limit, so modpacks with very many entity types no longer risk disconnecting the operator. Chunks are bound to the server-issued nonce and reassembled with bounded buffering before the unchanged validation.
+- **Trimmed settings sync:** unused legacy fields (global multiplier, minimum Posture, armor scaling, filter mode) were removed from the settings packet; Forge and NeoForge now carry the same fields. Network protocol: Forge `5`, NeoForge `4`.
+- **Forge packet handling:** handlers registered on the main thread no longer queue their work a second time (no behavior change).
+
+### Internal cleanup and Forge/NeoForge consistency
+
+Default gameplay balance is unchanged on both loaders.
 
 - **Shared Posture math:** maximum Posture, the direct-hit normalization scale and effective-health calculation now live in one common implementation (`PostureInputs`, `PostureBalance`), and all fixed balance/timing constants in `PostureTuning`. Regression tests pin the results to the 3.2.2 Forge and NeoForge formulas.
 - **NeoForge maximum Posture refresh:** like Forge, the ten-tick refresh now recalculates only when maximum HP, armor or toughness actually changed. Results are identical; only redundant work is skipped.

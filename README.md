@@ -2,7 +2,7 @@
 
 Epic Fight Posture Integration (EFPI) adds a server-authoritative Posture system to compatible Epic Fight mobs, with guard breaks and Combat Evolution executions.
 
-## Supported editions (3.2.3 development)
+## Supported editions (3.3.0 development)
 
 | | Forge | NeoForge |
 | --- | --- | --- |
@@ -11,9 +11,9 @@ Epic Fight Posture Integration (EFPI) adds a server-authoritative Posture system
 | Epic Fight | 20.14.17–20.14.x or 20.15.1–20.15.x | 21.17.3.1–21.17.x |
 | Combat Evolution | 2.2.8–2.3.x | 2.3.2–2.3.x |
 | Java for building | 17 | 21 |
-| File | `epicfight-posture-integration-forge-1.20.1-3.2.3.jar` | `epicfight-posture-integration-neoforge-1.21.1-3.2.3.jar` |
+| File | `epicfight-posture-integration-forge-1.20.1-3.3.0.jar` | `epicfight-posture-integration-neoforge-1.21.1-3.3.0.jar` |
 
-Install **only the JAR matching your Minecraft version and loader**. Install EFPI and its required mods on both client and server. GeckoLib and Lionfish API are optional compatibility libraries, not EFPI hard dependencies.
+Install **only the JAR matching your Minecraft version and loader**. 3.3.0 changes the network protocol: servers and clients must both run 3.3.0. Install EFPI and its required mods on both client and server. GeckoLib and Lionfish API are optional compatibility libraries, not EFPI hard dependencies.
 
 **Development dependency verification (Nov 16, 2026):** Forge compilation now targets Epic Fight 20.15.2 and Combat Evolution 2.3.6; NeoForge compilation targets Epic Fight 21.17.3.1 and Combat Evolution 2.3.3.1. Optional GeckoLib 4.8.4 / 4.9.3 and Lionfish API 3.0 / 3.1 already match the latest releases for these Minecraft versions. Compiling against one version does not prove in-game compatibility with every version in the declared range.
 
@@ -39,6 +39,7 @@ attack_posture_damage_multiplier = 1.0
 parry_posture_damage_multiplier = 1.0
 guard_posture_damage_enabled = false
 guard_posture_damage_multiplier = 0.25
+projectile_defense_posture_multiplier = 0.0
 parry_base_max_percent = 22.0
 parry_base_min_percent = 10.0
 posture_break_resistance_step = 0.5
@@ -61,6 +62,8 @@ mod_denylist = []
 
 - Attack and parry multipliers are independent. Per-entity entries such as `["cataclysm:ignis=0.5"]` **replace** their corresponding global multiplier.
 - **Optional normal-guard Posture damage:** set `guard_posture_damage_enabled = true` to enable. A successful normal Epic Fight guard applies 25% of equivalent parry pressure **only when the equipped weapon cannot perform Epic Fight's standard parry**, based on the registered parry skill's advanced-guard eligibility (including weapon-specific motions and styles). This is checked regardless of the guard skill currently equipped. Weapons that can parry, successful parries, and stamina guard breaks receive no extra normal-guard pressure. Existing per-mob parry scaling applies. Third-party parry mechanics not integrated with Epic Fight's standard parry capability may be undetected; independent vanilla shield and custom guard implementations are not guaranteed.
+- **Projectile parries and guards:** by default, parrying or guarding a projectile does not damage the shooter's Posture, so ranged mobs cannot be guard-broken from a distance. `projectile_defense_posture_multiplier` scales parry and normal-guard pressure against projectiles (`0.0` = none, `1.0` = same as melee). It does not affect your own direct hits, including arrows.
+- If `parry_base_min_percent` is set higher than `parry_base_max_percent`, the two values are used in the intended order and a warning is logged.
 - Regeneration starts after the last actual Posture reduction, including a parry or enabled normal guard. Guard-break recovery is separate.
 - An empty allowlist permits all mods; the denylist takes priority. These lists affect automatic compatibility, not existing Epic Fight patches.
 - **Automatic compatibility OFF:** setting `automatic_compatibility = false` stops this installation's EFPI automatic patch registration, renderer discovery and new patch construction. Existing Epic Fight/other addon patches remain untouched. A client's local OFF cannot be overridden by a remote server; an OP client with OFF cannot contribute automatic renderer discovery. When the server disables automatic compatibility, its policy also prevents the client from constructing EFPI patches after synchronization. Restart after turning this setting back ON to rebuild skipped registrations/renderers.
