@@ -1,73 +1,83 @@
 # Changelog
 
+Each release lists **Added**, **Changed**, **Fixed** and **Removed** items. A **Note** marks anything that requires action when updating.
+
 ## 3.3.0 (unreleased)
 
-**Network protocol change:** 3.3.0 servers and clients only connect to each other. Update the mod on the server and every client together.
+**Note:** the network protocol changed. Update the server and every client together; new config keys are added to existing files automatically.
 
-- **Version mismatch messages:** when the network protocols differ, the loader refuses the connection and names the versions. Forge's mismatch screen lists the installed mod versions on both sides; on NeoForge the reason now names the required mod version (`mod 3.3.0 or later`) instead of a bare number. When the protocol matches but the versions differ, the client shows one chat line after login, e.g. `[Epic Fight Posture Integration] This server runs version 3.3.1 (you have 3.3.0). Installing the same version as the server is recommended.` (English and Japanese). The connection is not interrupted.
-- **Chat messages use the published mod name:** operator notices now start with `[Epic Fight Posture Integration]`.
+### Added
+- `posture.projectile_defense_posture_multiplier` (default `0.0`) scales Posture damage from parrying or guarding projectiles.
+- A chat message after login when the server's mod version differs from the client's (English and Japanese).
+- A warning in the log when `parry_base_min_percent` is higher than `parry_base_max_percent`.
 
-- **Projectile parry/guard Posture (default OFF):** parrying or guarding a projectile no longer damages the shooter's Posture by default, so ranged mobs are not guard-broken from a distance. The new `posture.projectile_defense_posture_multiplier` (default `0.0`) scales parry and normal-guard Posture against projectiles; `1.0` restores the previous behavior. Melee parries/guards and the player's own direct hits (including arrows) are unchanged.
-- **Idle Posture states are released:** a mob that fully regenerates and has never been guard-broken stops being tracked server-side. Its HUD bar stays full, and the next hit starts from the same fresh state. Mobs with guard-break resistance keep their state, so resistance is unchanged.
-- **Large modpack renderer reports:** an operator's renderer-discovery report is now sent in chunks below Minecraft's 32767-byte serverbound payload limit, so modpacks with very many entity types no longer risk disconnecting the operator. Chunks are bound to the server-issued nonce and reassembled with bounded buffering before the unchanged validation.
-- **Trimmed settings sync:** unused legacy fields (global multiplier, minimum Posture, armor scaling, filter mode) were removed from the settings packet; Forge and NeoForge now carry the same fields. Network protocol identifier: `mod 3.3.0 or later` on both loaders.
-- **Forge packet handling:** handlers registered on the main thread no longer queue their work a second time (no behavior change).
+### Changed
+- Parrying or guarding a projectile no longer damages the shooter's Posture by default, so ranged mobs are not guard broken from a distance. Set the new multiplier to `1.0` for the previous behavior.
+- Fully recovered mobs that were never guard broken are no longer tracked by the server. Their bar stays full, and guard break resistance is unaffected.
+- On NeoForge, a protocol mismatch now names the required mod version (`mod 3.3.0 or later`).
+- Operator chat messages begin with `[Epic Fight Posture Integration]`.
+- Forge and NeoForge share the Posture math, constants and network fields. Default balance is unchanged.
 
-### Internal cleanup and Forge/NeoForge consistency
+### Fixed
+- Operators on modpacks with many entity types could be disconnected by an oversized renderer report; reports are now split into chunks.
+- NeoForge: players who start watching a mob during an execution now receive its Posture state.
+- A reversed parry range no longer gives weak mobs less parry damage.
+- Clients ignore malformed Posture updates.
+- An unreadable renderer-discovery cache is kept as `renderer-discovery.json.bak` instead of being overwritten.
 
-Default gameplay balance is unchanged on both loaders.
-
-- **Shared Posture math:** maximum Posture, the direct-hit normalization scale and effective-health calculation now live in one common implementation (`PostureInputs`, `PostureBalance`), and all fixed balance/timing constants in `PostureTuning`. Regression tests pin the results to the 3.2.2 Forge and NeoForge formulas.
-- **NeoForge maximum Posture refresh:** like Forge, the ten-tick refresh now recalculates only when maximum HP, armor or toughness actually changed. Results are identical; only redundant work is skipped.
-- **NeoForge late viewers during executions:** a player who starts tracking a mob while a Combat Evolution execution outlives the killing blow now receives the mob's current Posture state, matching Forge.
-- **Parry range validation:** if `parry_base_min_percent` is set higher than `parry_base_max_percent`, both loaders use the two values in the intended order and log a warning, instead of giving weaker mobs less parry pressure.
-- **Client sync hardening:** malformed Posture snapshots (non-finite values or a non-positive maximum) are ignored by the shared client store on both loaders; previously only NeoForge filtered them.
-- **Renderer-discovery cache:** an unreadable dedicated-server cache is now copied to `renderer-discovery.json.bak` before it is replaced, for diagnosis.
-- **Cleanup:** removed unused helpers and imports, a redundant canceled-event check on Forge, and fully qualified call sites; NeoForge sync calls now tolerate a missing state.
+### Removed
+- Unused legacy fields in the settings sync.
 
 ## 3.2.2
 
-- **Optional normal guard Posture:** paid ordinary Epic Fight guards using **weapons without standard parry support** reduce the attacker's Posture with `posture.guard_posture_damage_enabled = true` (default OFF). The `guard_posture_damage_multiplier` defaults to 0.25 of equivalent parry pressure. Eligibility is based on the registered parry skill's advanced-guard support for the held weapon and style, not on which guard skill is equipped.
-- **Guard outcome filtering:** successful parries do not receive a second normal-guard reward, while stamina-driven guard breaks grant no Posture damage.
-- **Dependency pin refresh:** Forge Epic Fight 20.15.2 / Combat Evolution 2.3.6, NeoForge Epic Fight 21.17.3.1 / Combat Evolution 2.3.3.1.
-- **Tests:** check normal-guard pressure scaling, invalid values, numerical limits, and parry-capable weapon exclusion.
+### Added
+- `posture.guard_posture_damage_enabled` (default `false`) and `guard_posture_damage_multiplier` (default `0.25`): successful normal guards with weapons that cannot parry damage the attacker's Posture.
+
+### Changed
+- Compiled against Epic Fight 20.15.2 / Combat Evolution 2.3.6 (Forge) and Epic Fight 21.17.3.1 / Combat Evolution 2.3.3.1 (NeoForge).
 
 ## 3.2.1
 
-- **Craft of the Wild / Stone Talus fix:** avoid applying EFPI automatic patches to non-living multipart child entities, which could prevent Stone Talus from spawning or loading correctly. The fix is intentionally conservative and does not add Posture support to multipart bosses.
-- **Multipart entity safety:** prevent automatic Epic Fight living patches from attaching to Forge `PartEntity` children that share a parent mob's entity type. Multipart parents are excluded conservatively on Forge and NeoForge, avoiding unsafe construction and unsupported animations.
-- **Structural multipart safety:** reject mobs with custom `isMultipartEntity` or `getParts` implementations before invoking potentially uninitialized subclass methods, avoiding false negatives during construction. This intentionally favors safety over broad compatibility.
-- **Automatic compatibility OFF:** a local `automatic_compatibility = false` now stops automatic candidate registration, renderer analysis, and EFPI patch creation on both loaders. A remote server cannot override a client's local OFF, and a remote OFF prevents EFPI patch creation on a connected client after settings arrive. Existing third-party Epic Fight patches are unaffected.
-- **Unified safety exclusions:** the existing `entities.entity_blacklist` in `server.toml` now also prevents client-side model inspection and automatic patch preparation before server policy synchronization. Local and remote blacklists are combined, so neither can override the other's restrictions. Both loaders use the same setting; no separate client blacklist is needed. Experimental builds using `client.toml`'s `local_entity_blacklist` should move entries to `server.toml`.
-- **Fail-closed attachment:** if a mod's multipart-state method fails during entity construction, automatic patch creation is safely skipped instead of propagating the exception.
-- **Fail-closed registration:** unexpected errors while registering an automatic target now reject that target without aborting the entire Epic Fight registry event.
-- **Regression coverage:** test ordinary living entities, multipart parents, non-living child parts, and failed initialization probes.
+**Note:** move entries from the experimental `client.toml` key `local_entity_blacklist` to `entities.entity_blacklist` in `server.toml`.
+
+### Changed
+- `entities.entity_blacklist` also stops client-side model inspection and patch preparation before server settings arrive. Client and server blacklists are combined.
+- `automatic_compatibility = false` fully disables automatic patches on that installation; a server cannot override a client's local `false`.
+
+### Fixed
+- Craft of the Wild's Stone Talus could fail to spawn: multipart entities and their parts no longer receive automatic patches.
+- An error in one mob's automatic registration or multipart check no longer breaks other registrations.
 
 ## 3.2.0
 
-- **Epic Fight 20.15.x compatibility (Forge 1.20.1):** expanded the supported range to 20.15.1–20.15.x alongside 20.14.17–20.14.x. Epic Fight 20.15.0 is excluded because it lacks an API required by EFPI.
-- **Compatibility regression fixtures:** portable model-rig fixtures now test expected humanoid acceptance, unsafe-model rejection, canonical joint mapping and skinning across both loaders. Developers can opt in to capturing real model rigs for reproducing future compatibility reports; CI preserves failed test reports.
-- **Faster live compatibility updates:** unchanged OP reports no longer repeat server-side registration or scan loaded entities. New approvals refresh only affected mob types; failed registration or patch refresh attempts remain retryable, and registry rebuilds invalidate cached success.
-- **Unified diagnostics:** one `forge-diagnostics.tsv` or `neoforge-diagnostics.tsv` report combines entity registry coverage, renderer scans, posture eligibility/preflight reasons, loaded mod versions and observed guard-break/execution outcomes. Untested entities stay explicitly marked as such; CE refusal before the execution-start event remains unobservable. Reports do not enable unsupported mobs.
-- **Dedicated-server discovery:** apply newly confirmed, conflict-free renderer compatibility immediately to both new spawns and already-loaded mobs without a server restart on Forge and NeoForge.
-- **Safe live registration:** preserve patches owned by Epic Fight addons and disable EFPI-owned compatibility when renderer reports conflict. Existing mobs stay in place without being replaced or despawned.
-- **Conditional OP notifications:** only the operator whose renderer report changes compatibility or encounters a problem receives a brief in-game notice. No message is sent for unchanged reports or to other players.
-- **Multiple-OP safety:** each operator's renderer observations are retained independently, and conflicting observations disable the affected automatic compatibility until resolved.
-- **Resource-pack reloads:** an OP's client automatically requests a fresh authorized renderer scan after its renderer resources are rebuilt (for example, F3+T); no reconnect or dedicated-server restart is needed.
-- **Shared discovery pipeline:** Forge and NeoForge now use the same OP nonce/cooldown management and report-validation, filtering, activation, existing-mob refresh coordination, and notification decisions.
+### Added
+- Support for Epic Fight 20.15.1–20.15.x on Forge (20.15.0 is excluded).
+- One diagnostics report per loader (`forge-diagnostics.tsv` / `neoforge-diagnostics.tsv`).
+- Rig regression fixtures shared by both loaders, with optional capture of real models.
+
+### Changed
+- Dedicated servers apply new compatibility immediately to new and already-loaded mobs, without a restart.
+- An operator's client requests a new renderer scan after a resource reload (e.g. F3+T).
+- Reports from multiple operators are kept separately; conflicting results disable the affected mob types.
+- Only the reporting operator receives a short chat notice, and only when something changed or failed.
+- Unchanged reports skip the live refresh; only newly approved mob types are refreshed.
 
 ## 3.1.0
 
-Changes since the `3.0.2` Forge branch:
+**Note:** custom multipliers are not migrated. Back up and regenerate `server.toml`.
 
-- **Added NeoForge 1.21.1 support** alongside Forge 1.20.1, including Posture, HUD, guard breaks, executions and automatic mob compatibility.
-- **Unified both editions:** shared Posture calculations and state management, plus ModelPart, GeckoLib and Lionfish model conversion and rendering helpers. Loader-specific API adapters remain separate.
-- **Improved compatibility:** aligned special-state handling and model/renderer discovery, with per-mob coverage diagnostics and conservative handling of unsupported models.
-- **Improved dedicated-server setup:** renderer discovery starts when a connected player is granted OP, without requiring that player to reconnect.
-- **Simplified configuration:** fixed the maximum-Posture multiplier at 1.0; added independent global and per-mob attack/parry Posture damage multipliers. Regeneration delay now resets on actual Posture loss from either source.
-- **Adjusted Posture balance:** raised the base normal-attack coefficient from 0.54 to 0.75 and the minimum parry Posture percentage from 8% to 10%, keeping the maximum at 22%.
-- **Standardized distribution:** both editions use version 3.1.0 and include the loader and Minecraft version in the JAR filename.
+### Added
+- NeoForge 1.21.1 edition with Posture, HUD, guard breaks, executions and automatic compatibility.
+- Separate global and per-mob multipliers for attack and parry Posture damage.
 
-Existing custom multiplier settings are **not migrated automatically**. Back up your configuration and regenerate `server.toml` to obtain the new keys and balance defaults.
+### Changed
+- Forge and NeoForge share Posture logic and model conversion.
+- Renderer discovery starts when a connected player is made operator.
+- Base attack coefficient raised from 0.54 to 0.75; minimum parry damage raised from 8% to 10% (maximum stays 22%).
+- Regeneration delay restarts on any actual Posture loss.
+- JAR names include the loader and Minecraft version.
 
-Earlier public releases are available in the repository's Git tags.
+### Removed
+- The maximum-Posture multiplier (fixed at 1.0).
+
+Earlier releases are available in the repository's Git tags.

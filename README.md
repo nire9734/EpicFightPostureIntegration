@@ -1,113 +1,135 @@
 # Epic Fight Posture Integration
 
-Epic Fight Posture Integration (EFPI) adds a server-authoritative Posture system to compatible Epic Fight mobs, with guard breaks and Combat Evolution executions.
+Adds a server-authoritative Posture system to Epic Fight mobs: attacks and parries reduce Posture, an empty bar causes a guard break, and Combat Evolution can then execute the mob.
 
-## Supported editions (3.3.0 development)
+This README is for developers. Player documentation lives on the distribution page; release notes are in [CHANGELOG.md](CHANGELOG.md).
+
+## Editions
 
 | | Forge | NeoForge |
 | --- | --- | --- |
 | Minecraft | 1.20.1 | 1.21.1 |
 | Loader | Forge 47.4.10+ (47.x) | NeoForge 21.1.219+ (21.1.x) |
-| Epic Fight | 20.14.17–20.14.x or 20.15.1–20.15.x | 21.17.3.1–21.17.x |
+| Epic Fight | 20.14.17–20.14.x, 20.15.1–20.15.x | 21.17.3.1–21.17.x |
 | Combat Evolution | 2.2.8–2.3.x | 2.3.2–2.3.x |
-| Java for building | 17 | 21 |
-| File | `epicfight-posture-integration-forge-1.20.1-3.3.0.jar` | `epicfight-posture-integration-neoforge-1.21.1-3.3.0.jar` |
+| Optional | GeckoLib 4.8.4, Lionfish API 3.0 | GeckoLib 4.9.3, Lionfish API 3.1 |
+| JDK | 17 | 21 |
+| Project | `forge-1.20.1/` | `neoforge-1.21.1/` |
 
-Install **only the JAR matching your Minecraft version and loader**. 3.3.0 changes the network protocol: servers and clients must both run 3.3.0. If the protocols differ, the connection is refused and the loader's screen shows the versions; if only the versions differ, a one-line chat message after login shows the server's version. Install EFPI and its required mods on both client and server. GeckoLib and Lionfish API are optional compatibility libraries, not EFPI hard dependencies.
+Epic Fight 20.15.0 is excluded on Forge because it lacks a required API. The compile-time dependency pins are in each project's `gradle.properties` and `build.gradle`.
 
-**Development dependency verification (Nov 16, 2026):** Forge compilation now targets Epic Fight 20.15.2 and Combat Evolution 2.3.6; NeoForge compilation targets Epic Fight 21.17.3.1 and Combat Evolution 2.3.3.1. Optional GeckoLib 4.8.4 / 4.9.3 and Lionfish API 3.0 / 3.1 already match the latest releases for these Minecraft versions. Compiling against one version does not prove in-game compatibility with every version in the declared range.
+## Repository layout
 
-**Forge note:** Epic Fight 20.15.0 is **not supported** because a required API is missing. Use 20.15.1 or later within the 20.15.x series, or a supported 20.14.x version.
+| Path | Contents |
+| --- | --- |
+| `common/src/main/java` | Loader-independent code: Posture math and state, config policy, renderer discovery, rig analysis and skinning |
+| `common/src/test` | Tests for the shared code, plus rig fixtures in `resources/rig-fixtures/` |
+| `forge-1.20.1/` | Forge adapter: events, networking, mixins, renderers, config |
+| `neoforge-1.21.1/` | NeoForge adapter, same responsibilities |
+| `tools/` | Python script that compares Forge and NeoForge renderer reports (tested in CI) |
+| `.github/workflows/` | CI: both builds with tests, plus a Windows Gradle bootstrap check |
 
-## Features
+**Shared sources.** Both projects compile `common/` directly; there is no separate common artifact.
 
-- Posture damage from direct attacks and successful parries, optional normal-guard pressure, guard breaks, and Combat Evolution executions.
-- Combined health/Posture HUD and synchronized multiplayer state.
-- Automatic compatibility for supported vanilla humanoids, ModelPart, GeckoLib, Lionfish and SpiderModel mobs. Existing Epic Fight patches take priority; unsupported models are skipped safely.
-- EHP-based maximum Posture, delayed regeneration, and resistance to repeated guard breaks.
-- Independent attack/parry damage settings, per-mob overrides, blacklists and mod allow/deny lists.
+- Forge adds all of `common/src/main/java` and `common/src/test/java`.
+- NeoForge lists each shared file with `include` in `neoforge-1.21.1/build.gradle`. **When you add a common file or test, add it there too**, or NeoForge will not compile or run it.
 
-Normal attacks apply Posture damage based on **actual HP lost as a fraction of maximum HP**, adjusted by Impact. Parries instead use the mob type's original health and armor to determine a percentage of its current maximum Posture, so level-scaled mobs do not automatically take the same large parry percentage as weak mobs. Maximum Posture is EHP-based and no longer has a configurable multiplier.
+Keep game-independent logic in `common/` so both loaders behave the same and it can be unit-tested. Loader-specific API calls stay in the adapters.
 
-## Configuration
-
-Server settings are generated at `config/epicfight_posture_integration/server.toml`.
-
-```toml
-[posture]
-attack_posture_damage_multiplier = 1.0
-parry_posture_damage_multiplier = 1.0
-guard_posture_damage_enabled = false
-guard_posture_damage_multiplier = 0.25
-projectile_defense_posture_multiplier = 0.0
-parry_base_max_percent = 22.0
-parry_base_min_percent = 10.0
-posture_break_resistance_step = 0.5
-posture_break_resistance_max = 2.0
-
-[regeneration]
-delay_seconds = 15.0
-percent_per_second = 2.0
-
-[entities]
-attack_posture_damage_multipliers = []
-parry_posture_damage_multipliers = []
-entity_blacklist = []
-
-[compatibility]
-automatic_compatibility = true
-mod_allowlist = []
-mod_denylist = []
-```
-
-- Attack and parry multipliers are independent. Per-entity entries such as `["cataclysm:ignis=0.5"]` **replace** their corresponding global multiplier.
-- **Optional normal-guard Posture damage:** set `guard_posture_damage_enabled = true` to enable. A successful normal Epic Fight guard applies 25% of equivalent parry pressure **only when the equipped weapon cannot perform Epic Fight's standard parry**, based on the registered parry skill's advanced-guard eligibility (including weapon-specific motions and styles). This is checked regardless of the guard skill currently equipped. Weapons that can parry, successful parries, and stamina guard breaks receive no extra normal-guard pressure. Existing per-mob parry scaling applies. Third-party parry mechanics not integrated with Epic Fight's standard parry capability may be undetected; independent vanilla shield and custom guard implementations are not guaranteed.
-- **Projectile parries and guards:** by default, parrying or guarding a projectile does not damage the shooter's Posture, so ranged mobs cannot be guard-broken from a distance. `projectile_defense_posture_multiplier` scales parry and normal-guard pressure against projectiles (`0.0` = none, `1.0` = same as melee). It does not affect your own direct hits, including arrows.
-- If `parry_base_min_percent` is set higher than `parry_base_max_percent`, the two values are used in the intended order and a warning is logged.
-- Regeneration starts after the last actual Posture reduction, including a parry or enabled normal guard. Guard-break recovery is separate.
-- An empty allowlist permits all mods; the denylist takes priority. These lists affect automatic compatibility, not existing Epic Fight patches.
-- **Automatic compatibility OFF:** setting `automatic_compatibility = false` stops this installation's EFPI automatic patch registration, renderer discovery and new patch construction. Existing Epic Fight/other addon patches remain untouched. A client's local OFF cannot be overridden by a remote server; an OP client with OFF cannot contribute automatic renderer discovery. When the server disables automatic compatibility, its policy also prevents the client from constructing EFPI patches after synchronization. Restart after turning this setting back ON to rebuild skipped registrations/renderers.
-- Client HUD visibility and execution sound volume are configured in `config/epicfight_posture_integration/client.toml` or the in-game config screen.
-- **Unified safety blacklist:** exclude problematic mob types from automatic patch preparation and EFPI Posture using `config/epicfight_posture_integration/server.toml`:
-
-  ```toml
-  [entities]
-  entity_blacklist = ["craft_of_the_wild:stone_talus"]
-  ```
-
-  The same setting works on Forge and NeoForge. On a client, the local copy is checked before server settings arrive; after connecting, **both** local exclusions and the server's exclusions remain in effect. On dedicated servers, set the blacklist in the server's file to enforce it for all players. Blacklisted entities are skipped during local renderer discovery and cannot be approved by that client's reports. Restart the game after removing an exclusion so previously skipped patches/renderers can be prepared again. If you used an experimental build with `client.toml`'s `local_entity_blacklist`, move those entries to `server.toml`; the old key is no longer read.
-
-**Upgrading from 3.0.2:** Back up custom settings and regenerate `server.toml` to use the new attack/parry keys. The removed `maximum_posture_multiplier` and old per-entity multipliers are not automatically migrated. See [CHANGELOG.md](CHANGELOG.md).
-
-## Compatibility and diagnostics
-
-**Unified diagnostic report (3.2.0):** `forge-diagnostics.tsv` / `neoforge-diagnostics.tsv` is generated under `config/epicfight_posture_integration/cache/` and overwritten during each server session. It lists registered entity types (`NOT_OBSERVED` until evaluated), client or authenticated-OP renderer discovery, installed mod versions, and server-side posture eligibility and rejection reasons. When a patch is missing, `missing_patch_stage` and `missing_patch_clue` record the available renderer evidence; model incompatibility is distinguished from preparation or registration failures. These clues do not prove why the server patch was absent. The report also counts real guard-break successes/failures and CE execution-start, confirmation and timeout events. No mobs are spawned to test compatibility. CE refusals before its execution-start event cannot be diagnosed, and `SUPPORTED` does not guarantee an execution will succeed. On dedicated servers, collect the **server-side** report for posture outcomes; a client's local report only has client-observable information. Reports do not influence gameplay or trust decisions.
-
-Automatic support depends on the mob's model, animations and other mods. A Posture bar does not guarantee that every third-party execution animation will succeed. The separate `renderer-discovery.json` under `config/epicfight_posture_integration/cache/` is a server-side compatibility cache, not an additional diagnostic report. Test guard breaks, executions, equipment and model layers in game before releasing a new modpack.
-
-**Multipart entity safety (3.2.1):** automatically discovered patches are restricted to ordinary living entities. Forge `PartEntity` children can share a parent's entity type, so neither non-living parts nor multipart parents receive EFPI automatic patches. In addition to checking `isMultipartEntity()`, EFPI conservatively rejects classes that override the multipart-related `isMultipartEntity` or `getParts` contract, even if an incompletely constructed mob temporarily reports no parts. This may exclude custom mobs that override those methods without using multipart entities. The unified `entity_blacklist` is checked before client model inspection, during patch creation, and when deciding whether a previously registered patch can act.
-
-**Dedicated servers (3.2.0):** After the first server start or a change to installed mods, an operator (OP) must join once so EFPI can receive a trusted renderer-discovery report. EFPI then immediately registers approved compatibility for new spawns **and** patches compatible mobs already loaded in the world. **No server restart, chunk reload, or entity replacement is required.** An OP's client automatically requests a new scan after a resource-pack/renderer reload (e.g., F3+T) while connected to a dedicated server. Mobs whose Epic Fight patches belong to other mods are left untouched. Reports from multiple operators are checked for conflicting renderer observations; ambiguous mobs are skipped. Only the reporting OP receives a brief notification if compatibility changes or a problem occurs; details remain in the server log.
-
-Repeated reports with unchanged approved targets skip the expensive live refresh. When approval changes, only newly approved entity types are refreshed; failed updates are retried on later reports, while an Epic Fight registry rebuild forces revalidation.
-
-**Developer rig regression fixtures:** Both loader builds run the same portable human-rig acceptance/rejection tests from `common/src/test/resources/rig-fixtures/`. The initial fixtures describe synthetic standard humanoids, shoulder carriers, a visible-helmet/empty-head model, and three unsafe structures that must remain excluded. To investigate a new model, optionally set `-Defpi.rigFixtureDirectory=<output-folder>` in the **client JVM arguments**. GeckoLib, Lionfish and ModelPart source rigs captured during renderer preparation are then exported as versioned `.rig.tsv` files (one per model signature). Export is disabled by default, independent of the normal diagnostic report, and does not change compatibility decisions. Review exported fixtures before adding representative cases and expected results to the tests; this does not replace in-game animation/execution checks.
-
-## Building
-
-Both editions compile shared source files directly from `common/src/main/java`. Loader APIs, event hooks and specific render preparation remain in their respective project directories.
+## Building and testing
 
 ```sh
-# Forge: Java 17, Gradle wrapper (Gradle 8.8)
-cd forge-1.20.1
-./gradlew clean build
-
-# NeoForge: Java 21, pinned Gradle 9.2.1 bootstrap
-cd ../neoforge-1.21.1
-./gradlew clean build
+cd forge-1.20.1 && ./gradlew clean build      # Java 17, Gradle 8.8 wrapper
+cd neoforge-1.21.1 && ./gradlew clean build   # Java 21, Gradle 9.2.1 bootstrap
 ```
 
-Both build scripts download and verify their pinned Gradle distributions on first use; no system Gradle installation is required. On Windows, run `gradlew.bat clean build` inside the corresponding loader directory. Both builds run their associated tests. JARs are generated in each edition's `build/libs/` directory. See the repository's Git tags for release history.
+The wrappers download and verify their pinned Gradle versions; on Windows use `gradlew.bat`. `build` runs the tests, and JARs are written to each project's `build/libs/`.
+
+CI runs on pull requests and on pushes to the branches listed in `.github/workflows/build-neoforge-port.yml`. Add a new release branch there to build it on push.
+
+## Architecture
+
+### Posture (server)
+
+| Piece | Location |
+| --- | --- |
+| State machine `NORMAL → BROKEN → EXECUTING → RECOVERING` | `PostureRuntimeState` |
+| Balance math | `PostureBalance` |
+| Attribute inputs and maximum Posture | `PostureInputs` |
+| Fixed constants | `PostureTuning` |
+| Defense policy (normal guard, projectile multiplier) | `GuardPosturePolicy` |
+| Event wiring | `PostureManager` (Forge), `NeoForgePostureServerEvents` (NeoForge) |
+
+- **Attacks** add Posture damage from the HP actually lost, scaled by Epic Fight Impact. On Forge the HP loss is measured at the next entity tick; on NeoForge from `LivingDamageEvent.Post`.
+- **Parries** and paid **normal guards** are detected by mixins on Epic Fight's `TakeDamageEvent` and `GuardSkill`/`ParryingSkill`. Their damage is a percentage of max Posture, based on the mob type's base EHP.
+- **Guard breaks** apply Epic Fight's `NEUTRALIZE` stun; only a confirmed break counts toward guard break resistance.
+- **States** are kept per entity in weak maps. A state that has fully regenerated and was never guard broken is dropped after one final sync.
+
+### Networking
+
+- **Protocol identifier:** `NetworkProtocol.VERSION` (currently `mod 3.3.0 or later`) is the channel version on both loaders. NeoForge prints it on its mismatch screen; Forge's screen shows mod versions instead. **Change it only when the wire format changes**, to the first release with the new format.
+- **Server → client:** Posture state, server settings (blacklist, automatic compatibility, mod filters), server mod version, renderer scan request.
+- **Client → server:** renderer scan report chunks, rescan request after a resource reload.
+- **Version notice:** the client compares the server's mod version with its own and, if they differ, shows a translated chat line (`epicfight_posture_integration.server_version_mismatch`).
+
+### Automatic compatibility
+
+- **Model discovery:** vanilla `HumanoidModel`, `SpiderModel`, ModelPart, GeckoLib and Lionfish models are inspected on the client. Mobs that pass get a lightweight Epic Fight patch and a special-state renderer. Patches supplied by Epic Fight or other mods always take priority.
+- **Dedicated servers:** a server cannot inspect models, so it asks an operator's client for a renderer report.
+  - The report is tied to a server-issued nonce, sent in chunks below the 32767-byte serverbound limit, and validated before use (`RendererDiscoveryUpload`, `RendererDiscoveryShared`).
+  - Approved results persist in `config/epicfight_posture_integration/cache/renderer-discovery.json` (`RendererDiscoveryStore`).
+  - Conflicting reports from different operators disable the affected mob types.
+- **Exclusions:** `entities.entity_blacklist`, the mod allow/deny lists, and multipart-entity safety checks (`AutomaticPatchSafety`) run before any patch is attached.
+
+### Diagnostics
+
+| File (in `config/epicfight_posture_integration/cache/`) | Contents |
+| --- | --- |
+| `forge-diagnostics.tsv` / `neoforge-diagnostics.tsv` | Per entity type: renderer discovery, Posture eligibility and rejection reason, observed guard breaks and executions, installed mod versions. Rewritten each server session. |
+| `forge-renderer-coverage.tsv` / `neoforge-renderer-coverage.tsv` | Final renderer registrations on the client. |
+
+Neither file affects gameplay. For Posture outcomes on a dedicated server, read the server's report.
+
+### Rig regression fixtures
+
+Shared rig tests replay the `.rig.tsv` files in `common/src/test/resources/rig-fixtures/`. They cover accepted humanoids and unsafe structures that must stay rejected.
+
+To capture a new model, start the client with `-Defpi.rigFixtureDirectory=<folder>`. Every GeckoLib, Lionfish or ModelPart rig prepared at runtime is then exported there. Review a capture before adding it as a fixture with its expected result.
+
+## Configuration reference
+
+**Server** – `config/epicfight_posture_integration/server.toml`
+
+| Key | Default | Purpose |
+| --- | --- | --- |
+| `posture.attack_posture_damage_multiplier` | 1.0 | Posture damage from attacks |
+| `posture.parry_posture_damage_multiplier` | 1.0 | Posture damage from parries |
+| `posture.guard_posture_damage_enabled` | false | Normal guards damage Posture (only with weapons that cannot parry) |
+| `posture.guard_posture_damage_multiplier` | 0.25 | Normal guard damage relative to a parry |
+| `posture.projectile_defense_posture_multiplier` | 0.0 | Parry/guard damage against projectiles, relative to melee |
+| `posture.parry_base_max_percent` | 22.0 | Parry damage against weak mobs (% of max Posture) |
+| `posture.parry_base_min_percent` | 10.0 | Parry damage against strong mobs (% of max Posture) |
+| `posture.posture_break_resistance_step` | 0.5 | Extra resistance per guard break |
+| `posture.posture_break_resistance_max` | 2.0 | Resistance cap |
+| `regeneration.delay_seconds` | 15.0 | Delay before regeneration |
+| `regeneration.percent_per_second` | 2.0 | Regeneration rate (% of max Posture) |
+| `entities.attack_posture_damage_multipliers` | `[]` | Per-mob attack multipliers, `"modid:mob=x"` |
+| `entities.parry_posture_damage_multipliers` | `[]` | Per-mob parry multipliers |
+| `entities.entity_blacklist` | `[]` | Mob types excluded from Posture and automatic patches |
+| `compatibility.automatic_compatibility` | true | Automatic support for compatible mobs |
+| `compatibility.mod_allowlist` | `[]` | Only these mods get automatic support (`[]` = all) |
+| `compatibility.mod_denylist` | `[]` | These mods never get automatic support |
+
+The TOML comments come from `PostureConfigDescriptions`, shared by both loaders.
+
+**Client** – `config/epicfight_posture_integration/client.toml`: `hud.mob_health_bar_visibility` (`ALWAYS`, `DAMAGED_ONLY`, `HIDDEN`) and `sound.execution_sound_volume_multiplier`. Both can also be changed from the in-game config screen.
+
+## Releasing
+
+1. Set `mod_version` in both `forge-1.20.1/gradle.properties` and `neoforge-1.21.1/gradle.properties`.
+2. If the wire format changed, update `NetworkProtocol.VERSION`.
+3. Add the release to `CHANGELOG.md` and update the editions table if dependency ranges changed.
+4. Make sure CI is green for both loaders.
 
 ## License
 

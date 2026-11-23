@@ -1,50 +1,54 @@
 package dev.nire9734.epicfightposture;
 
-/** Shared server-config descriptions for both loaders. Keep generated TOML comments concise. */
+/**
+ * Shared server-config comments for both loaders. One sentence each, ending
+ * with an example of the value's scale. Defaults are not repeated here; the
+ * README's configuration table lists them. Use "guard break" for a Posture
+ * break and "Posture" (capitalized) for the resource.
+ */
 public final class PostureConfigDescriptions {
     public static final String ATTACK_MULTIPLIER =
-            "Attack Posture damage multiplier (1.0 = normal, 0.0 = none).";
+            "Posture damage from attacks (1.0 = normal, 0.0 = none).";
     public static final String PARRY_MULTIPLIER =
-            "Parry Posture damage multiplier (1.0 = normal, 0.0 = none).";
+            "Posture damage from parries (1.0 = normal, 0.0 = none).";
     public static final String GUARD_ENABLED =
-            "Allow successful normal Epic Fight guards to damage the attacker's Posture (default: off).";
+            "Let successful normal guards damage the attacker's Posture (only with weapons that cannot parry).";
     public static final String GUARD_MULTIPLIER =
-            "Normal guard Posture damage relative to a parry (0.25 = 25% of parry damage).";
+            "Posture damage from normal guards, relative to a parry (0.25 = 25%).";
     public static final String PROJECTILE_DEFENSE_MULTIPLIER =
-            "Posture damage from parrying or guarding projectiles, relative to melee (0.0 = none, default).";
+            "Posture damage from parrying or guarding projectiles, relative to melee (0.0 = none, 1.0 = same).";
     public static final String PARRY_BASE_MAX =
-            "Parry damage (% of max Posture) against mobs with low base health and armor.";
+            "Parry damage against weak mobs (low base health and armor), in % of max Posture.";
     public static final String PARRY_BASE_MIN =
-            "Parry damage (% of max Posture) against mobs with high base health and armor.";
+            "Parry damage against strong mobs (high base health and armor), in % of max Posture.";
     public static final String BREAK_RESISTANCE_STEP =
-            "Extra resistance after each guard break (0.5 = +50% per break).";
+            "Extra Posture resistance gained per guard break (0.5 = +50% per guard break).";
     public static final String BREAK_RESISTANCE_MAX =
-            "Maximum guard-break resistance (2.0 = half Posture damage).";
+            "Maximum guard break resistance (2.0 = Posture damage halved).";
     public static final String REGEN_DELAY =
-            "Seconds without Posture damage before normal regeneration starts.";
+            "Seconds without Posture damage before regeneration starts.";
     public static final String REGEN_RATE =
-            "Normal Posture regenerated per second (% of maximum).";
+            "Posture regenerated per second, in % of max Posture.";
     public static final String ATTACK_ENTITY_MULTIPLIERS =
-            "Per-mob attack multiplier; replaces the global setting.";
+            "Per-mob attack multipliers; each entry replaces the global attack multiplier.";
     public static final String ATTACK_ENTITY_EXAMPLE =
-            "Example: [\"cataclysm:ignis=0.25\"] (multiplier: 0.0-100.0).";
+            "Format: [\"modid:mob=multiplier\"], e.g. [\"cataclysm:ignis=0.25\"] (0.0-100.0).";
     public static final String PARRY_ENTITY_MULTIPLIERS =
-            "Per-mob parry multiplier; replaces the global setting.";
+            "Per-mob parry multipliers; each entry replaces the global parry multiplier.";
     public static final String PARRY_ENTITY_EXAMPLE =
-            "Example: [\"cataclysm:ignis=0.5\"] (multiplier: 0.0-100.0).";
+            "Format: [\"modid:mob=multiplier\"], e.g. [\"cataclysm:ignis=0.5\"] (0.0-100.0).";
     public static final String ENTITY_BLACKLIST =
-            "Exclude mob types from Posture, automatic patches and the health/Posture HUD."
-                    + " On clients this also prevents unsafe patch preparation before server sync.";
+            "Mob types excluded from Posture, automatic patches and the health/Posture HUD."
+                    + " Clients also apply it before server settings arrive.";
     public static final String ENTITY_BLACKLIST_EXAMPLE =
             "Example: [\"craft_of_the_wild:stone_talus\"]";
     public static final String AUTOMATIC_COMPATIBILITY =
             "Automatically add Posture support to compatible mobs."
-                    + " Setting false locally disables this mod's patch discovery and preparation,"
-                    + " even if a remote server enables it.";
+                    + " false on a client disables it there even if the server enables it.";
     public static final String MOD_ALLOWLIST =
-            "Only auto-support these mod IDs; [] allows all mods.";
+            "Only add automatic support for these mod IDs ([] = all mods).";
     public static final String MOD_DENYLIST =
-            "Do not auto-support these mod IDs; overrides the allowlist.";
+            "Never add automatic support for these mod IDs; takes priority over the allowlist.";
 
     private PostureConfigDescriptions() {}
 }
