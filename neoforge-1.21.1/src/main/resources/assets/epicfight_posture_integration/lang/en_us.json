@@ -7,5 +7,6 @@
   "config.epicfight_posture_integration.mob_health_bar_visibility.hidden": "Hidden",
   "config.epicfight_posture_integration.execution_sound_volume": "Execution Sound Volume: %s%%",
   "config.epicfight_posture_integration.execution_sound_volume.description": "Adjust execution sound volume.",
-  "config.epicfight_posture_integration.reset": "Reset"
+  "config.epicfight_posture_integration.reset": "Reset",
+  "epicfight_posture_integration.server_version_mismatch": "[Epic Fight Posture Integration] This server runs version %s (you have %s). Please install the same version as the server."
 }

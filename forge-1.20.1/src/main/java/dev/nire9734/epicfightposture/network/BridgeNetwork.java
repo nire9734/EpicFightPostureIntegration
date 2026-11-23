@@ -1,6 +1,7 @@
 package dev.nire9734.epicfightposture.network;
 
 import dev.nire9734.epicfightposture.EpicFightPostureIntegration;
+import dev.nire9734.epicfightposture.NetworkProtocol;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
@@ -10,8 +11,9 @@ import net.minecraftforge.network.PacketDistributor;
 import net.minecraftforge.network.simple.SimpleChannel;
 
 public final class BridgeNetwork {
-    // Network protocol version is intentionally independent from the mod version.
-    private static final String VERSION = "5";
+    // Names the first mod version speaking this protocol; Forge's mismatch
+    // screen shows the installed mod versions on both sides.
+    private static final String VERSION = NetworkProtocol.VERSION;
     private static SimpleChannel channel;
     private static boolean initialized;
 
@@ -54,6 +56,12 @@ public final class BridgeNetwork {
                 .encoder(HumanoidDiscoveryRefreshPacket::encode)
                 .decoder(HumanoidDiscoveryRefreshPacket::decode)
                 .consumerMainThread(HumanoidDiscoveryRefreshPacket::handle)
+                .add();
+
+        channel.messageBuilder(ServerVersionPacket.class, 5, NetworkDirection.PLAY_TO_CLIENT)
+                .encoder(ServerVersionPacket::encode)
+                .decoder(ServerVersionPacket::decode)
+                .consumerMainThread(ServerVersionPacket::handle)
                 .add();
     }
 

@@ -1,6 +1,8 @@
 package dev.nire9734.epicfightposture.neoforge.network;
 
+import dev.nire9734.epicfightposture.NetworkProtocol;
 import dev.nire9734.epicfightposture.client.ClientPostureStore;
+import dev.nire9734.epicfightposture.client.ServerVersionNotice;
 import dev.nire9734.epicfightposture.neoforge.NeoForgeServerSettings;
 import dev.nire9734.epicfightposture.neoforge.compat.NeoForgeAutoCompatibility;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
@@ -19,8 +21,12 @@ import dev.nire9734.epicfightposture.neoforge.client.NeoForgeRendererDiscoveryCl
  */
 public final class NeoForgePostureNetworking {
     public static void registerPayloads(RegisterPayloadHandlersEvent event) {
-        // Protocol 4 (3.3.0): chunked renderer reports and trimmed settings payload.
-        PayloadRegistrar registrar = event.registrar("4");
+        // Names the first mod version speaking this protocol, so NeoForge's
+        // mismatch screen shows e.g. "3.3.0+" rather than an opaque number.
+        PayloadRegistrar registrar = event.registrar(NetworkProtocol.VERSION);
+        registrar.playToClient(
+                NeoForgeServerVersionPayload.TYPE, NeoForgeServerVersionPayload.STREAM_CODEC,
+                (payload, context) -> ServerVersionNotice.receive(payload.version()));
         registrar.playToClient(
                 PostureStatePayload.TYPE, PostureStatePayload.STREAM_CODEC,
                 NeoForgePostureNetworking::receiveOnClient);

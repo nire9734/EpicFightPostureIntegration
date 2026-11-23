@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.Set;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -33,5 +34,16 @@ class RendererDiscoverySharedTest {
         assertTrue(failure.contains("2 patch failures"));
         assertTrue(failure.contains("See server log"));
         assertTrue(RendererDiscoveryShared.reportErrorNotice().contains("failed"));
+    }
+
+    @Test
+    void playerFacingMessagesUseThePublishedModName() {
+        for (String message : new String[] {
+                RendererDiscoveryShared.changeNotice(2, 0, 18, 0, 0, 0),
+                RendererDiscoveryShared.changeNotice(0, 1, 0, 1, 0, 2),
+                RendererDiscoveryShared.reportErrorNotice()}) {
+            assertTrue(message.startsWith("[Epic Fight Posture Integration] "), message);
+            assertFalse(message.contains("EFPI"), message);
+        }
     }
 }

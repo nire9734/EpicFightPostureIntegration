@@ -10,6 +10,8 @@ public final class RendererDiscoveryShared {
     /** Prevent rapid resource reloads from repeatedly refreshing all loaded mobs. */
     public static final int RELOAD_REQUEST_COOLDOWN_TICKS = 20;
     private static final int MAX_REPORT_IDS = 8192;
+    /** Player-facing prefix: the published mod name, never an abbreviation. */
+    private static final String CHAT_PREFIX = "[Epic Fight Posture Integration]";
 
     public enum ValidationError {
         NONE,
@@ -65,12 +67,12 @@ public final class RendererDiscoveryShared {
         if (failedPatches > 0) details.add(failedPatches + " patch failures");
         if (details.length() == 0) return null;
         boolean problems = newConflicts > 0 || newlySkipped > 0 || failedPatches > 0;
-        return "[EFPI] Compatibility " + (problems ? "update needs attention: " : "updated: ")
+        return CHAT_PREFIX + " Compatibility " + (problems ? "update needs attention: " : "updated: ")
                 + details + (problems ? ". See server log." : ".");
     }
 
     public static String reportErrorNotice() {
-        return "[EFPI] Renderer discovery failed. See server log.";
+        return CHAT_PREFIX + " Renderer discovery failed. See server log.";
     }
 
     private RendererDiscoveryShared() {

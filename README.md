@@ -13,7 +13,7 @@ Epic Fight Posture Integration (EFPI) adds a server-authoritative Posture system
 | Java for building | 17 | 21 |
 | File | `epicfight-posture-integration-forge-1.20.1-3.3.0.jar` | `epicfight-posture-integration-neoforge-1.21.1-3.3.0.jar` |
 
-Install **only the JAR matching your Minecraft version and loader**. 3.3.0 changes the network protocol: servers and clients must both run 3.3.0. Install EFPI and its required mods on both client and server. GeckoLib and Lionfish API are optional compatibility libraries, not EFPI hard dependencies.
+Install **only the JAR matching your Minecraft version and loader**. 3.3.0 changes the network protocol: servers and clients must both run 3.3.0. If the protocols differ, the connection is refused and the loader's screen shows the versions; if only the versions differ, a one-line chat message after login shows the server's version. Install EFPI and its required mods on both client and server. GeckoLib and Lionfish API are optional compatibility libraries, not EFPI hard dependencies.
 
 **Development dependency verification (Nov 16, 2026):** Forge compilation now targets Epic Fight 20.15.2 and Combat Evolution 2.3.6; NeoForge compilation targets Epic Fight 21.17.3.1 and Combat Evolution 2.3.3.1. Optional GeckoLib 4.8.4 / 4.9.3 and Lionfish API 3.0 / 3.1 already match the latest releases for these Minecraft versions. Compiling against one version does not prove in-game compatibility with every version in the declared range.
 

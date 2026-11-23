@@ -3,9 +3,14 @@ package dev.nire9734.epicfightposture.client;
 import dev.nire9734.epicfightposture.EpicFightPostureIntegration;
 import dev.nire9734.epicfightposture.PostureServerConfig;
 import dev.nire9734.epicfightposture.compat.humanoid.VanillaHumanoidCompat;
+import dev.nire9734.epicfightposture.network.ServerVersionPacket;
+import net.minecraft.ChatFormatting;
+import net.minecraft.client.Minecraft;
+import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.Entity;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
+import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.entity.EntityLeaveLevelEvent;
 import net.minecraftforge.event.level.LevelEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
@@ -43,6 +48,21 @@ public final class ClientPostureEvents {
     public static void onLoggingOut(ClientPlayerNetworkEvent.LoggingOut event) {
         ClientPostureStore.clear();
         PostureServerConfig.clearRemoteSnapshot();
+        ServerVersionNotice.clear();
+    }
+
+    /** Shows the one-line version notice once the chat is available after login. */
+    @SubscribeEvent
+    public static void onClientTick(TickEvent.ClientTickEvent event) {
+        if (event.phase != TickEvent.Phase.END || !ServerVersionNotice.hasPending()) return;
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.player == null) return;
+        String local = ServerVersionPacket.localModVersion();
+        String server = ServerVersionNotice.takeMismatch(local);
+        if (server != null) {
+            minecraft.gui.getChat().addMessage(Component.translatable(
+                    ServerVersionNotice.TRANSLATION_KEY, server, local).withStyle(ChatFormatting.YELLOW));
+        }
     }
 
     private ClientPostureEvents() {

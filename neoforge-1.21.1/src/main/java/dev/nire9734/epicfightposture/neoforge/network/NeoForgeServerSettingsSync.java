@@ -11,7 +11,7 @@ import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.server.ServerLifecycleHooks;
 
-/** Sends the server's policy at login and after a live config reload. */
+/** Sends the server's policy (and its mod version) at login, and the policy after a live config reload. */
 public final class NeoForgeServerSettingsSync {
     private static boolean registered;
 
@@ -47,6 +47,7 @@ public final class NeoForgeServerSettingsSync {
     private static void onLogin(PlayerEvent.PlayerLoggedInEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
             PacketDistributor.sendToPlayer(player, current());
+            PacketDistributor.sendToPlayer(player, NeoForgeServerVersionPayload.current());
         }
     }
 
