@@ -97,7 +97,7 @@ sourceSets {
             include 'dev/nire9734/epicfightposture/client/ClientPostureStoreTest.java'
             include 'dev/nire9734/epicfightposture/client/ServerVersionNoticeTest.java'
             include 'dev/nire9734/epicfightposture/SpecialRenderFailuresTest.java'
-            include 'dev/nire9734/epicfightposture/HookGuardTest.java'
+            // HookGuardTest needs SLF4J, which this plain JUnit classpath lacks; it runs on Forge.
             include 'dev/nire9734/epicfightposture/client/PostureHudGeometryTest.java'
             include 'dev/nire9734/epicfightposture/compat/humanoid/RendererDiscoverySharedTest.java'
             include 'dev/nire9734/epicfightposture/compat/humanoid/RendererDiscoverySessionsTest.java'
