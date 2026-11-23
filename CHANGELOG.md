@@ -1,6 +1,18 @@
 # Changelog
 
-## 3.2.2 (unreleased)
+## 3.2.3 (unreleased)
+
+Internal cleanup and Forge/NeoForge consistency. Default gameplay balance is unchanged on both loaders.
+
+- **Shared Posture math:** maximum Posture, the direct-hit normalization scale and effective-health calculation now live in one common implementation (`PostureInputs`, `PostureBalance`), and all fixed balance/timing constants in `PostureTuning`. Regression tests pin the results to the 3.2.2 Forge and NeoForge formulas.
+- **NeoForge maximum Posture refresh:** like Forge, the ten-tick refresh now recalculates only when maximum HP, armor or toughness actually changed. Results are identical; only redundant work is skipped.
+- **NeoForge late viewers during executions:** a player who starts tracking a mob while a Combat Evolution execution outlives the killing blow now receives the mob's current Posture state, matching Forge.
+- **Parry range validation:** if `parry_base_min_percent` is set higher than `parry_base_max_percent`, both loaders use the two values in the intended order and log a warning, instead of giving weaker mobs less parry pressure.
+- **Client sync hardening:** malformed Posture snapshots (non-finite values or a non-positive maximum) are ignored by the shared client store on both loaders; previously only NeoForge filtered them.
+- **Renderer-discovery cache:** an unreadable dedicated-server cache is now copied to `renderer-discovery.json.bak` before it is replaced, for diagnosis.
+- **Cleanup:** removed unused helpers and imports, a redundant canceled-event check on Forge, and fully qualified call sites; NeoForge sync calls now tolerate a missing state.
+
+## 3.2.2
 
 - **Optional normal guard Posture:** paid ordinary Epic Fight guards using **weapons without standard parry support** reduce the attacker's Posture with `posture.guard_posture_damage_enabled = true` (default OFF). The `guard_posture_damage_multiplier` defaults to 0.25 of equivalent parry pressure. Eligibility is based on the registered parry skill's advanced-guard support for the held weapon and style, not on which guard skill is equipped.
 - **Guard outcome filtering:** successful parries do not receive a second normal-guard reward, while stamina-driven guard breaks grant no Posture damage.

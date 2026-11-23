@@ -2,7 +2,7 @@
 
 Epic Fight Posture Integration (EFPI) adds a server-authoritative Posture system to compatible Epic Fight mobs, with guard breaks and Combat Evolution executions.
 
-## Supported editions (3.2.2 development)
+## Supported editions (3.2.3 development)
 
 | | Forge | NeoForge |
 | --- | --- | --- |
@@ -11,7 +11,7 @@ Epic Fight Posture Integration (EFPI) adds a server-authoritative Posture system
 | Epic Fight | 20.14.17–20.14.x or 20.15.1–20.15.x | 21.17.3.1–21.17.x |
 | Combat Evolution | 2.2.8–2.3.x | 2.3.2–2.3.x |
 | Java for building | 17 | 21 |
-| File | `epicfight-posture-integration-forge-1.20.1-3.2.2.jar` | `epicfight-posture-integration-neoforge-1.21.1-3.2.2.jar` |
+| File | `epicfight-posture-integration-forge-1.20.1-3.2.3.jar` | `epicfight-posture-integration-neoforge-1.21.1-3.2.3.jar` |
 
 Install **only the JAR matching your Minecraft version and loader**. Install EFPI and its required mods on both client and server. GeckoLib and Lionfish API are optional compatibility libraries, not EFPI hard dependencies.
 
