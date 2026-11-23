@@ -66,6 +66,7 @@ sourceSets {
             include 'dev/nire9734/epicfightposture/compat/humanoid/RendererDiscoveryRuntime.java'
             include 'dev/nire9734/epicfightposture/compat/humanoid/RendererDiscoverySessions.java'
             include 'dev/nire9734/epicfightposture/compat/humanoid/RendererDiscoveryUpload.java'
+            include 'dev/nire9734/epicfightposture/compat/humanoid/OperatorNoticeText.java'
             include 'dev/nire9734/epicfightposture/compat/humanoid/RendererDiscoveryReportProcessor.java'
             include 'dev/nire9734/epicfightposture/compat/humanoid/ModSetFingerprint.java'
             include 'dev/nire9734/epicfightposture/compat/humanoid/rig/**'
@@ -154,7 +155,10 @@ tasks.named('processResources', ProcessResources).configure {
         mod_id: mod_id,
         mod_name: mod_name,
         mod_version: mod_version,
-        mod_license: mod_license
+        mod_authors: mod_authors,
+        mod_license: mod_license,
+        mod_display_url: mod_display_url,
+        mod_issue_tracker_url: mod_issue_tracker_url
     ]
     inputs.properties(replacements)
     filesMatching('META-INF/neoforge.mods.toml') {

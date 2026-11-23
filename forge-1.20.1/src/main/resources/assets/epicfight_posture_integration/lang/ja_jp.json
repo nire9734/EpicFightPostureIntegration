@@ -8,5 +8,15 @@
   "config.epicfight_posture_integration.execution_sound_volume": "処刑効果音: %s%%",
   "config.epicfight_posture_integration.execution_sound_volume.description": "処刑効果音の音量を調整します。",
   "config.epicfight_posture_integration.reset": "初期値に戻す",
-  "epicfight_posture_integration.server_version_mismatch": "[Epic Fight Posture Integration] このサーバーのバージョンは %s です（あなたは %s）。サーバーと同じバージョンの導入をおすすめします。"
+  "epicfight_posture_integration.server_version_mismatch": "[Epic Fight Posture Integration] このサーバーのバージョンは %s です（あなたは %s）。サーバーと同じバージョンの導入をおすすめします。",
+  "epicfight_posture_integration.discovery.failed": "[Epic Fight Posture Integration] 描画の検出に失敗しました。詳しくはサーバーログを確認してください。",
+  "epicfight_posture_integration.discovery.updated": "[Epic Fight Posture Integration] 互換性を更新しました: %s。",
+  "epicfight_posture_integration.discovery.attention": "[Epic Fight Posture Integration] 互換性の更新で確認が必要です: %s。詳しくはサーバーログを確認してください。",
+  "epicfight_posture_integration.discovery.separator": "、",
+  "epicfight_posture_integration.discovery.enabled": "%s種類のMobを有効化",
+  "epicfight_posture_integration.discovery.patched": "既存のMob %s体に適用",
+  "epicfight_posture_integration.discovery.disabled": "%s種類のMobを無効化",
+  "epicfight_posture_integration.discovery.conflicts": "描画の競合 %s件",
+  "epicfight_posture_integration.discovery.skipped": "登録のスキップ %s件",
+  "epicfight_posture_integration.discovery.failures": "適用の失敗 %s件"
 }

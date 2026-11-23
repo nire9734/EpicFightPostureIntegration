@@ -8,5 +8,15 @@
   "config.epicfight_posture_integration.execution_sound_volume": "Execution Sound Volume: %s%%",
   "config.epicfight_posture_integration.execution_sound_volume.description": "Adjust execution sound volume.",
   "config.epicfight_posture_integration.reset": "Reset",
-  "epicfight_posture_integration.server_version_mismatch": "[Epic Fight Posture Integration] This server runs version %s (you have %s). Installing the same version as the server is recommended."
+  "epicfight_posture_integration.server_version_mismatch": "[Epic Fight Posture Integration] This server runs version %s (you have %s). Installing the same version as the server is recommended.",
+  "epicfight_posture_integration.discovery.failed": "[Epic Fight Posture Integration] Renderer discovery failed. See server log.",
+  "epicfight_posture_integration.discovery.updated": "[Epic Fight Posture Integration] Compatibility updated: %s.",
+  "epicfight_posture_integration.discovery.attention": "[Epic Fight Posture Integration] Compatibility update needs attention: %s. See server log.",
+  "epicfight_posture_integration.discovery.separator": ", ",
+  "epicfight_posture_integration.discovery.enabled": "%s mob types enabled",
+  "epicfight_posture_integration.discovery.patched": "%s existing mobs patched",
+  "epicfight_posture_integration.discovery.disabled": "%s mob types disabled",
+  "epicfight_posture_integration.discovery.conflicts": "%s renderer conflicts",
+  "epicfight_posture_integration.discovery.skipped": "%s registrations skipped",
+  "epicfight_posture_integration.discovery.failures": "%s patch failures"
 }

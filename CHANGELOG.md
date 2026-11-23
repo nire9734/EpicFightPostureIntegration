@@ -10,12 +10,13 @@ Each release lists **Added**, **Changed**, **Fixed** and **Removed** items. A **
 - `posture.projectile_defense_posture_multiplier` (default `0.0`) scales Posture damage from parrying or guarding projectiles.
 - A chat message after login when the server's mod version differs from the client's (English and Japanese).
 - A warning in the log when `parry_base_min_percent` is higher than `parry_base_max_percent`.
+- Links to the CurseForge page and the issue tracker in the mod list and on version mismatch screens.
 
 ### Changed
 - Parrying or guarding a projectile no longer damages the shooter's Posture by default, so ranged mobs are not guard broken from a distance. Set the new multiplier to `1.0` for the previous behavior.
 - Fully recovered mobs that were never guard broken are no longer tracked by the server. Their bar stays full, and guard break resistance is unaffected.
 - On NeoForge, a protocol mismatch now names the required mod version (`mod 3.3.0 or later`).
-- Operator chat messages begin with `[Epic Fight Posture Integration]`.
+- Operator chat messages begin with `[Epic Fight Posture Integration]` and are shown in the operator's client language (English or Japanese).
 - Forge and NeoForge share the Posture math, constants and network fields. Default balance is unchanged.
 
 ### Fixed

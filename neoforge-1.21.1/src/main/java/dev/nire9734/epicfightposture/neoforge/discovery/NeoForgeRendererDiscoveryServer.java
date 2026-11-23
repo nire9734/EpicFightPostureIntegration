@@ -3,6 +3,7 @@ package dev.nire9734.epicfightposture.neoforge.discovery;
 import com.mojang.logging.LogUtils;
 import java.util.Set;
 import java.util.UUID;
+import dev.nire9734.epicfightposture.compat.humanoid.OperatorNoticeText;
 import dev.nire9734.epicfightposture.compat.humanoid.RendererDiscoverySessions;
 import dev.nire9734.epicfightposture.compat.humanoid.RendererDiscoveryReportProcessor;
 import dev.nire9734.epicfightposture.compat.humanoid.RendererDiscoveryShared;
@@ -13,7 +14,6 @@ import dev.nire9734.epicfightposture.neoforge.compat.NeoForgeAutoCompatibility;
 import dev.nire9734.epicfightposture.neoforge.compat.NeoForgeExistingPatchRefresh;
 import dev.nire9734.epicfightposture.neoforge.NeoForgePostureCoverage;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.EntityType;
@@ -123,7 +123,7 @@ public final class NeoForgeRendererDiscoveryServer {
         if (upload.status() == RendererDiscoveryUpload.Status.REJECTED) {
             LOGGER.warn("EFPI rejected renderer discovery from {}: {}",
                     player.getGameProfile().getName(), upload.rejection());
-            player.sendSystemMessage(Component.literal(RendererDiscoveryShared.reportErrorNotice()));
+            player.sendSystemMessage(OperatorNoticeText.failure());
             return;
         }
         RendererDiscoveryUpload.Report<ResourceLocation> report = upload.report();
@@ -140,23 +140,23 @@ public final class NeoForgeRendererDiscoveryServer {
         if (error != RendererDiscoveryShared.ValidationError.NONE) {
             LOGGER.warn("EFPI rejected renderer discovery from {}: {}",
                     player.getGameProfile().getName(), error);
-            player.sendSystemMessage(Component.literal(RendererDiscoveryShared.reportErrorNotice()));
+            player.sendSystemMessage(OperatorNoticeText.failure());
             return;
         }
 
         if (!outcome.accepted()) {
             LOGGER.warn("EFPI ignored renderer discovery from {} because the cache is full",
                     player.getGameProfile().getName());
-            player.sendSystemMessage(Component.literal(RendererDiscoveryShared.reportErrorNotice()));
+            player.sendSystemMessage(OperatorNoticeText.failure());
             return;
         }
         RendererDiscoveryRuntime.LiveRefresh refresh = outcome.refresh();
         NeoForgePostureCoverage.replaceTrustedRendererScan(
                 RendererDiscoveryReportProcessor.diagnosticSnapshot(report.inspected()));
         LOGGER.info("{}", outcome.acceptanceSummary(player.getGameProfile().getName()));
-        String notice = outcome.operatorNotice();
+        RendererDiscoveryShared.OperatorNotice notice = outcome.operatorNotice();
         if (notice != null) {
-            player.sendSystemMessage(Component.literal(notice));
+            player.sendSystemMessage(OperatorNoticeText.of(notice));
         }
     }
 

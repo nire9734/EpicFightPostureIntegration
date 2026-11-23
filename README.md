@@ -45,7 +45,7 @@ cd neoforge-1.21.1 && ./gradlew clean build   # Java 21, Gradle 9.2.1 bootstrap
 
 The wrappers download and verify their pinned Gradle versions; on Windows use `gradlew.bat`. `build` runs the tests, and JARs are written to each project's `build/libs/`.
 
-CI runs on pull requests and on pushes to the branches listed in `.github/workflows/build-neoforge-port.yml`. Add a new release branch there to build it on push.
+CI (`.github/workflows/build-neoforge-port.yml`) runs on pull requests, on pushes to `main`, and on pushes to release branches named after a version (for example `3.3.0`).
 
 ## Architecture
 

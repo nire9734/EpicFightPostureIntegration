@@ -80,6 +80,8 @@ tasks.named('processResources', ProcessResources).configure {
         mod_version: mod_version,
         mod_authors: mod_authors,
         mod_license: mod_license,
+        mod_display_url: mod_display_url,
+        mod_issue_tracker_url: mod_issue_tracker_url,
         minecraft_version: minecraft_version,
         forge_version: forge_version
     ]

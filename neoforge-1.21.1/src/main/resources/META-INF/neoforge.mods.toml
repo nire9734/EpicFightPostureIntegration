@@ -1,6 +1,7 @@
 modLoader="javafml"
 loaderVersion="[1,)"
 license="${mod_license}"
+issueTrackerURL="${mod_issue_tracker_url}"
 
 [[mixins]]
 config="epicfight_posture_integration_neoforge.mixins.json"
@@ -9,7 +10,8 @@ config="epicfight_posture_integration_neoforge.mixins.json"
 modId="${mod_id}"
 version="${mod_version}"
 displayName="${mod_name}"
-authors="nire9734"
+displayURL="${mod_display_url}"
+authors="${mod_authors}"
 description='''
 Adds server-authoritative posture, guard breaks, and Combat Evolution execution support to compatible Epic Fight entities. Includes automatic humanoid compatibility, HUD integration, configurable posture damage, and multiplayer synchronization.
 '''

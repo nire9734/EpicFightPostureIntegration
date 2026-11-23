@@ -5,7 +5,6 @@ import dev.nire9734.epicfightposture.EpicFightPostureIntegration;
 import dev.nire9734.epicfightposture.network.BridgeNetwork;
 import dev.nire9734.epicfightposture.network.HumanoidDiscoveryRequestPacket;
 import dev.nire9734.epicfightposture.sync.ForgePostureCoverage;
-import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.EntityType;
@@ -111,7 +110,7 @@ public final class HumanoidDiscoveryServer {
         if (upload.status() == RendererDiscoveryUpload.Status.REJECTED) {
             LOGGER.warn("EFPI rejected renderer discovery reply from {}: {}",
                     sender.getGameProfile().getName(), upload.rejection());
-            sender.sendSystemMessage(Component.literal(RendererDiscoveryShared.reportErrorNotice()));
+            sender.sendSystemMessage(OperatorNoticeText.failure());
             return;
         }
         RendererDiscoveryUpload.Report<ResourceLocation> report = upload.report();
@@ -140,14 +139,14 @@ public final class HumanoidDiscoveryServer {
         if (error != RendererDiscoveryShared.ValidationError.NONE) {
             LOGGER.warn("EFPI rejected renderer discovery reply from {}: {}",
                     sender.getGameProfile().getName(), error);
-            sender.sendSystemMessage(Component.literal(RendererDiscoveryShared.reportErrorNotice()));
+            sender.sendSystemMessage(OperatorNoticeText.failure());
             return;
         }
 
         if (!outcome.accepted()) {
             LOGGER.warn("EFPI ignored renderer discovery report from {} because the cache is full",
                     sender.getGameProfile().getName());
-            sender.sendSystemMessage(Component.literal(RendererDiscoveryShared.reportErrorNotice()));
+            sender.sendSystemMessage(OperatorNoticeText.failure());
             return;
         }
         LOGGER.info("{}", outcome.acceptanceSummary(sender.getGameProfile().getName()));
@@ -158,9 +157,9 @@ public final class HumanoidDiscoveryServer {
             LOGGER.warn("EFPI could not refresh {} existing mobs after discovery from {}",
                     refresh.failed(), sender.getGameProfile().getName());
         }
-        String notice = outcome.operatorNotice();
+        RendererDiscoveryShared.OperatorNotice notice = outcome.operatorNotice();
         if (notice != null) {
-            sender.sendSystemMessage(Component.literal(notice));
+            sender.sendSystemMessage(OperatorNoticeText.of(notice));
         }
     }
 

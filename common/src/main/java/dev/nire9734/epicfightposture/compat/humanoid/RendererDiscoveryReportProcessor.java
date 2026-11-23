@@ -41,7 +41,7 @@ public final class RendererDiscoveryReportProcessor {
             RendererDiscoveryStore.UpdateResult report,
             RendererDiscoveryRuntime.ActivationUpdate activation,
             RendererDiscoveryRuntime.LiveRefresh refresh,
-            String operatorNotice) {
+            RendererDiscoveryShared.OperatorNotice operatorNotice) {
         public boolean accepted() {
             return report != null && report.accepted();
         }
@@ -133,7 +133,7 @@ public final class RendererDiscoveryReportProcessor {
         retryRequired = activation.skipped() > 0 || refresh.failed() > 0;
         lastVerified = current;
         lastReady = activation.ready();
-        String notice = RendererDiscoveryShared.changeNotice(
+        RendererDiscoveryShared.OperatorNotice notice = RendererDiscoveryShared.changeNotice(
                 activation.newlyReady(), RendererDiscoveryRuntime.withdrawnTargets(previous, current),
                 refresh.updated(), newConflicts.size(), activation.newlySkipped(), refresh.failed());
         return new Outcome(RendererDiscoveryShared.ValidationError.NONE, report, activation, refresh, notice);

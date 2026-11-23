@@ -35,7 +35,7 @@ class RendererDiscoveryReportProcessorTest {
         assertTrue(first.accepted());
         assertEquals(1, first.report().pendingCount());
         assertEquals(1, first.activation().newlyReady());
-        assertTrue(first.operatorNotice().contains("3 existing mobs patched"));
+        assertTrue(first.operatorNotice().english().contains("3 existing mobs patched"));
         assertTrue(first.acceptanceSummary("Operator").contains("3 existing mobs updated, 0 failed"));
 
         var repeat = RendererDiscoveryReportProcessor.process(
@@ -56,7 +56,7 @@ class RendererDiscoveryReportProcessorTest {
                 affected -> new RendererDiscoveryRuntime.LiveRefresh(0, 0));
         assertTrue(conflicting.accepted());
         assertEquals(1, conflicting.report().conflictCount());
-        assertTrue(conflicting.operatorNotice().contains("renderer conflicts"));
+        assertTrue(conflicting.operatorNotice().english().contains("renderer conflicts"));
         assertFalse(RendererDiscoveryStore.isRuntimeApproved(golem));
     }
 
@@ -202,7 +202,7 @@ class RendererDiscoveryReportProcessorTest {
                 affected -> { fail("Conflicted targets must not refresh"); return new RendererDiscoveryRuntime.LiveRefresh(0, 0); });
         assertTrue(conflict.accepted());
         assertFalse(RendererDiscoveryStore.isRuntimeApproved(id));
-        assertTrue(conflict.operatorNotice().contains("renderer conflicts"));
+        assertTrue(conflict.operatorNotice().english().contains("renderer conflicts"));
     }
 
     @Test
@@ -217,7 +217,7 @@ class RendererDiscoveryReportProcessorTest {
         assertTrue(failed.accepted());
         assertEquals(1, failed.activation().skipped());
         assertEquals(1, failed.refresh().failed());
-        assertTrue(failed.operatorNotice().contains("patch failures"));
+        assertTrue(failed.operatorNotice().english().contains("patch failures"));
 
         AtomicInteger callbacks = new AtomicInteger();
         var recovered = RendererDiscoveryReportProcessor.process(operator, "a".repeat(64),

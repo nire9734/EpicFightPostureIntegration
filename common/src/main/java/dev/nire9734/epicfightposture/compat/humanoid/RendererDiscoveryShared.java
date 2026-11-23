@@ -1,5 +1,9 @@
 package dev.nire9734.epicfightposture.compat.humanoid;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.StringJoiner;
@@ -50,27 +54,73 @@ public final class RendererDiscoveryShared {
         return false;
     }
 
-    /** At most one short notice to the OP whose report changed server behavior. */
-    public static String changeNotice(
+    /** Translation-key prefix for operator chat notices; the lang files hold the text. */
+    public static final String NOTICE_KEY_PREFIX = "epicfight_posture_integration.discovery.";
+    public static final String FAILED_KEY = NOTICE_KEY_PREFIX + "failed";
+    public static final String SEPARATOR_KEY = NOTICE_KEY_PREFIX + "separator";
+
+    /** One counted item of an operator notice, e.g. "3 existing mobs patched". */
+    public record NoticeDetail(String key, int count) {
+        public String translationKey() {
+            return NOTICE_KEY_PREFIX + key;
+        }
+    }
+
+    /**
+     * Language-neutral operator notice. The server sends it as translatable
+     * chat components, so each operator reads it in their own client language.
+     */
+    public record OperatorNotice(boolean problems, List<NoticeDetail> details) {
+        public OperatorNotice {
+            details = List.copyOf(details);
+        }
+
+        public String headlineKey() {
+            return NOTICE_KEY_PREFIX + (problems ? "attention" : "updated");
+        }
+
+        /** English text matching en_us.json, for tests and diagnostics. */
+        public String english() {
+            StringJoiner joined = new StringJoiner(", ");
+            for (NoticeDetail detail : details) {
+                joined.add(String.format(Locale.ROOT, ENGLISH.get(detail.key()), detail.count()));
+            }
+            return String.format(Locale.ROOT, problems ? ENGLISH_ATTENTION : ENGLISH_UPDATED, joined);
+        }
+    }
+
+    private static final String ENGLISH_UPDATED = CHAT_PREFIX + " Compatibility updated: %s.";
+    private static final String ENGLISH_ATTENTION =
+            CHAT_PREFIX + " Compatibility update needs attention: %s. See server log.";
+    private static final Map<String, String> ENGLISH = Map.of(
+            "enabled", "%d mob types enabled",
+            "patched", "%d existing mobs patched",
+            "disabled", "%d mob types disabled",
+            "conflicts", "%d renderer conflicts",
+            "skipped", "%d registrations skipped",
+            "failures", "%d patch failures");
+
+    /** At most one short notice to the OP whose report changed server behavior; null if nothing changed. */
+    public static OperatorNotice changeNotice(
             int newlyReady,
             int withdrawn,
             int patchedMobs,
             int newConflicts,
             int newlySkipped,
             int failedPatches) {
-        StringJoiner details = new StringJoiner(", ");
-        if (newlyReady > 0) details.add(newlyReady + " mob types enabled");
-        if (patchedMobs > 0) details.add(patchedMobs + " existing mobs patched");
-        if (withdrawn > 0) details.add(withdrawn + " mob types disabled");
-        if (newConflicts > 0) details.add(newConflicts + " renderer conflicts");
-        if (newlySkipped > 0) details.add(newlySkipped + " registrations skipped");
-        if (failedPatches > 0) details.add(failedPatches + " patch failures");
-        if (details.length() == 0) return null;
+        List<NoticeDetail> details = new ArrayList<>();
+        if (newlyReady > 0) details.add(new NoticeDetail("enabled", newlyReady));
+        if (patchedMobs > 0) details.add(new NoticeDetail("patched", patchedMobs));
+        if (withdrawn > 0) details.add(new NoticeDetail("disabled", withdrawn));
+        if (newConflicts > 0) details.add(new NoticeDetail("conflicts", newConflicts));
+        if (newlySkipped > 0) details.add(new NoticeDetail("skipped", newlySkipped));
+        if (failedPatches > 0) details.add(new NoticeDetail("failures", failedPatches));
+        if (details.isEmpty()) return null;
         boolean problems = newConflicts > 0 || newlySkipped > 0 || failedPatches > 0;
-        return CHAT_PREFIX + " Compatibility " + (problems ? "update needs attention: " : "updated: ")
-                + details + (problems ? ". See server log." : ".");
+        return new OperatorNotice(problems, details);
     }
 
+    /** English text of the failure notice (key {@link #FAILED_KEY}), for tests and diagnostics. */
     public static String reportErrorNotice() {
         return CHAT_PREFIX + " Renderer discovery failed. See server log.";
     }
