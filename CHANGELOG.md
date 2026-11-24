@@ -20,7 +20,7 @@ Each release lists **Added**, **Changed**, **Fixed** and **Removed** items. A **
 - Fully recovered mobs that were never guard broken are no longer tracked by the server. Their bar stays full, and guard break resistance is unaffected.
 - On NeoForge, a protocol mismatch now names the required mod version (`mod 3.3.0 or later`).
 - Operator chat messages begin with `[Epic Fight Posture Integration]` and are shown in the operator's client language (English or Japanese).
-- Forge and NeoForge share the Posture math, constants and network fields. Default balance is unchanged.
+- Forge and NeoForge share the Posture math, constants, network fields and the whole Posture flow (damage, guard breaks, executions, recovery) in one engine. Default balance and behavior are unchanged.
 
 ### Fixed
 - A failure while drawing a guard broken mob (for example a GeckoLib model or a third-party render layer error) no longer crashes the game. That mob type falls back to normal rendering until resources are reloaded, and the error is logged once.

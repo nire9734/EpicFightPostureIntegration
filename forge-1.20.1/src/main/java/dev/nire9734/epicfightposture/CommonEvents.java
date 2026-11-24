@@ -46,7 +46,7 @@ public final class CommonEvents {
         HookGuard.run("execution start", () -> {
             Object original = event.getTarget().getOriginal();
             if (original instanceof LivingEntity target) {
-                PostureManager.onExecutionStart(target, event.getTarget());
+                PostureManager.onExecutionStart(target);
             }
         });
     }

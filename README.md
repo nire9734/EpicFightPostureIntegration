@@ -53,13 +53,16 @@ CI (`.github/workflows/build-neoforge-port.yml`) runs on pull requests, on pushe
 
 | Piece | Location |
 | --- | --- |
-| State machine `NORMAL → BROKEN → EXECUTING → RECOVERING` | `PostureRuntimeState` |
+| Flow: damage, guard breaks, executions, recovery, tick and sync rules | `PostureEngine` |
+| Per-entity state `NORMAL → BROKEN → EXECUTING → RECOVERING` | `PostureRuntimeState` |
+| Loader operations the engine needs (Epic Fight, Combat Evolution, config, sync) | `PostureHost` (+ `PostureSettings`) |
 | Balance math | `PostureBalance` |
 | Attribute inputs and maximum Posture | `PostureInputs` |
 | Fixed constants | `PostureTuning` |
 | Defense policy (normal guard, projectile multiplier) | `GuardPosturePolicy` |
-| Event wiring | `PostureManager` (Forge), `NeoForgePostureServerEvents` (NeoForge) |
+| Loader adapters: event wiring, damage detection, `PostureHost` implementation | `PostureManager` (Forge), `NeoForgePostureServerEvents` (NeoForge) |
 
+- **One engine:** both loaders run the same `PostureEngine`; only damage detection differs (see below). Change Posture behaviour there, and cover it with `PostureEngineTest`, which drives the flow through a fake host.
 - **Attacks** add Posture damage from the HP actually lost, scaled by Epic Fight Impact. On Forge the HP loss is measured at the next entity tick; on NeoForge from `LivingDamageEvent.Post`.
 - **Parries** and paid **normal guards** are detected by mixins on Epic Fight's `TakeDamageEvent` and `GuardSkill`/`ParryingSkill`. Their damage is a percentage of max Posture, based on the mob type's base EHP.
 - **Guard breaks** apply Epic Fight's `NEUTRALIZE` stun; only a confirmed break counts toward guard break resistance.

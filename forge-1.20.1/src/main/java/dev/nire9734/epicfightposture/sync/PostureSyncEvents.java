@@ -2,6 +2,7 @@ package dev.nire9734.epicfightposture.sync;
 
 import dev.nire9734.epicfightposture.EpicFightPostureIntegration;
 import dev.nire9734.epicfightposture.HookGuard;
+import dev.nire9734.epicfightposture.PostureEngine;
 import dev.nire9734.epicfightposture.PostureManager;
 import dev.nire9734.epicfightposture.PostureTuning;
 import dev.nire9734.epicfightposture.network.BridgeNetwork;
@@ -112,7 +113,7 @@ public final class PostureSyncEvents {
     }
 
     private static Snapshot snapshot(LivingEntity entity, boolean includePristine) {
-        PostureManager.SyncState state = PostureManager.syncState(entity, includePristine);
+        PostureEngine.SyncState state = PostureManager.syncState(entity, includePristine);
         return state == null ? null : new Snapshot(state.current(), state.max(), state.broken());
     }
 

@@ -4,6 +4,7 @@ import java.util.Map;
 import java.util.WeakHashMap;
 import dev.nire9734.epicfightposture.HookGuard;
 import dev.nire9734.epicfightposture.NeoForgePostureServerEvents;
+import dev.nire9734.epicfightposture.PostureEngine;
 import dev.nire9734.epicfightposture.PostureTuning;
 import dev.nire9734.epicfightposture.client.ClientPostureStore;
 import net.minecraft.server.level.ServerPlayer;
@@ -35,7 +36,7 @@ public final class NeoForgePostureSync {
         NeoForge.EVENT_BUS.addListener(NeoForgePostureSync::onLeave);
     }
 
-    public static void syncPeriodic(LivingEntity mob, NeoForgePostureServerEvents.SyncState state) {
+    public static void syncPeriodic(LivingEntity mob, PostureEngine.SyncState state) {
         if (Math.floorMod(mob.tickCount + mob.getId(), PostureTuning.SYNC_INTERVAL_TICKS) != 0) return;
         if (state == null) {
             // As in Forge: a state that became unavailable clears the client HUD entry.
@@ -46,7 +47,7 @@ public final class NeoForgePostureSync {
     }
 
     /** A null state (blacklisted or untracked mob) has nothing to send. */
-    public static void syncNow(LivingEntity mob, NeoForgePostureServerEvents.SyncState state) {
+    public static void syncNow(LivingEntity mob, PostureEngine.SyncState state) {
         if (state == null || mob.level().isClientSide()) return;
         Snapshot next = new Snapshot(state.current(), state.max(), state.broken());
         if (next.same(LAST.get(mob))) return;
@@ -64,7 +65,7 @@ public final class NeoForgePostureSync {
     private static void onStartTracking(PlayerEvent.StartTracking event) {
         if (!(event.getEntity() instanceof ServerPlayer player) ||
                 !(event.getTarget() instanceof LivingEntity mob)) return;
-        NeoForgePostureServerEvents.SyncState state = NeoForgePostureServerEvents.stateForTracking(mob);
+        PostureEngine.SyncState state = NeoForgePostureServerEvents.stateForTracking(mob);
         if (state != null) {
             Snapshot snapshot = new Snapshot(state.current(), state.max(), state.broken());
             PacketDistributor.sendToPlayer(player, packet(mob, snapshot, true));
