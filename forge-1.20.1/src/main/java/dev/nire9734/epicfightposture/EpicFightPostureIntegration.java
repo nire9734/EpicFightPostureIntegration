@@ -42,6 +42,8 @@ public final class EpicFightPostureIntegration {
             ClientConfigRegistration.register(context);
         }
 
+        ExecutionRange.install(PostureServerConfig::serverExecutionRangeMultiplier,
+                PostureServerConfig::clientExecutionRangeMultiplier);
         VanillaHumanoidCompat.bootstrap();
         BridgeNetwork.init();
     }

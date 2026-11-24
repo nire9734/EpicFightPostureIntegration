@@ -1,5 +1,6 @@
 package dev.nire9734.epicfightposture.neoforge;
 
+import dev.nire9734.epicfightposture.ExecutionRangePolicy;
 import dev.nire9734.epicfightposture.PostureConfigDescriptions;
 import java.util.List;
 import net.neoforged.neoforge.common.ModConfigSpec;
@@ -17,6 +18,7 @@ public final class NeoForgePostureConfig {
     public static final ModConfigSpec.BooleanValue GUARD_POSTURE_DAMAGE_ENABLED;
     public static final ModConfigSpec.DoubleValue GUARD_POSTURE_DAMAGE_MULTIPLIER;
     public static final ModConfigSpec.DoubleValue PROJECTILE_DEFENSE_POSTURE_MULTIPLIER;
+    public static final ModConfigSpec.DoubleValue EXECUTION_RANGE_MULTIPLIER;
     public static final ModConfigSpec.DoubleValue PARRY_BASE_MAX_PERCENT;
     public static final ModConfigSpec.DoubleValue PARRY_BASE_MIN_PERCENT;
     public static final ModConfigSpec.DoubleValue POSTURE_BREAK_RESISTANCE_STEP;
@@ -49,6 +51,9 @@ public final class NeoForgePostureConfig {
         PROJECTILE_DEFENSE_POSTURE_MULTIPLIER = builder
                 .comment(PostureConfigDescriptions.PROJECTILE_DEFENSE_MULTIPLIER)
                 .defineInRange("projectile_defense_posture_multiplier", 0.0D, 0.0D, 100.0D);
+        EXECUTION_RANGE_MULTIPLIER = builder
+                .comment(PostureConfigDescriptions.EXECUTION_RANGE_MULTIPLIER)
+                .defineInRange("execution_range_multiplier", 1.0D, 0.0D, ExecutionRangePolicy.MAX_MULTIPLIER);
         PARRY_BASE_MAX_PERCENT = builder
                 .comment(PostureConfigDescriptions.PARRY_BASE_MAX)
                 .defineInRange("parry_base_max_percent", 22.0D, 0.0D, 100.0D);

@@ -7,6 +7,7 @@ Each release lists **Added**, **Changed**, **Fixed** and **Removed** items. A **
 **Note:** the network protocol changed. Update the server and every client together; new config keys are added to existing files automatically.
 
 ### Added
+- `posture.execution_range_multiplier` (default `1.0`): guard break execution and back assassination ranges now depend on the held weapon's Epic Fight reach, so addon weapons are covered automatically. A sword keeps Combat Evolution's ranges (4 and 2 blocks); shorter and longer weapons scale between 0.75x and 1.5x, large mobs get extra range, and the multiplier scales both ranges (`0.0` = Combat Evolution defaults). Prompts on the client use the same ranges.
 - `posture.projectile_defense_posture_multiplier` (default `0.0`) scales Posture damage from parrying or guarding projectiles.
 - A chat message after login when the server's mod version differs from the client's (English and Japanese).
 - A warning in the log when `parry_base_min_percent` is higher than `parry_base_max_percent`.

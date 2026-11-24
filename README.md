@@ -65,6 +65,15 @@ CI (`.github/workflows/build-neoforge-port.yml`) runs on pull requests, on pushe
 - **Guard breaks** apply Epic Fight's `NEUTRALIZE` stun; only a confirmed break counts toward guard break resistance.
 - **States** are kept per entity in weak maps. A state that has fully regenerated and was never guard broken is dropped after one final sync.
 
+### Execution range
+
+Combat Evolution uses fixed ranges (4.0 blocks to execute, 2.0 to assassinate). Mixins on `ExecutionHandler` (server) and `CEKeyHandler` / `ExecutionHUD` (client) pass them through `ExecutionRange`:
+
+- **Weapon factor:** the held weapon's Epic Fight collider reach (`|center| + longest half extent`, read from `Collider.serialize`) plus an arm reach of 0.75, relative to the one-handed sword. A sword keeps Combat Evolution's ranges exactly; the factor is clamped to 0.75–1.5. Weapons without a readable collider keep the default.
+- **Large targets:** Combat Evolution measures to the target's center, so mobs wider than a player get up to 3 blocks extra (`width / 2 - 0.3`).
+- **Multiplier:** `execution_range_multiplier` (synchronized to clients so prompts match the server) scales both ranges; 0.0 disables the feature.
+- All injections use `require = 0`: if Combat Evolution changes these calls, its own ranges remain.
+
 ### Crash safety
 
 - Every special-state renderer runs through `SpecialRenderGuard`: a failure is logged once, the PoseStack is restored, and that entity type renders normally (`SpecialRenderFailures`) until renderers are rebuilt.
@@ -113,6 +122,7 @@ To capture a new model, start the client with `-Defpi.rigFixtureDirectory=<folde
 | `posture.guard_posture_damage_enabled` | false | Normal guards damage Posture (Guard: only weapons that cannot parry; Impact Guard: all weapons) |
 | `posture.guard_posture_damage_multiplier` | 0.25 | Normal guard damage relative to a parry |
 | `posture.projectile_defense_posture_multiplier` | 0.0 | Parry/guard damage against projectiles, relative to melee |
+| `posture.execution_range_multiplier` | 1.0 | Execution/assassination range, scaled by weapon reach (0.0 = Combat Evolution defaults) |
 | `posture.parry_base_max_percent` | 22.0 | Parry damage against weak mobs (% of max Posture) |
 | `posture.parry_base_min_percent` | 10.0 | Parry damage against strong mobs (% of max Posture) |
 | `posture.posture_break_resistance_step` | 0.5 | Extra resistance per guard break |

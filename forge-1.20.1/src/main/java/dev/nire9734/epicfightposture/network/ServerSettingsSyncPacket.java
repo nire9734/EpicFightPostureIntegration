@@ -42,6 +42,7 @@ public final class ServerSettingsSyncPacket {
 
         writeModIds(buf, snapshot.modAllowlist(), "allowlist");
         writeModIds(buf, snapshot.modDenylist(), "denylist");
+        buf.writeDouble(snapshot.executionRangeMultiplier());
     }
 
     public static ServerSettingsSyncPacket decode(FriendlyByteBuf buf) {
@@ -60,6 +61,7 @@ public final class ServerSettingsSyncPacket {
 
         Set<String> allowlist = readModIds(buf, "allowlist");
         Set<String> denylist = readModIds(buf, "denylist");
+        double executionRangeMultiplier = buf.readDouble();
 
         return new ServerSettingsSyncPacket(new PostureServerConfig.Snapshot(
                 Set.copyOf(blacklist),
@@ -67,7 +69,8 @@ public final class ServerSettingsSyncPacket {
                 extendedHumanoid,
                 vanillaSpider,
                 allowlist,
-                denylist
+                denylist,
+                executionRangeMultiplier
         ));
     }
 

@@ -32,6 +32,7 @@ public record NeoForgeServerSettingsPayload(NeoForgeServerSettings.Snapshot snap
         for (ResourceLocation id : settings.entityBlacklist()) buf.writeResourceLocation(id);
         writeNamespaces(buf, settings.modAllowlist());
         writeNamespaces(buf, settings.modDenylist());
+        buf.writeDouble(settings.executionRangeMultiplier());
     }
 
     private static NeoForgeServerSettingsPayload decode(RegistryFriendlyByteBuf buf) {
@@ -48,8 +49,9 @@ public record NeoForgeServerSettingsPayload(NeoForgeServerSettings.Snapshot snap
 
         Set<String> allow = readNamespaces(buf);
         Set<String> deny = readNamespaces(buf);
+        double executionRangeMultiplier = buf.readDouble();
         return new NeoForgeServerSettingsPayload(new NeoForgeServerSettings.Snapshot(
-                vanilla, extended, spider, blacklist, allow, deny));
+                vanilla, extended, spider, blacklist, allow, deny, executionRangeMultiplier));
     }
 
     private static void writeNamespaces(RegistryFriendlyByteBuf buf, Set<String> ids) {

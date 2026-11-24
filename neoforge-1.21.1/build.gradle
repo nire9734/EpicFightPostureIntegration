@@ -44,6 +44,8 @@ sourceSets {
             include 'dev/nire9734/epicfightposture/NetworkProtocol.java'
             include 'dev/nire9734/epicfightposture/SpecialRenderFailures.java'
             include 'dev/nire9734/epicfightposture/HookGuard.java'
+            include 'dev/nire9734/epicfightposture/ExecutionRangePolicy.java'
+            include 'dev/nire9734/epicfightposture/ExecutionRange.java'
             include 'dev/nire9734/epicfightposture/GuardPosturePolicy.java'
             include 'dev/nire9734/epicfightposture/CompatibilityImpactPolicy.java'
             include 'dev/nire9734/epicfightposture/AutomaticPatchSafety.java'
@@ -97,6 +99,7 @@ sourceSets {
             include 'dev/nire9734/epicfightposture/client/ClientPostureStoreTest.java'
             include 'dev/nire9734/epicfightposture/client/ServerVersionNoticeTest.java'
             include 'dev/nire9734/epicfightposture/SpecialRenderFailuresTest.java'
+            include 'dev/nire9734/epicfightposture/ExecutionRangePolicyTest.java'
             // HookGuardTest needs SLF4J, which this plain JUnit classpath lacks; it runs on Forge.
             include 'dev/nire9734/epicfightposture/client/PostureHudGeometryTest.java'
             include 'dev/nire9734/epicfightposture/compat/humanoid/RendererDiscoverySharedTest.java'

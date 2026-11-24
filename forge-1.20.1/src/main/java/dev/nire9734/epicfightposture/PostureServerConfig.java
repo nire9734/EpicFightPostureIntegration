@@ -40,6 +40,7 @@ public final class PostureServerConfig {
     public static final ForgeConfigSpec.BooleanValue GUARD_POSTURE_DAMAGE_ENABLED;
     public static final ForgeConfigSpec.DoubleValue GUARD_POSTURE_DAMAGE_MULTIPLIER;
     public static final ForgeConfigSpec.DoubleValue PROJECTILE_DEFENSE_POSTURE_MULTIPLIER;
+    public static final ForgeConfigSpec.DoubleValue EXECUTION_RANGE_MULTIPLIER;
     public static final ForgeConfigSpec.DoubleValue PARRY_BASE_MAX_PERCENT;
     public static final ForgeConfigSpec.DoubleValue PARRY_BASE_MIN_PERCENT;
     public static final ForgeConfigSpec.DoubleValue POSTURE_BREAK_RESISTANCE_STEP;
@@ -60,7 +61,8 @@ public final class PostureServerConfig {
             false,
             false,
             Set.of(),
-            Set.of()
+            Set.of(),
+            0.0D
     );
 
     private static volatile Set<ResourceLocation> blacklist = Set.of();
@@ -88,6 +90,9 @@ public final class PostureServerConfig {
         PROJECTILE_DEFENSE_POSTURE_MULTIPLIER = BUILDER
                 .comment(PostureConfigDescriptions.PROJECTILE_DEFENSE_MULTIPLIER)
                 .defineInRange("projectile_defense_posture_multiplier", 0.0D, 0.0D, 100.0D);
+        EXECUTION_RANGE_MULTIPLIER = BUILDER
+                .comment(PostureConfigDescriptions.EXECUTION_RANGE_MULTIPLIER)
+                .defineInRange("execution_range_multiplier", 1.0D, 0.0D, ExecutionRangePolicy.MAX_MULTIPLIER);
         PARRY_BASE_MAX_PERCENT = BUILDER
                 .comment(PostureConfigDescriptions.PARRY_BASE_MAX)
                 .defineInRange("parry_base_max_percent", 22.0D, 0.0D, 100.0D);
@@ -182,6 +187,21 @@ public final class PostureServerConfig {
     /** Constant fraction of maximum posture regenerated per second after the delay. */
     public static float postureRegenFractionPerSecond() {
         return REGEN_RATE_PERCENT.get().floatValue() / 100.0F;
+    }
+
+    /** Execution range multiplier from this installation's server.toml (server side). */
+    public static double serverExecutionRangeMultiplier() {
+        try {
+            return EXECUTION_RANGE_MULTIPLIER.get();
+        } catch (RuntimeException notLoaded) {
+            return 0.0D;
+        }
+    }
+
+    /** The server's synchronized multiplier on a client; Combat Evolution defaults until it arrives. */
+    public static double clientExecutionRangeMultiplier() {
+        Snapshot snapshot = remoteSnapshot;
+        return snapshot == null ? 0.0D : snapshot.executionRangeMultiplier();
     }
 
     public static boolean automaticCompatibilityEnabled() {
@@ -281,7 +301,8 @@ public final class PostureServerConfig {
                 automatic,
                 automatic,
                 modAllowlist,
-                modDenylist
+                modDenylist,
+                serverExecutionRangeMultiplier()
         );
     }
 
@@ -403,8 +424,12 @@ public final class PostureServerConfig {
             boolean enableExtendedHumanoidCompatibility,
             boolean enableVanillaSpiderCompatibility,
             Set<String> modAllowlist,
-            Set<String> modDenylist) {
+            Set<String> modDenylist,
+            double executionRangeMultiplier) {
         public Snapshot {
+            if (!Double.isFinite(executionRangeMultiplier) || executionRangeMultiplier < 0.0D) {
+                executionRangeMultiplier = 0.0D;
+            }
             entityBlacklist = entityBlacklist == null ? Set.of() : Set.copyOf(entityBlacklist);
             modAllowlist = modAllowlist == null ? Set.of() : Set.copyOf(modAllowlist);
             modDenylist = modDenylist == null ? Set.of() : Set.copyOf(modDenylist);

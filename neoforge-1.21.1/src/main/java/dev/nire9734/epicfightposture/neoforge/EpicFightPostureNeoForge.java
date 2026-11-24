@@ -1,5 +1,6 @@
 package dev.nire9734.epicfightposture.neoforge;
 
+import dev.nire9734.epicfightposture.ExecutionRange;
 import org.slf4j.Logger;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.fml.loading.FMLEnvironment;
@@ -40,6 +41,8 @@ public final class EpicFightPostureNeoForge {
         NeoForgeRendererDiscoveryServer.bootstrap();
         NeoForgeAutoCompatibility.register();
         NeoForgePostureServerEvents.register();
+        ExecutionRange.install(NeoForgeServerSettings::serverExecutionRangeMultiplier,
+                NeoForgeServerSettings::clientExecutionRangeMultiplier);
     }
 
     private static void prepareConfigDirectory() {

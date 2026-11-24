@@ -17,6 +17,8 @@ public final class PostureConfigDescriptions {
             "Posture damage from normal guards, relative to a parry (0.25 = 25%).";
     public static final String PROJECTILE_DEFENSE_MULTIPLIER =
             "Posture damage from parrying or guarding projectiles, relative to melee (0.0 = none, 1.0 = same).";
+    public static final String EXECUTION_RANGE_MULTIPLIER =
+            "Execution and assassination range, scaled by the held weapon's reach (1.0 = normal, 2.0 = double, 0.0 = Combat Evolution defaults).";
     public static final String PARRY_BASE_MAX =
             "Parry damage against weak mobs (low base health and armor), in % of max Posture.";
     public static final String PARRY_BASE_MIN =

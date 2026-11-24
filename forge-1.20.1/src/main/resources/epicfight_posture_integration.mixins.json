@@ -10,7 +10,8 @@
   "mixins": [
     "SpiderExecutionMixin",
     "ParryDetectionMixin",
-    "NormalGuardDetectionMixin"
+    "NormalGuardDetectionMixin",
+    "ExecutionRangeMixin"
   ],
   "client": [
     "client.BridgeHealthBarMixin",
@@ -25,6 +26,8 @@
     "client.LivingEntityRendererLayersAccessor",
     "client.ModelPartLayerPoseMixin",
     "client.MultiBufferSourceBufferSourceMixin",
-    "client.OutlineBufferSourceMixin"
+    "client.OutlineBufferSourceMixin",
+    "client.ExecutionHudRangeMixin",
+    "client.ExecutionKeyRangeMixin"
   ]
 }

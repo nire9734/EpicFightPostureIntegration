@@ -28,8 +28,12 @@ public final class NeoForgeServerSettings {
             boolean vanillaSpider,
             Set<ResourceLocation> entityBlacklist,
             Set<String> modAllowlist,
-            Set<String> modDenylist) {
+            Set<String> modDenylist,
+            double executionRangeMultiplier) {
         public Snapshot {
+            if (!Double.isFinite(executionRangeMultiplier) || executionRangeMultiplier < 0.0D) {
+                executionRangeMultiplier = 0.0D;
+            }
             entityBlacklist = entityBlacklist == null ? Set.of() : Set.copyOf(entityBlacklist);
             modAllowlist = modAllowlist == null ? Set.of() : Set.copyOf(modAllowlist);
             modDenylist = modDenylist == null ? Set.of() : Set.copyOf(modDenylist);
@@ -53,7 +57,7 @@ public final class NeoForgeServerSettings {
                                  Map<ResourceLocation, Float> parryDamageMultipliers) {}
 
     private static final Snapshot CLIENT_FAIL_CLOSED = new Snapshot(
-            false, false, false, Set.of(), Set.of(), Set.of());
+            false, false, false, Set.of(), Set.of(), Set.of(), 0.0D);
     private static volatile LocalSettings local;
     private static volatile boolean localConfigReady;
     private static volatile Snapshot remote;
@@ -75,6 +79,21 @@ public final class NeoForgeServerSettings {
         } catch (RuntimeException ignored) {
             // The balance math already orders the range; the warning is optional.
         }
+    }
+
+    /** Execution range multiplier from this installation's server.toml (server side). */
+    public static double serverExecutionRangeMultiplier() {
+        try {
+            return NeoForgePostureConfig.EXECUTION_RANGE_MULTIPLIER.get();
+        } catch (RuntimeException notLoaded) {
+            return 0.0D;
+        }
+    }
+
+    /** The server's synchronized multiplier on a client; Combat Evolution defaults until it arrives. */
+    public static double clientExecutionRangeMultiplier() {
+        Snapshot fromServer = remote;
+        return fromServer == null ? 0.0D : fromServer.executionRangeMultiplier();
     }
 
     public static Snapshot localSnapshot() {
@@ -108,7 +127,8 @@ public final class NeoForgeServerSettings {
                                     ResourceLocation::tryParse,
                                     raw -> LOGGER.warn("Ignoring invalid entity ID '{}' in entities.entity_blacklist", raw)),
                             parseNamespaces(NeoForgePostureConfig.MOD_ALLOWLIST.get(), "compatibility.mod_allowlist"),
-                            parseNamespaces(NeoForgePostureConfig.MOD_DENYLIST.get(), "compatibility.mod_denylist"));
+                            parseNamespaces(NeoForgePostureConfig.MOD_DENYLIST.get(), "compatibility.mod_denylist"),
+                            serverExecutionRangeMultiplier());
                     Map<ResourceLocation, Float> attackOverrides = PostureConfigEntries.entityMultipliers(
                             NeoForgePostureConfig.ATTACK_POSTURE_DAMAGE_MULTIPLIERS.get(), ResourceLocation::tryParse,
                             raw -> LOGGER.warn("Ignoring invalid entity multiplier '{}' in entities.attack_posture_damage_multipliers", raw));

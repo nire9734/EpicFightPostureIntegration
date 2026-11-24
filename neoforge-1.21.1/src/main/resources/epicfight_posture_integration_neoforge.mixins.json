@@ -6,7 +6,8 @@
   "mixins": [
     "ParryDetectionMixin",
     "NormalGuardDetectionMixin",
-    "NeoForgeSpiderExecutionMixin"
+    "NeoForgeSpiderExecutionMixin",
+    "NeoForgeExecutionRangeMixin"
   ],
   "injectors": {
     "defaultRequire": 1
@@ -24,6 +25,8 @@
     "NeoForgeOutlineBufferSourceMixin",
     "NeoForgeModelPartLayerPoseMixin",
     "NeoForgeLionfishAdvancedModelBoxLayerPoseMixin",
-    "NeoForgeLionfishBasicEntityModelLayerMeshMixin"
+    "NeoForgeLionfishBasicEntityModelLayerMeshMixin",
+    "NeoForgeExecutionHudRangeMixin",
+    "NeoForgeExecutionKeyRangeMixin"
   ]
 }
