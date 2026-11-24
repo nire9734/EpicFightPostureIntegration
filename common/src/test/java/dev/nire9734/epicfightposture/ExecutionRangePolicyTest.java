@@ -51,11 +51,13 @@ class ExecutionRangePolicyTest {
     void multiplierScalesLinearlyAndZeroDisables() {
         assertEquals(8.0, ExecutionRangePolicy.range(4.0, 2.0, SWORD), EPS);
         assertEquals(2.0, ExecutionRangePolicy.range(4.0, 0.5, SWORD), EPS);
-        assertEquals(4.0, ExecutionRangePolicy.range(4.0, 0.0, SPEAR), EPS, "0.0 = Combat Evolution default");
+        assertEquals(4.0, ExecutionRangePolicy.range(4.0, 0.0, SPEAR), EPS, "switched off = Combat Evolution default");
         assertEquals(4.0, ExecutionRangePolicy.range(4.0, Double.NaN, SPEAR), EPS);
         assertEquals(4.0, ExecutionRangePolicy.range(4.0, -1.0, SPEAR), EPS);
         assertFalse(ExecutionRangePolicy.isEnabled(0.0));
-        assertEquals(16.0, ExecutionRangePolicy.range(4.0, 100.0, SWORD), EPS, "multiplier capped at 4");
+        assertEquals(8.0, ExecutionRangePolicy.range(4.0, 100.0, SWORD), EPS, "multiplier capped at 2");
+        assertEquals(2.0, ExecutionRangePolicy.range(4.0, 0.1, SWORD), EPS, "multiplier floored at 0.5");
+        assertEquals(12.0, ExecutionRangePolicy.range(4.0, 2.0, SPEAR), EPS, "longest possible execution");
     }
 
     @Test

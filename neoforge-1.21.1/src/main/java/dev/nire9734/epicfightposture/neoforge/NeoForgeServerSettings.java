@@ -81,10 +81,14 @@ public final class NeoForgeServerSettings {
         }
     }
 
-    /** Execution range multiplier from this installation's server.toml (server side). */
+    /**
+     * Effective execution range multiplier from this installation's server.toml
+     * (server side); 0.0 when weapon scaling is switched off.
+     */
     public static double serverExecutionRangeMultiplier() {
         try {
-            return NeoForgePostureConfig.EXECUTION_RANGE_MULTIPLIER.get();
+            return NeoForgePostureConfig.EXECUTION_RANGE_SCALING_ENABLED.get()
+                    ? NeoForgePostureConfig.EXECUTION_RANGE_MULTIPLIER.get() : 0.0D;
         } catch (RuntimeException notLoaded) {
             return 0.0D;
         }

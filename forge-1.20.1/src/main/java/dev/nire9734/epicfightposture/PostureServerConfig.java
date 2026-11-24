@@ -40,6 +40,7 @@ public final class PostureServerConfig {
     public static final ForgeConfigSpec.BooleanValue GUARD_POSTURE_DAMAGE_ENABLED;
     public static final ForgeConfigSpec.DoubleValue GUARD_POSTURE_DAMAGE_MULTIPLIER;
     public static final ForgeConfigSpec.DoubleValue PROJECTILE_DEFENSE_POSTURE_MULTIPLIER;
+    public static final ForgeConfigSpec.BooleanValue EXECUTION_RANGE_SCALING_ENABLED;
     public static final ForgeConfigSpec.DoubleValue EXECUTION_RANGE_MULTIPLIER;
     public static final ForgeConfigSpec.DoubleValue PARRY_BASE_MAX_PERCENT;
     public static final ForgeConfigSpec.DoubleValue PARRY_BASE_MIN_PERCENT;
@@ -90,9 +91,13 @@ public final class PostureServerConfig {
         PROJECTILE_DEFENSE_POSTURE_MULTIPLIER = BUILDER
                 .comment(PostureConfigDescriptions.PROJECTILE_DEFENSE_MULTIPLIER)
                 .defineInRange("projectile_defense_posture_multiplier", 0.0D, 0.0D, 100.0D);
+        EXECUTION_RANGE_SCALING_ENABLED = BUILDER
+                .comment(PostureConfigDescriptions.EXECUTION_RANGE_SCALING_ENABLED)
+                .define("execution_range_scaling_enabled", true);
         EXECUTION_RANGE_MULTIPLIER = BUILDER
                 .comment(PostureConfigDescriptions.EXECUTION_RANGE_MULTIPLIER)
-                .defineInRange("execution_range_multiplier", 1.0D, 0.0D, ExecutionRangePolicy.MAX_MULTIPLIER);
+                .defineInRange("execution_range_multiplier", 1.0D,
+                        ExecutionRangePolicy.MIN_MULTIPLIER, ExecutionRangePolicy.MAX_MULTIPLIER);
         PARRY_BASE_MAX_PERCENT = BUILDER
                 .comment(PostureConfigDescriptions.PARRY_BASE_MAX)
                 .defineInRange("parry_base_max_percent", 22.0D, 0.0D, 100.0D);
@@ -189,10 +194,13 @@ public final class PostureServerConfig {
         return REGEN_RATE_PERCENT.get().floatValue() / 100.0F;
     }
 
-    /** Execution range multiplier from this installation's server.toml (server side). */
+    /**
+     * Effective execution range multiplier from this installation's server.toml
+     * (server side); 0.0 when weapon scaling is switched off.
+     */
     public static double serverExecutionRangeMultiplier() {
         try {
-            return EXECUTION_RANGE_MULTIPLIER.get();
+            return EXECUTION_RANGE_SCALING_ENABLED.get() ? EXECUTION_RANGE_MULTIPLIER.get() : 0.0D;
         } catch (RuntimeException notLoaded) {
             return 0.0D;
         }

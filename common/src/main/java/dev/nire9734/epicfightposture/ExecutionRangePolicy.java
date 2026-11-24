@@ -8,7 +8,8 @@ package dev.nire9734.epicfightposture;
  * taken from its Epic Fight collider, relative to a one-handed sword, so a sword
  * keeps Combat Evolution's ranges exactly and addon weapons are covered
  * automatically. The weapon factor is bounded, then the server-wide multiplier
- * applies; 0.0 disables the feature and restores Combat Evolution's ranges.
+ * (0.5-2.0) applies. When the feature is switched off, callers pass a
+ * multiplier of 0.0, which leaves Combat Evolution's ranges unchanged.
  */
 public final class ExecutionRangePolicy {
     /** Shoulder-to-hand reach added to the weapon collider, in blocks. */
@@ -23,7 +24,13 @@ public final class ExecutionRangePolicy {
     static final double STANDARD_HALF_WIDTH = 0.3D;
     /** Cap on the large-mob allowance, in blocks. */
     static final double MAX_SIZE_BONUS = 3.0D;
-    public static final double MAX_MULTIPLIER = 4.0D;
+    /**
+     * Multiplier bounds. Below 0.5 bodies collide before an assassination range
+     * is reached; above 2.0 Combat Evolution's teleport to the execution spot
+     * becomes unnaturally long and it does not check line of sight.
+     */
+    public static final double MIN_MULTIPLIER = 0.5D;
+    public static final double MAX_MULTIPLIER = 2.0D;
 
     /** Reach of an Epic Fight collider from the hand: distance to its center plus its longest half extent. */
     public static double colliderReach(double centerX, double centerY, double centerZ,
@@ -51,7 +58,7 @@ public final class ExecutionRangePolicy {
             return combatEvolutionRange;
         }
         double scaled = combatEvolutionRange * weaponFactor(colliderReach)
-                * Math.min(multiplier, MAX_MULTIPLIER);
+                * Math.max(MIN_MULTIPLIER, Math.min(MAX_MULTIPLIER, multiplier));
         return Double.isFinite(scaled) && scaled > 0.0D ? scaled : combatEvolutionRange;
     }
 
