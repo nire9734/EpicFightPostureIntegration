@@ -8,11 +8,21 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class GuardPosturePolicyTest {
     @Test
     void onlyPaidNormalGuardsWithNonParryWeaponsGeneratePressure() {
-        assertTrue(GuardPosturePolicy.shouldApply(true, false, false));
-        assertFalse(GuardPosturePolicy.shouldApply(true, false, true));
-        assertFalse(GuardPosturePolicy.shouldApply(true, true, false));
-        assertFalse(GuardPosturePolicy.shouldApply(true, true, true));
-        assertFalse(GuardPosturePolicy.shouldApply(false, false, false));
+        assertTrue(GuardPosturePolicy.shouldApply(true, false, false, false));
+        assertFalse(GuardPosturePolicy.shouldApply(true, false, true, false));
+        assertFalse(GuardPosturePolicy.shouldApply(true, true, false, false));
+        assertFalse(GuardPosturePolicy.shouldApply(true, true, true, false));
+        assertFalse(GuardPosturePolicy.shouldApply(false, false, false, false));
+    }
+
+    @Test
+    void impactGuardIgnoresWhetherTheWeaponCouldParry() {
+        // e.g. a longsword or tachi: parry-capable, but Impact Guard never parries.
+        assertTrue(GuardPosturePolicy.shouldApply(true, false, true, true));
+        assertTrue(GuardPosturePolicy.shouldApply(true, false, false, true));
+        // Stamina guard breaks still give nothing.
+        assertFalse(GuardPosturePolicy.shouldApply(false, false, true, true));
+        assertFalse(GuardPosturePolicy.shouldApply(false, false, false, true));
     }
 
     @Test

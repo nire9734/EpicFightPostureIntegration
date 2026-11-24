@@ -12,7 +12,7 @@ public final class PostureConfigDescriptions {
     public static final String PARRY_MULTIPLIER =
             "Posture damage from parries (1.0 = normal, 0.0 = none).";
     public static final String GUARD_ENABLED =
-            "Let successful normal guards damage the attacker's Posture (only with weapons that cannot parry).";
+            "Let successful normal guards damage the attacker's Posture (Guard: only weapons that cannot parry; Impact Guard: all weapons).";
     public static final String GUARD_MULTIPLIER =
             "Posture damage from normal guards, relative to a parry (0.25 = 25%).";
     public static final String PROJECTILE_DEFENSE_MULTIPLIER =

@@ -11,12 +11,14 @@ import org.spongepowered.asm.mixin.injection.ModifyVariable;
 import yesman.epicfight.gameasset.EpicFightSkills;
 import yesman.epicfight.skill.SkillContainer;
 import yesman.epicfight.skill.guard.GuardSkill;
+import yesman.epicfight.skill.guard.ImpactGuardSkill;
 import yesman.epicfight.skill.guard.ParryingSkill;
 import yesman.epicfight.world.capabilities.item.CapabilityItem;
 import yesman.epicfight.world.entity.eventlistener.TakeDamageEvent;
 
 /**
  * Both Epic Fight guard implementations store a BlockType after spending stamina.
+ * Impact Guard delegates to GuardSkill.guard, so it is detected here as well.
  * GUARD means a paid normal block; ADVANCED_GUARD is a parry and GUARD_BREAK
  * means the defender ran out of stamina. Never award Posture in the latter cases.
  */
@@ -27,19 +29,23 @@ public abstract class NormalGuardDetectionMixin {
             GuardSkill.BlockType blockType, SkillContainer container,
             CapabilityItem itemCapability, TakeDamageEvent.Attack event,
             float knockback, float impact, boolean advanced) {
-        // Check the registered parrying skill, not the equipped guard skill:
-        // a sword must not receive guard pressure merely by switching to basic Guard.
+        // With Guard, check the registered parrying skill, not the equipped guard
+        // skill: a sword must not receive guard pressure merely by switching to
+        // basic Guard. Impact Guard cannot parry, so it skips that check.
         // Unknown or failed capability probes fail closed (no guard pressure).
         if (blockType != GuardSkill.BlockType.GUARD || event.isParried()) return blockType;
-        if (!(EpicFightSkills.PARRYING instanceof ParryingSkill parrySkill)) return blockType;
-        final boolean canParry;
-        try {
-            canParry = parrySkill.isHoldingWeaponAvailable(
-                    event.getPlayerPatch(), itemCapability, GuardSkill.BlockType.ADVANCED_GUARD);
-        } catch (RuntimeException | LinkageError ignored) {
-            return blockType;
+        boolean impactGuard = (Object) this instanceof ImpactGuardSkill;
+        boolean canParry = false;
+        if (!impactGuard) {
+            if (!(EpicFightSkills.PARRYING instanceof ParryingSkill parrySkill)) return blockType;
+            try {
+                canParry = parrySkill.isHoldingWeaponAvailable(
+                        event.getPlayerPatch(), itemCapability, GuardSkill.BlockType.ADVANCED_GUARD);
+            } catch (RuntimeException | LinkageError ignored) {
+                return blockType;
+            }
         }
-        if (!GuardPosturePolicy.shouldApply(true, event.isParried(), canParry)) return blockType;
+        if (!GuardPosturePolicy.shouldApply(true, event.isParried(), canParry, impactGuard)) return blockType;
 
         Entity attacker = GuardSkill.getOffender(event.getDamageSource());
         if (attacker instanceof LivingEntity mob) {

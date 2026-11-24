@@ -2,9 +2,15 @@ package dev.nire9734.epicfightposture;
 
 /** Pure normal-guard eligibility shared by both Epic Fight loader adapters. */
 public final class GuardPosturePolicy {
+    /**
+     * A paid normal guard applies pressure unless it was a parry. With Guard,
+     * weapons that can perform the standard parry are excluded (they should
+     * parry instead). Impact Guard cannot parry at all, so it is never excluded
+     * on that basis.
+     */
     public static boolean shouldApply(boolean paidNormalGuard, boolean parried,
-                                      boolean weaponSupportsStandardParry) {
-        return paidNormalGuard && !parried && !weaponSupportsStandardParry;
+                                      boolean weaponSupportsStandardParry, boolean impactGuard) {
+        return paidNormalGuard && !parried && (impactGuard || !weaponSupportsStandardParry);
     }
 
     /**

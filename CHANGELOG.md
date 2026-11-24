@@ -13,6 +13,7 @@ Each release lists **Added**, **Changed**, **Fixed** and **Removed** items. A **
 - Links to the CurseForge page and the issue tracker in the mod list and on version mismatch screens.
 
 ### Changed
+- With `guard_posture_damage_enabled`, Impact Guard now damages Posture with every weapon, including weapons that could parry (for example longswords and tachis), because Impact Guard never parries. Plain Guard still excludes parry-capable weapons.
 - Parrying or guarding a projectile no longer damages the shooter's Posture by default, so ranged mobs are not guard broken from a distance. Set the new multiplier to `1.0` for the previous behavior.
 - Fully recovered mobs that were never guard broken are no longer tracked by the server. Their bar stays full, and guard break resistance is unaffected.
 - On NeoForge, a protocol mismatch now names the required mod version (`mod 3.3.0 or later`).
