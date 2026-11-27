@@ -84,7 +84,7 @@ public final class PostureServerConfig {
                 .defineInRange("parry_posture_damage_multiplier", 1.0D, 0.0D, 100.0D);
         GUARD_POSTURE_DAMAGE_ENABLED = BUILDER
                 .comment(PostureConfigDescriptions.GUARD_ENABLED)
-                .define("guard_posture_damage_enabled", false);
+                .define("guard_posture_damage_enabled", true);
         GUARD_POSTURE_DAMAGE_MULTIPLIER = BUILDER
                 .comment(PostureConfigDescriptions.GUARD_MULTIPLIER)
                 .defineInRange("guard_posture_damage_multiplier", 0.25D, 0.0D, 100.0D);

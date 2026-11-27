@@ -123,7 +123,7 @@ To capture a new model, start the client with `-Defpi.rigFixtureDirectory=<folde
 | --- | --- | --- |
 | `posture.attack_posture_damage_multiplier` | 1.0 | Posture damage from attacks |
 | `posture.parry_posture_damage_multiplier` | 1.0 | Posture damage from parries |
-| `posture.guard_posture_damage_enabled` | false | Normal guards damage Posture (Guard: only weapons that cannot parry; Impact Guard: all weapons) |
+| `posture.guard_posture_damage_enabled` | true | Normal guards damage Posture (Guard: only weapons that cannot parry; Impact Guard: all weapons) |
 | `posture.guard_posture_damage_multiplier` | 0.25 | Normal guard damage relative to a parry |
 | `posture.projectile_defense_posture_multiplier` | 0.0 | Parry/guard damage against projectiles, relative to melee |
 | `posture.execution_range_scaling_enabled` | true | Scale execution/assassination range by weapon reach (false = Combat Evolution's ranges) |

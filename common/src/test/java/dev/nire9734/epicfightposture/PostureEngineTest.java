@@ -226,7 +226,7 @@ class PostureEngineTest {
     @Test
     void normalGuardOnlyWhenEnabled() {
         engine.onGuarded(mob, false);
-        assertFalse(engine.hasState(mob), "guard Posture is off by default");
+        assertFalse(engine.hasState(mob), "no guard Posture while the setting is disabled");
 
         host.settings = new PostureSettings(0.22F, 0.10F, 0.5F, 2.0F, 300, 0.02F, true, 0.25F, 0.0F);
         engine.onGuarded(mob, false);
